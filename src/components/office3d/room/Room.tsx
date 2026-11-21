@@ -353,21 +353,22 @@ function MeetingRoom({ night, mode, onClick }: { night: number; mode: MeetingMod
     ctx.fillRect(0, 0, w, 70);
     ctx.fillStyle = "#fff";
     ctx.font = `700 40px ${FONT}`;
-    ctx.fillText("아침 PT", 28, 50);
-    const rows = [["3단계", "필수 마감"], ["2단계", "당일 완료"], ["1단계", "이월 가능"]];
+    ctx.fillText("아침보고 · 오늘 범위", 28, 50);
+    // 아침보고에서 AI 팀장과 정하는 세 가지(개정 흐름). 예전 'PT 3단계' 표는 쓰지 않는다.
+    const rows = [["하고 싶은 일", ""], ["끝낼 범위", ""], ["발표 형태", ""]];
     rows.forEach(([tag, text], i) => {
       const y = 110 + i * 62;
       ctx.fillStyle = i === 0 ? PALETTE.green : "#CFE3D8";
-      roundRect(ctx, 28, y, 110, 40, 20);
+      roundRect(ctx, 28, y, 170, 40, 20);
       ctx.fill();
       ctx.fillStyle = i === 0 ? "#fff" : PALETTE.green;
       ctx.font = `700 22px ${FONT}`;
-      ctx.fillText(tag, 50, y + 28);
+      ctx.fillText(tag, 46, y + 28);
       ctx.fillStyle = "#333";
       ctx.font = `500 24px ${FONT}`;
-      ctx.fillText(text, 160, y + 28);
+      if (text) ctx.fillText(text, 220, y + 28);
       ctx.fillStyle = "#C9D3CD";
-      ctx.fillRect(340, y + 16, 220, 8);
+      ctx.fillRect(220, y + 16, 340, 8);
     });
   }, 640, 320, []);
   // 타 부서 공유 슬라이드: 부서별 담당자 1명씩에게 오늘 한 일을 설명한다.

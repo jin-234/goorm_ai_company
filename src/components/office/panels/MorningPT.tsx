@@ -7,6 +7,7 @@
  * 목표는 말로 해도 된다(브라우저 내장 음성 인식, 선택). 녹음이 안 돼도 글로 끝까지 할 수 있다.
  */
 import { useEffect, useState } from "react";
+import { minutesFromGoal } from "@/lib/colleague/minutes";
 import { TASK_LEVEL_LABEL, TASK_LEVELS, type TaskLevel } from "@/lib/office/models";
 import { type AiSource, api, isSample, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
@@ -133,7 +134,10 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
     if (rows.some((r) => r.title.trim()) && !window.confirm("지금 고친 초안을 새 제안으로 바꿀까요?")) return;
     saveGoal();
     setAsking(true);
-    const mins = Number(minutes);
+    // 시간 칸이 비었으면 목표 글("오늘은 3시간 정도…")에서 읽어 채운다.
+    const fromGoal = minutes ? null : minutesFromGoal(goal);
+    if (fromGoal) setMinutes(String(fromGoal));
+    const mins = fromGoal ?? Number(minutes);
     const res = await office.run(async () => {
       const r = await api.leader(goal.trim(), Number.isFinite(mins) && mins > 0 ? mins : undefined);
       return { ...r, office: r.office ?? view };
@@ -322,15 +326,21 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
         </Card>
       ) : null}
 
-      {rows.length > 0 && missing.length > 0 ? (
-        <Notice kind="warning" title="확인이 필요합니다">
-          {missing.join("\n")}
-        </Notice>
-      ) : null}
-
-      <button className="btn" onClick={confirm} disabled={office.busy || !canConfirm}>
-        이 범위로 확정하고 시작
-      </button>
+      {/* 확정 버튼은 패널 아래에 붙여 두고, 꺼져 있으면 왜 꺼졌는지 바로 위에 적는다. */}
+      <div className="sticky-cta stack" style={{ gap: 8 }}>
+        {rows.length > 0 && missing.length > 0 ? (
+          <Notice kind="warning" title={`확정 전에 채울 것 ${missing.length}가지`}>
+            {missing.join("\n")}
+          </Notice>
+        ) : rows.length === 0 && !canConfirm ? (
+          <p className="small muted" style={{ margin: 0 }}>
+            AI 팀장 제안을 받거나 직접 적으면 확정할 수 있습니다.
+          </p>
+        ) : null}
+        <button className="btn" onClick={confirm} disabled={office.busy || !canConfirm}>
+          이 범위로 확정하고 시작
+        </button>
+      </div>
     </div>
   );
 }

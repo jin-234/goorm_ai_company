@@ -34,7 +34,7 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
   const endMin = minutesOf(end);
   const timeError =
     startMin == null || endMin == null
-      ? "활동 시간은 HH:MM 형식으로 적어 주세요."
+      ? "활동 시작·마감 시각을 골라 주세요."
       : endMin <= startMin
         ? "마감 시각은 시작 시각보다 늦어야 합니다."
         : null;
@@ -111,18 +111,18 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
         <div className="row" style={{ alignItems: "flex-end" }}>
           <label className="stack" style={{ width: 130 }}>
             활동 시작
-            <input className="field" value={start} inputMode="numeric" placeholder="HH:MM" onChange={(e) => setStart(e.target.value)} />
+            <input className="field" type="time" step={300} value={start} onChange={(e) => setStart(e.target.value)} />
           </label>
           <label className="stack" style={{ width: 130 }}>
             활동 마감
-            <input className="field" value={end} inputMode="numeric" placeholder="HH:MM" onChange={(e) => setEnd(e.target.value)} />
+            <input className="field" type="time" step={300} value={end} onChange={(e) => setEnd(e.target.value)} />
           </label>
         </div>
         {timeError ? <div className="small" style={{ color: "var(--warn)" }}>! {timeError}</div> : null}
         <div className="stack">
           <div style={{ fontWeight: 600 }}>관리 강도</div>
           <p className="small muted pre" style={{ margin: 0 }}>
-            {"자리를 지키게 하는 장치를 얼마나 쓸지 고릅니다.\n설정에서 언제든 바꿀 수 있고, 힘든 날에는 그날만 한 단계 낮출 수 있습니다."}
+            {"자리를 지키게 하는 장치를 얼마나 쓸지 고릅니다.\n설정에서 언제든 바꿀 수 있습니다."}
           </p>
           <EnforcementPicker options={LEVEL_OPTIONS} value={level} onChange={setLevel} start={startMin ?? 600} end={endMin ?? 1020} disabled={office.busy} />
         </div>
@@ -132,9 +132,11 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
             : "정한 시작 시각보다 늦으면 지각, 마감 시각에는 퇴근 점검을 합니다.\n근무 중에는 카메라로 자리에 있는지 확인합니다. 영상은 이 기기 안에서만 쓰고, 카메라를 꺼도 자리 비움으로 세지 않습니다.") +
             "\nAI 동료가 답하려면 아침보고·공유 대화와 제출한 글이 서버와 AI 제공사(Upstage)로 전송됩니다.\n비밀키·고객 정보·비공개 회사 코드는 적지 마세요."}
         </p>
-        <button className="btn" type="submit" disabled={office.busy || !ready}>
-          확인했습니다 · 입사하기
-        </button>
+        <div className="sticky-cta">
+          <button className="btn" type="submit" disabled={office.busy || !ready} style={{ width: "100%" }}>
+            확인했습니다 · 입사하기
+          </button>
+        </div>
       </form>
     </div>
   );

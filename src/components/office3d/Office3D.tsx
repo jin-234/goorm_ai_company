@@ -359,7 +359,7 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} meetingMode={meetingMode} myTasks={myTasks} onClick={onClick} />
       <CrewLayer frame={frame} labelHost={labelHost} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : GUESTS.includes(id as (typeof GUESTS)[number]) ? onClick("share") : undefined)} />
       {/* 이름표는 늘 붙여 두고 연출 중엔 감추기만 한다. 지웠다 다시 만들면 drei Html이 렌더 도중 떼어져 React 경고가 난다. */}
-      <Labels onClick={onClick} hidden={cinematic} host={labelHost} meetingMode={meetingMode} reviewing={shareStage === "review"} />
+      <Labels onClick={onClick} hidden={cinematic} host={labelHost} meetingMode={meetingMode} reviewing={shareStage === "review"} focus={focus} />
     </>
   );
 }
@@ -506,7 +506,7 @@ const LABELS: { key: string; text: string; at: [number, number, number]; place: 
   { key: "manager", text: "팀장 자리", at: [4.5, 1.75, 1.0], place: "manager" },
 ];
 
-function Labels({ onClick, hidden, host, meetingMode, reviewing }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null>; meetingMode: MeetingMode; reviewing: boolean }) {
+function Labels({ onClick, hidden, host, meetingMode, reviewing, focus }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null>; meetingMode: MeetingMode; reviewing: boolean; focus: Focus }) {
   // 회의실: 아침보고 때만 이름표를 띄운다. 부서 회의 중에는 손님 머리 위 팀 이름과 겹치고 굳이 필요 없어 감춘다(사용자 요청).
   // 팀장 자리: 사전 보고 중이면 공유 흐름(share)을 연다. key는 고정하고, 감출 때도 떼지 않는다(Html을 지웠다 만들면 React 경고).
   const labels = LABELS.map((l) => {
@@ -517,7 +517,9 @@ function Labels({ onClick, hidden, host, meetingMode, reviewing }: { onClick: (p
   return (
     <>
       {labels.map((l) => {
-        const off = hidden || ("off" in l && l.off === true);
+        // 이미 그곳을 가까이 보고 있으면 그 이름표는 감춘다(오른쪽 패널 제목과 같은 말이고, 가까이 보면 화면 끝에 걸려 잘린다).
+        const here = l.place === focus || (l.key === "meeting-room" && (focus === "meeting" || focus === "share"));
+        const off = hidden || here || ("off" in l && l.off === true);
         return (
           <Html key={l.key} portal={host as React.MutableRefObject<HTMLElement>} position={l.at} center zIndexRange={[10, 0]} style={{ visibility: off ? "hidden" : "visible" }}>
             <button type="button" style={labelStyle} onClick={() => onClick(l.place)} tabIndex={off ? -1 : 0} aria-hidden={off}>

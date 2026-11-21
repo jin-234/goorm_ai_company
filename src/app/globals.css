@@ -288,6 +288,38 @@ h3 {
   outline-offset: -1px;
 }
 
+/* 키보드로 옮겨 다닐 때 지금 어디에 있는지 보이게(어두운 배경 위에서도 보이도록 흰 테두리를 함께). */
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[role="radio"]:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #fff;
+}
+
+/* 긴 패널에서 마지막 확인 버튼을 스크롤 아래에 숨기지 않고 늘 보이게 한다. */
+.sticky-cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0 -2px;
+  padding: 10px 2px 2px;
+  background: linear-gradient(to bottom, transparent, var(--cta-bg, var(--card)) 24px);
+}
+
+.sticky-cta > .btn {
+  width: 100%;
+}
+
+/* 오른쪽 패널: 스크롤 상자 아래 여백(24px)까지 덮어 버튼 아래로 뒤 내용이 비치지 않게 한다. */
+.o3-panel-body .sticky-cta {
+  --cta-bg: var(--paper);
+  bottom: -24px;
+  margin-bottom: -24px;
+  padding-bottom: 24px;
+}
+
 textarea.field {
   resize: vertical;
   min-height: 96px;
