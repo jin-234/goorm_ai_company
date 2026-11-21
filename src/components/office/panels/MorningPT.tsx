@@ -76,7 +76,7 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
   const [seconds, setSeconds] = useState<number | null>(null);
 
   const saveTranscript = async () => {
-    if (transcript !== view.state.day.transcript) await office.act("setTranscript", { transcript });
+    if (transcript !== view.state.day.transcript) await office.save("setTranscript", { transcript });
   };
 
   const makeDraft = async () => {
@@ -189,7 +189,7 @@ function DraftRow({ draft, office, workEnd }: { draft: Draft; office: OfficeHand
   useEffect(() => setDue(draft.due != null ? Clock.hm(draft.due) : ""), [draft.due]);
   useEffect(() => setCriteria(draft.doneCriteria ?? ""), [draft.doneCriteria]);
 
-  const update = (patch: Record<string, unknown>) => office.act("updateDraft", { id: draft.id, ...patch });
+  const update = (patch: Record<string, unknown>) => office.save("updateDraft", { id: draft.id, ...patch });
   const missing = new Set(draft.missingFields);
   const need = (field: string, label: string) => (missing.has(field) ? `확인 필요 · ${label}` : label);
 
