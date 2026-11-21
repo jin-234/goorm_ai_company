@@ -42,11 +42,6 @@ export function VoiceInput({ disabled, ...options }: VoiceInputOptions & { disab
         <Notice kind="warning" title={error.title}>
           {error.guidance}
           <div className="row" style={{ marginTop: 8 }}>
-            {error.canRetry ? (
-              <button className="btn secondary small" onClick={voice.retry}>
-                같은 녹음으로 다시 시도
-              </button>
-            ) : null}
             <button className="btn plain small" onClick={voice.dismiss}>
               닫기
             </button>
@@ -54,9 +49,7 @@ export function VoiceInput({ disabled, ...options }: VoiceInputOptions & { disab
         </Notice>
       ) : (
         <p className="small muted" style={{ margin: 0 }}>
-          {voice.engine === "browser"
-            ? "브라우저 내장 음성 인식(무료)으로 글로 옮깁니다. 소리는 브라우저 회사 서버에서 글로 바뀌고, 우리 서버에는 남지 않습니다."
-            : "녹음은 OpenAI 음성 인식으로 글로 옮긴 뒤 저장하지 않습니다."}
+          브라우저 내장 음성 인식으로 글로 옮깁니다. 소리는 브라우저 회사 서버에서 글로 바뀌고, 우리 서버에는 남지 않습니다.
         </p>
       )}
     </div>
