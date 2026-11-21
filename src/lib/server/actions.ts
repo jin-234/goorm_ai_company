@@ -121,7 +121,7 @@ export function reviewOf(value: unknown): Review {
   return review;
 }
 
-/** AI 기획자 응답(개정 기획서 4.3 E). */
+/** 타 부서 동료 응답(개정 기획서 4.3 E). */
 export function plannerReplyOf(value: unknown): PlannerReply {
   const r = obj(value, "reply");
   const text = (key: string) => {
@@ -231,7 +231,7 @@ export function applyAction(office: Office, body: Json): unknown {
       office.startSharing(str(body, "earlyReason", false));
       return null;
     case "recordShareTurn": {
-      // 화면은 사용자 턴만 보낸다. 기획자 턴은 /api/office/share(서버)가 AI 응답을 받아 남긴다.
+      // 화면은 사용자 턴만 보낸다. 동료 턴은 /api/office/share(서버)가 AI 응답을 받아 남긴다.
       if (body.role !== "user") throw new BadRequest("화면에서는 role이 user인 턴만 남길 수 있습니다.");
       office.recordShareTurn({ role: "user", text: str(body, "text") });
       return null;

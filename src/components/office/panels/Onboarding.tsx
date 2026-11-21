@@ -63,7 +63,7 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
       </header>
 
       <Notice kind="info" title="가상 역할입니다">
-        {"이곳의 회사·직급·업무는 연습을 위한 가상 설정입니다.\n실제 고용이나 근무 경력이 아닙니다.\nAI 팀장과 AI 기획자는 사람이 아닌 AI입니다."}
+        {"이곳의 회사·직급·업무는 연습을 위한 가상 설정입니다.\n실제 고용이나 근무 경력이 아닙니다.\nAI 팀장과 타 부서 동료(기획자·디자이너·운영 담당자)는 사람이 아닌 AI입니다."}
       </Notice>
 
       <Card title="하루는 이렇게 흘러갑니다">

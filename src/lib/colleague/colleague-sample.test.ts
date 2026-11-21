@@ -59,25 +59,34 @@ describe("예시 팀장", () => {
   });
 });
 
-describe("예시 기획자", () => {
-  it("받은 말을 짚고, 역할 질문을 하나씩 두 개 묻고 마무리한다", async () => {
+describe("예시 회의실 동료", () => {
+  it("받은 말을 짚고, 기획자 → 디자이너 → 운영 담당자가 질문을 하나씩 한 뒤 기획자가 마무리한다", async () => {
     const office = sharing({ kind: "code", content: "fetch(url).then(r => r.json())" });
     const a = await say(office, "도시를 입력하면 날씨를 보여주는 화면을 만들었습니다.");
     expect(a.source).toBe("sample");
     expect(a.value.acknowledgement).toContain("도시를 입력하면");
     expect(a.value.question).toBe(ROLES.planner.manualQuestions[0]);
+    expect(a.value.question_reason).toBe(ROLES.planner.need);
     expect(a.value.can_finish).toBe(false);
 
     const b = await say(office, "도시 이름을 아는 사람은 누구나 오늘 날씨를 볼 수 있습니다.");
-    expect(b.value.question).toBe(ROLES.planner.manualQuestions[1]);
-    expect(isRepeatQuestion(b.value.question, [a.value.question])).toBe(false);
+    expect(office.day.share.turns.at(-1)?.speaker).toBe("designer");
+    expect(b.value.question).toBe(ROLES.designer.manualQuestions[0]);
+    expect(b.value.question_reason).toBe(ROLES.designer.need);
 
-    const c = await say(office, "실패 안내는 아직 없습니다.");
-    expect(c.value.question).toBe("");
-    expect(c.value.can_finish).toBe(true);
-    expect(office.day.share).toMatchObject({ questionCount: 2, state: "ready_to_summarize" });
-    expect(c.value.known_facts).toHaveLength(3);
-    expect(c.value.evidence_refs).toEqual(["턴 1", "턴 3", "턴 5"]);
+    const c = await say(office, "검색 → 결과 화면 순서입니다.");
+    expect(office.day.share.turns.at(-1)?.speaker).toBe("operations");
+    expect(c.value.question).toBe(ROLES.operations.manualQuestions[0]);
+    expect(isRepeatQuestion(c.value.question, [a.value.question, b.value.question])).toBe(false);
+
+    const d = await say(office, "실패 안내는 아직 없습니다.");
+    expect(office.day.share.turns.at(-1)?.speaker).toBe("planner");
+    expect(d.value.question).toBe("");
+    expect(d.value.can_finish).toBe(true);
+    expect(d.value.acknowledgement).toContain("부서마다");
+    expect(office.day.share).toMatchObject({ questionCount: 3, state: "ready_to_summarize" });
+    expect(d.value.known_facts).toHaveLength(4);
+    expect(d.value.evidence_refs).toEqual(["턴 1", "턴 3", "턴 5", "턴 7"]);
   });
 
   it("건너뛴 질문은 남은 질문으로 두고 다음 질문으로 넘어간다", async () => {
