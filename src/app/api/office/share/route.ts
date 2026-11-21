@@ -8,7 +8,12 @@ import { withOffice } from "@/lib/server/session";
 import { officeView } from "@/lib/server/view";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+/**
+ * 한 번 말하면 동료 발언이 최대 3번(피드백·다음 질문·정리) 생기고, 각 발언은 검사에 걸리면 1회 다시 요청하며,
+ * 마지막에는 회의록 요약까지 부른다. 실제 Solar로 한 요청에 27초까지 걸렸고 최악이면 60초를 넘을 수 있어
+ * Vercel 기본값(300초)으로 둔다. 중간에 끊기면 동료 발언이 저장되지 않는다.
+ */
+export const maxDuration = 300;
 
 /**
  * 회의실 발표: 사용자 말 한 마디 → 단계에 맞는 AI 동료 발언(docs/ai-colleague/AI동료_프롬프트.md 13.1).

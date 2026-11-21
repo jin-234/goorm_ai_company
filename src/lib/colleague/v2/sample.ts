@@ -63,8 +63,12 @@ const overlap = (a: string, b: string) => {
 export function anchorOf(text: string): string {
   const first = text.trim().split(/(?<=[.!?。])\s+|\n/)[0] ?? text.trim();
   const clause = first.split(/,\s*|는데\s|지만\s/)[0];
-  const base = clause.length >= 6 ? clause : first;
-  return base.replace(/[.!?。]+$/, "").slice(0, 28).trim();
+  const base = (clause.length >= 6 ? clause : first).replace(/[.!?。]+$/, "").trim();
+  if (base.length <= 28) return base;
+  // 낱말 중간에서 자르지 않는다: 28자 안의 마지막 띄어쓰기에서 끊는다(사용자 말에 그대로 들어 있어야 검증을 통과).
+  const cut = base.slice(0, 28);
+  const space = cut.lastIndexOf(" ");
+  return (space >= 8 ? cut.slice(0, space) : cut).trim();
 }
 
 const snippet = (t: string, n = 40) => {

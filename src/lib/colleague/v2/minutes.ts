@@ -109,7 +109,9 @@ export function buildMinutes(office: Office, summary: MinutesSummary | null): Mi
   const participants = (share.meeting?.participants ?? []).map((p) => `${DEPT_INFO[p.dept].team}(${personaById(p.personaId)?.label ?? p.personaId})`);
   const close = share.meeting?.close ?? null;
   const ai = (v: string | undefined) => (summary ? v || "-" : NO_AI);
-  const notice = "> AI가 대화 기록을 바탕으로 정리한 회의록이며, 원문은 99_전체 대화 기록에서 확인할 수 있습니다. 회사와 동료는 모두 가상 역할입니다.";
+  const notice = summary
+    ? "> AI가 대화 기록을 바탕으로 정리한 회의록이며, 원문은 99_전체 대화 기록에서 확인할 수 있습니다. 회사와 동료는 모두 가상 역할입니다."
+    : "> AI 정리 없음: 대화 기록만으로 만든 회의록입니다. 원문은 99_전체 대화 기록에서 확인할 수 있습니다. 회사와 동료는 모두 가상 역할입니다.";
 
   const files: MinutesFile[] = [];
   files.push({

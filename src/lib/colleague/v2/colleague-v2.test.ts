@@ -212,7 +212,10 @@ describe("진행 순서(13.1) — 예시 응답으로 하루 끝까지", () => {
     expect(share.meeting!.host).toBe("planner");
     expect(share.turns.at(-1)).toMatchObject({ role: "system", stage: "meeting" });
 
+    const { shareView } = await import("./view");
+    expect(shareView(share, false).meeting!.turnOrder).toEqual({ order: ["designer", "marketer", "planner"], asked: [], awaitingAnswer: null, next: "designer", closingNext: false });
     const m1 = await say(office, "도시별 날씨 조회 화면을 만들었고 검색 결과 목록을 보여줘요.");
+    expect(shareView(share, false).meeting!.turnOrder).toMatchObject({ asked: ["designer"], awaitingAnswer: "designer", next: "marketer" });
     expect(m1.turns.map((t) => `${t.dept}:${t.meetingRole}`)).toEqual(["designer:ask"]);
     const m2 = await say(office, "결과가 없으면 아직 빈 화면이에요. 다음에 안내 문구를 넣을 거예요.");
     expect(m2.turns.map((t) => `${t.dept}:${t.meetingRole}`)).toEqual(["designer:feedback", "marketer:ask"]);
@@ -360,5 +363,22 @@ describe("Solar 응답 검증·재요청(13.3)", () => {
     expect(m.files[0].markdown).toContain("날씨 화면을 세 부서에 설명함");
     expect(m.files.find((f) => f.name.startsWith("05"))!.markdown).toContain("디자인팀: 빈 결과 안내");
     expect(DEPT_INFO.marketer.team).toBe("마케팅팀");
+  });
+});
+
+describe("다듬기(78 확인)", () => {
+  it("앵커 인용은 낱말 중간에서 자르지 않는다", async () => {
+    const { anchorOf } = await import("./sample");
+    const a = anchorOf("도시 이름을 입력하면 fetch로 날씨 API를 불러와서 카드로 보여줘요.");
+    expect(a).toBe("도시 이름을 입력하면 fetch로 날씨 API를");
+    expect("도시 이름을 입력하면 fetch로 날씨 API를 불러와서 카드로 보여줘요.".includes(a)).toBe(true);
+  });
+
+  it("AI 요약이 없는 회의록에는 'AI가 정리한 회의록'이라고 쓰지 않는다", async () => {
+    const { buildMinutes } = await import("./minutes");
+    const office = sharingOffice();
+    const m = buildMinutes(office, null);
+    expect(m.files[0].markdown).toContain("AI 정리 없음: 대화 기록만으로 만든 회의록");
+    expect(m.files[0].markdown).not.toContain("AI가 대화 기록을 바탕으로 정리한");
   });
 });

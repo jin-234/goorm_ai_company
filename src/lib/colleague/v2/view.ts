@@ -50,6 +50,17 @@ export function shareView(share: ShareSession, canAnotherRound: boolean) {
             personaLabel: personaById(p.personaId)?.label ?? "",
           })),
           round: share.meeting.round,
+          /**
+           * 이번 바퀴 차례(화면의 차례 표시용). order는 질문 순서, asked는 이미 물은 부서,
+           * awaitingAnswer는 질문하고 내 답을 기다리는 부서, next는 그다음 물을 부서(없으면 null), closingNext는 다음이 진행자 정리인지.
+           */
+          turnOrder: {
+            order: share.meeting.participants.map((p) => p.dept),
+            asked: share.meeting.participants.slice(0, share.meeting.nextAsk).map((p) => p.dept),
+            awaitingAnswer: share.meeting.awaitingFeedback,
+            next: share.meeting.participants[share.meeting.nextAsk]?.dept ?? null,
+            closingNext: share.stage === "meeting" && share.meeting.nextAsk >= share.meeting.participants.length,
+          },
           turns: turns.filter((t) => t.stage === "meeting"),
           close: share.meeting.close,
           stats: understandingStats(share.turns.filter((t) => t.stage === "meeting")),
