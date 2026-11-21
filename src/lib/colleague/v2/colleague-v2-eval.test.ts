@@ -10,7 +10,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ColleagueDept, ShareTurn } from "@/lib/office/models";
+import { type ColleagueDept, emptyColleagueRecent, type ShareTurn } from "@/lib/office/models";
 import type { Office } from "@/lib/office/office";
 import { makeOffice } from "@/lib/office/test-helpers";
 import { SolarClient, solarConfigFromEnv } from "@/lib/solar/client";
@@ -150,14 +150,19 @@ describe.skipIf(!enabled)("프롬프트 평가(11장, 실제 Solar)", { timeout:
     }
 
     // T1: 같은 설명을 같은 부서(팀장)에 새 세션 5번 → 첫 질문 렌즈×형식 조합이 4번 이상 달라야 한다.
+    // 같은 사용자의 새 세션이므로 최근 사용 기록(13.4, colleagueRecent)을 이어 받는다.
     const combos: string[] = [];
+    let recent = emptyColleagueRecent();
     for (let i = 0; i < 5; i++) {
       const office = makeOffice();
+      office.colleagueRecent = recent;
       office.checkIn();
       office.confirmTasks({ tasks: [{ title: "날씨 조회 화면", completionCriteria: "시연", shareForm: "", level: 1 }] });
       office.startSharing();
       office.recordUserTurn("도시를 입력하면 날씨를 보여주는 화면을 만들었어요. 검색을 누르면 API를 불러서 카드로 보여줘요.");
       const r = await speak(office, client, { dept: "dev_lead", persona: office.day.share.review!.personaId, meetingRole: "review", curveball: false });
+      office.recordColleagueTurn("dev_lead", "review", r.reply, r.source);
+      recent = office.colleagueRecent;
       combos.push(`${r.reply.lens_id}×${r.reply.question_type}`);
     }
     const t1 = new Set(combos).size;
