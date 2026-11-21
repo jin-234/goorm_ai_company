@@ -295,3 +295,16 @@ describe("질문 근거: 가이드 기반 시나리오를 실제 사례로 포�
     expect(PLANNER_SCHEMA.required).toEqual(expect.arrayContaining(["question_basis", "basis_ref"]));
   });
 });
+
+describe("회의실 발표 참석자(개정 기획서 4.2: 기획팀·디자인팀·운영팀)", () => {
+  it("세 부서 담당자가 1명씩 오고, 질문은 기획자 한 명만 한다", async () => {
+    const { MEETING } = await import("./prompts");
+    expect(MEETING.askers).toEqual(["planner"]);
+    expect(MEETING.listeners).toEqual(["designer", "operations"]);
+    const office = sharingOffice();
+    const { client, sent } = fakeSolar(reply());
+    await plannerReply(client, office);
+    expect(contextOf(sent).meeting.attendees).toEqual(["서비스 기획팀", "디자인팀", "운영팀"]);
+    expect(sent[0].system).toContain("디자이너·운영 담당자는 듣기만");
+  });
+});

@@ -11,18 +11,23 @@ import {
 } from "./layout";
 import type { Snapshot } from "./schedule";
 
-export const GUESTS = ["planner", "designer"] as const;
+/** 타 부서 담당자(부서당 1명): 기획팀 AI 기획자, 디자인팀 AI 디자이너, 운영팀 AI 운영 담당자(개정 기획서 4.2). */
+export const GUESTS = ["planner", "designer", "operations"] as const;
 export type GuestId = (typeof GUESTS)[number];
 
-/** 손님이 앉는 회의실 의자(화면을 보는 줄 가운데와 오른쪽). 부서마다 담당자 1명씩만 온다. */
-const GUEST_CHAIR: Record<GuestId, number> = { planner: 1, designer: 2 };
+/** 손님이 앉는 회의실 의자(화면을 보는 줄 셋). 부서마다 담당자 1명씩만 온다. */
+const GUEST_CHAIR: Record<GuestId, number> = { planner: 1, designer: 2, operations: 0 };
 /** 손님 자리와 부서 이름(명패). 부서를 늘려도 부서당 1명. */
 export const GUEST_SEATS: { guest: GuestId; dept: string; chair: number }[] = [
   { guest: "planner", dept: "기획팀", chair: GUEST_CHAIR.planner },
   { guest: "designer", dept: "디자인팀", chair: GUEST_CHAIR.designer },
+  { guest: "operations", dept: "운영팀", chair: GUEST_CHAIR.operations },
 ];
+/** 들어오는 순서: 문에서 먼 의자부터. 나갈 때는 반대(문 쪽 의자부터). */
+export const ENTRY_ORDER: GuestId[] = [...GUESTS].sort((a, b) => MEETING.chairs[GUEST_CHAIR[a]].at[0] - MEETING.chairs[GUEST_CHAIR[b]].at[0]);
+export const DEPT_OF: Record<GuestId, string> = { planner: "기획팀", designer: "디자인팀", operations: "운영팀" };
 /** 손님이 들어오는 시차(초)와 걷는 빠르기(m/s). 대체 시간(12초) 안에 발표가 시작되게 조금 빠르게 걷는다. */
-export const SHARE = { stagger: 1.2, guestSpeed: 1.55, meSpeed: 1.6, sitDown: 0.5, stand: 0.6, bow: 1.0 } as const;
+export const SHARE = { stagger: 1.3, guestSpeed: 1.55, meSpeed: 1.6, sitDown: 0.5, stand: 0.6, bow: 1.0 } as const;
 const SEATED_Y = 0.215;
 
 /** 문 밖 → 회의실 의자. */
@@ -70,7 +75,8 @@ function listening(g: GuestId, t: number): Pose {
 
 /** 들어오는 연출의 시간표. */
 export function arrivalTimes() {
-  const guestStart = (g: GuestId) => GUESTS.indexOf(g) * SHARE.stagger;
+  // 안쪽 의자(문에서 먼 쪽)에 앉을 사람부터 들어온다. 늦게 온 사람이 앉아 있는 사람 앞을 지나가지 않는다.
+  const guestStart = (g: GuestId) => ENTRY_ORDER.indexOf(g) * SHARE.stagger;
   const guestSeat = (g: GuestId) => guestStart(g) + walkTime(guestInPath(g), SHARE.guestSpeed);
   // 손님이 걸어오는 동안 나도 자리에서 일어나 회의실로 간다. 마지막 손님이 앉고 조금 뒤 발표 자리에 닿도록 거꾸로 맞춘다
   // (회의실에 들어서면 손님은 이미 앉아 있다). 대체 시간 12초 안에 끝난다.
@@ -120,8 +126,11 @@ export function meBackPath(): Vec2[] {
 export function shareEndAt(t: number): { guests: Record<GuestId, Snapshot>; me: Snapshot; done: boolean } {
   const guests = {} as Record<GuestId, Snapshot>;
   let guestsGone = true;
-  for (const [i, g] of GUESTS.entries()) {
-    const t0 = i * 0.5;
+  // 한 줄로 나간다: 문 쪽에 가까운 의자(오른쪽)부터 1.3초 간격.
+  const outOrder = [...ENTRY_ORDER].reverse();
+  for (const g of GUESTS) {
+    const i = outOrder.indexOf(g);
+    const t0 = i * SHARE.stagger;
     const walkFrom = t0 + SHARE.stand + SHARE.bow;
     const path = guestOutPath(g);
     const walkEnd = walkFrom + walkTime(path, SHARE.guestSpeed);

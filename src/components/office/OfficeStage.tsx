@@ -80,14 +80,44 @@ export function OfficeBackdrop({
   onEntranceEnd,
   onShareReady,
   onLeaveEnd,
+  place = null,
 }: {
   view: OfficeView;
   onGo: (place: PlaceId) => void;
   onEntranceEnd?: () => void;
   onShareReady?: () => void;
   onLeaveEnd?: () => void;
+  /** 지금 열린 패널. 패널이 3D 화면 오른쪽을 가리므로 그 장소를 비춰 잘리지 않게 한다. */
+  place?: PlaceId | null;
 }) {
-  return <Office3D view={view} onPlace={(p) => onGo(p)} onEntranceEnd={onEntranceEnd} onShareReady={onShareReady} onLeaveEnd={onLeaveEnd} />;
+  return (
+    <Office3D
+      view={view}
+      focus={focusFor(place, (view.day.share as { stage?: string | null }).stage ?? null)}
+      onPlace={(p) => onGo(p)}
+      onEntranceEnd={onEntranceEnd}
+      onShareReady={onShareReady}
+      onLeaveEnd={onLeaveEnd}
+    />
+  );
+}
+
+/** 패널 → 3D 구도. 장소가 있는 패널은 그 장소로 다가가고, 나머지(메일·설정·출입문)는 전체 보기.
+ *  공유 패널은 진행 단계에 따라: 팀장 사전 보고(review)·컨펌(confirm) → 팀장 자리, 부서 회의(meeting)·정리(closed) → 회의실. */
+function focusFor(place: PlaceId | null, shareStage: string | null): "overview" | "meeting" | "share" | "desk" | "manager" {
+  switch (place) {
+    case "meeting":
+      return "meeting";
+    case "share":
+      // 개발팀장 사전 보고(review)와 컨펌 카드(confirm) 동안은 팀장 자리 앞이라 팀장 쪽을 비춘다.
+      return shareStage === "review" || shareStage === "confirm" ? "manager" : "share";
+    case "desk":
+      return "desk";
+    case "manager":
+      return "manager";
+    default:
+      return "overview";
+  }
 }
 
 /** 2D 배치 위에 놓는 3D 사무실 띠(좁은 화면) 또는 3D 다시 보기 버튼(3D를 숨긴 넓은 화면). */

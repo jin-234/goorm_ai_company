@@ -34,7 +34,7 @@ const PLACES: PlaceInfo[] = [
       return tasks.length > 0 ? `과제 · 제출 ${done}/${tasks.length}` : "과제 · 결과물 제출";
     },
   },
-  // 타 부서 공유는 회의실에서 하는 발표다(부서별 담당자 1명씩 — 기획팀·디자인팀 — 출입문으로 들어와 회의실에 앉아 듣는다).
+  // 타 부서 공유는 회의실에서 하는 발표다(부서별 담당자 1명씩 — 기획팀·디자인팀·운영팀 — 출입문으로 들어와 회의실에 앉아 듣는다).
   { id: "share", name: "회의실 · 타 부서 공유", sub: (v) => (v.phase.value === "sharing" ? "지금 발표" : "오늘 한 일 발표") },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
   { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
@@ -96,17 +96,28 @@ export function OfficeApp() {
   );
 
   // 단계가 바뀌면 그 단계의 패널로(처음 불러올 때도). 3D 화면에서 출근·퇴근 순간이면 연출부터.
+  // 공유(sharing) 안의 진행: review(개발팀장 사전 보고) → confirm(컨펌 카드) → meeting(부서 회의) → closed(회의록까지 끝).
+  // 서버가 아직 stage를 주지 않으면 null이고, 그때는 sharing 시작에 곧바로 회의 연출을 한다.
   const prevPhase = useRef<string | null>(null);
+  const prevShareStage = useRef<string | null>(null);
   useEffect(() => {
     if (!view) return;
-    const key = `${view.clock.date}:${view.phase.value}`;
+    const shareStage = shareStageOf(view);
+    const key = `${view.clock.date}:${view.phase.value}:${shareStage ?? ""}`;
     if (lastPhase.current === key) return;
     lastPhase.current = key;
     const before = prevPhase.current;
+    const beforeStage = prevShareStage.current;
     prevPhase.current = view.phase.value;
+    prevShareStage.current = shareStage;
     const target = placeForPhase(view);
+    const enteredSharing = before != null && before !== "sharing" && view.phase.value === "sharing";
+    // 손님이 들어와 회의실에 앉는 연출: 부서 회의가 시작될 때(stage 없으면 sharing 시작 때).
+    const meetingStarts =
+      view.phase.value === "sharing" &&
+      (shareStage === "meeting" ? beforeStage !== "meeting" && (beforeStage != null || before != null) : shareStage == null && enteredSharing);
     if (stage.full && before === "beforeCheckIn" && view.phase.value !== "beforeCheckIn") startCutscene("entrance", target);
-    else if (stage.full && before != null && before !== "sharing" && view.phase.value === "sharing") startCutscene("share", target);
+    else if (stage.full && meetingStarts) startCutscene("share", target);
     else if (stage.full && before != null && before !== "off" && view.phase.value === "off") startCutscene("leave", target);
     else setPlace(target);
   }, [view, stage.full, startCutscene]);
@@ -212,7 +223,7 @@ function FullOffice({
     <FixedStage>
     <div className={`o3 ${place ? "with-panel" : ""}`}>
       <div className="o3-canvas">
-        <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onShareReady={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
+        <OfficeBackdrop view={view} onGo={setPlace} place={place} onEntranceEnd={onCutsceneEnd} onShareReady={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
       </div>
 
       <div className="o3-top">
@@ -238,6 +249,12 @@ function FullOffice({
     </div>
     </FixedStage>
   );
+}
+
+/** 공유 안의 진행 단계(review·confirm·meeting·closed). 서버가 아직 주지 않으면 null. */
+export function shareStageOf(view: OfficeView): string | null {
+  const share = view.day.share as { stage?: string | null };
+  return share.stage ?? null;
 }
 
 /** 맥 앱 기본 창(1440×900, 16:10)을 기준으로 화면 전체를 고정한다. 창 크기와 상관없이 같은 구도로 보이고, 창에 맞춰 통째로 확대·축소한다. */

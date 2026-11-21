@@ -299,6 +299,8 @@ export function buildPerson(look: CrewLook): Rig {
       case "folder": rig.props.folder = addFolder(handR); break;
       case "collar": addCollar(torso, look); break;
       case "notepad": rig.props.notepad = buildNotepad(handL); break;
+      case "headset": addHeadset(head, look); break;
+      case "tablet": rig.props.notepad = buildTablet(handL); break;
     }
   }
   if (look.hasBadge) rig.props.badgeChest = addBadge(torso, look.badgeY, look.lanyard ?? "#F4C534");
@@ -500,6 +502,40 @@ function addCollar(torso: THREE.Group, look: CrewLook) {
   }
   // 앞 단추 줄
   for (const y of [0.13, 0.2, 0.27]) place(sphere(0.008, satin("#FBF8F1", 0.3), 10), 0.0, y, -torsoRadius(y) - 0.003, torso);
+}
+
+/** 머리띠 헤드셋: 정수리를 넘는 띠, 왼쪽 귀 덮개, 입가로 오는 마이크. */
+function addHeadset(head: THREE.Group, look: CrewLook) {
+  const band = satin("#2A2A30", 0.4);
+  const accent = satin(new THREE.Color(look.top).lerp(new THREE.Color("#FFFFFF"), 0.2).getStyle(), 0.4);
+  // 띠: 머리 위를 좌우로 넘는 반원(머리카락 위로 살짝 띄운다)
+  const arc = mesh(new THREE.TorusGeometry(0.232, 0.011, 10, 40, Math.PI), band);
+  arc.scale.set(1.08, 1, 1);
+  place(arc, 0, 0.0, 0.0, head);
+  // 귀 덮개(왼쪽)와 오른쪽 받침
+  place(turn(scale(cylinder(0.05, 0.03, accent, 24), 1, 1, 1), 0, 0, 90), -0.245, 0.0, 0.0, head);
+  place(turn(scale(cylinder(0.035, 0.02, band, 20), 1, 1, 1), 0, 0, 90), 0.245, 0.0, 0.0, head);
+  // 마이크 줄과 끝
+  const boom = capsule(0.006, 0.17, band, 8);
+  boom.position.set(-0.2, -0.07, -0.1);
+  boom.rotation.set(deg(-55), 0, deg(-35));
+  head.add(boom);
+  place(sphere(0.016, accent, 12), -0.12, -0.11, -0.17, head);
+}
+
+/** 왼손 태블릿: 어두운 테두리, 화면에 막대그래프와 오르는 선. 듣거나 끄덕일 때 든다(메모장 자리를 같이 쓴다). */
+function buildTablet(hand: THREE.Group): THREE.Group {
+  const pad = place(group("tablet"), 0, -0.02, -0.06, hand);
+  pad.add(box(0.15, 0.11, 0.012, 0.01, satin("#2A2A30", 0.35)));
+  place(box(0.135, 0.095, 0.004, 0.004, new THREE.MeshBasicMaterial({ color: "#F4F1EA" })), 0, 0, -0.007, pad);
+  const bar = new THREE.MeshBasicMaterial({ color: "#2F6B4F" });
+  [0.025, 0.04, 0.032, 0.055].forEach((h, i) => {
+    place(box(0.016, h, 0.002, 0.001, bar), -0.045 + i * 0.026, -0.04 + h / 2, -0.01, pad);
+  });
+  const line = new THREE.MeshBasicMaterial({ color: "#E07A3F" });
+  place(turn(box(0.11, 0.004, 0.002, 0.001, line), 0, 0, 18), 0.0, 0.015, -0.011, pad);
+  pad.visible = false;
+  return pad;
 }
 
 /** 왼손 메모장과 펜. */

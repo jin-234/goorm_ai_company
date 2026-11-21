@@ -18,7 +18,7 @@ export type SeatStatus =
   | { kind: "dinner"; until: Instant }
   | { kind: "unauthorizedAway"; since: Instant }
   | { kind: "cameraOff" }
-  /** 회의실 발표 중(기획팀·디자인팀 담당자가 듣는다) */
+  /** 회의실 발표 중(기획팀·디자인팀·운영팀 담당자가 듣는다) */
   | { kind: "sharing" }
   /** 퇴근 점검·추가근무 점검·하루 마감 작성 중 */
   | { kind: "review" }
@@ -99,7 +99,7 @@ export function seatDetail(s: SeatStatus, now: Instant): string {
     case "cameraOff":
       return "카메라가 꺼진 시간은 자리 비움으로 세지 않습니다.";
     case "sharing":
-      return "회의실에서 기획팀·디자인팀 담당자에게 오늘 한 일을 발표하고 있습니다.";
+      return "회의실에서 기획팀·디자인팀·운영팀 담당자에게 오늘 한 일을 발표하고 있습니다.";
     case "review":
       return "남은 과제와 오늘 한 일을 확인하고 있습니다.";
     case "off":
