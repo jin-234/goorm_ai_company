@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from "vitest";
 import { applyAction } from "./actions";
 import { withOffice } from "./session";
-import { databaseUrl, PostgresStore } from "./store";
+import { cleanUrl, databaseUrl, PostgresStore } from "./store";
 
 describe("연결 주소 고르기", () => {
   test("DATABASE_URL이 먼저, 없으면 Supabase 연동의 POSTGRES_URL", () => {
@@ -9,12 +9,18 @@ describe("연결 주소 고르기", () => {
     expect(databaseUrl({ DATABASE_URL: " ", POSTGRES_URL: "postgres://b" })).toBe("postgres://b");
     expect(databaseUrl({})).toBeNull();
   });
+
+  test("Supabase 주소에 붙은 옵션은 떼고 연결한다", () => {
+    expect(cleanUrl("postgres://u:p@aws-0.pooler.supabase.com:6543/postgres?sslmode=require&supa=base-pooler.x")).toBe(
+      "postgres://u:p@aws-0.pooler.supabase.com:6543/postgres",
+    );
+  });
 });
 
 /** 실제 Postgres가 있을 때만 돈다. 예: TEST_DATABASE_URL=postgres://postgres:pw@localhost:5432/postgres npm test */
 const url = process.env.TEST_DATABASE_URL;
 
-describe.skipIf(!url)("Postgres 저장소 (TEST_DATABASE_URL)", () => {
+describe.skipIf(!url)("Postgres 저장소 (TEST_DATABASE_URL)", { timeout: 30_000 }, () => {
   const store = url ? new PostgresStore(url) : (null as unknown as PostgresStore);
   const id = crypto.randomUUID();
 

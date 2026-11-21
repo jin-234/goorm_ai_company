@@ -48,6 +48,17 @@ CREATE TABLE IF NOT EXISTS offices (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
+/**
+ * 드라이버가 모르는 쿼리 옵션은 뗀다.
+ * Vercel Supabase 연동의 주소에는 `sslmode`와 `supa=base-pooler.x`가 붙는데,
+ * postgres.js는 모르는 옵션을 서버 설정값으로 넘겨서 풀러가 연결을 끊는다. SSL은 아래 sslFor로 따로 정한다.
+ */
+export function cleanUrl(url: string): string {
+  const parsed = new URL(url);
+  parsed.search = "";
+  return parsed.toString();
+}
+
 /** 로컬 Postgres(개발·시험)는 SSL 없이, 그 밖(Supabase)은 SSL로 연결한다. */
 function sslFor(url: string): false | "require" {
   const host = new URL(url).hostname;
@@ -59,7 +70,7 @@ export class PostgresStore implements OfficeStore {
   private ready: Promise<unknown> | null = null;
 
   constructor(url: string) {
-    this.sql = postgres(url, {
+    this.sql = postgres(cleanUrl(url), {
       prepare: false,
       ssl: sslFor(url),
       // 함수 하나는 요청을 하나씩 처리하므로 연결 하나면 충분하다.
