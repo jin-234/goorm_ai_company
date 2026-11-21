@@ -212,7 +212,7 @@ function FullOffice({
     <FixedStage>
     <div className={`o3 ${place ? "with-panel" : ""}`}>
       <div className="o3-canvas">
-        <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
+        <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onShareReady={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
       </div>
 
       <div className="o3-top">
