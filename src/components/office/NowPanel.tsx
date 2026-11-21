@@ -2,7 +2,7 @@
 /**
  * 화면 한쪽에 고정하는 '지금 할 일' 카드(디자인 멘토 피드백).
  * 처음 쓰는 사람도 공간을 찾지 않고 바로 실행할 수 있게 지금 할 일·이유·실행 버튼을 늘 보여 주고,
- * 익숙해진 뒤에도 자주 쓰는 체크리스트·결과물 제출은 한 번에 열 수 있게 바로가기를 둔다.
+ * 익숙해진 뒤에도 자주 쓰는 과제 목록·결과물 제출은 한 번에 열 수 있게 바로가기를 둔다.
  */
 import type { OfficeView } from "./api";
 import { nextStepOf } from "./TopBar";
@@ -10,47 +10,41 @@ import type { PlaceId } from "./ui";
 
 /** 지금 할 일이 왜 지금인지 한 줄로. 규칙은 다시 계산하지 않고 서버가 준 단계만 읽는다. */
 function whyNow(view: OfficeView): string {
-  if (view.seat.kind === "absentCandidate") return "오늘은 출근 기록이 없습니다. 다음 근무일에 다시 시작합니다.";
   switch (view.phase.value) {
     case "beforeCheckIn":
-      return "출근을 누르면 하루가 시작됩니다.";
+      return "출근을 누르면 오늘 활동이 시작됩니다.";
     case "morningPT":
-      return "오늘 할 일을 정해야 체크리스트가 생깁니다.";
+      return "오늘 끝낼 범위를 정해야 과제가 생깁니다.";
     case "working":
       if (view.can.submitWeekly) return "금요일에는 주간보고서를 올립니다.";
       if (view.mail.unreadCount > 0) return "팀장 메일에 확인할 내용이 있습니다.";
-      return "체크리스트를 하나씩 끝내고 결과물을 남깁니다.";
+      if (view.pastActivityEnd) return "정해 둔 마감 시각이 지났습니다. 정리되면 공유로 넘어가세요.";
+      return "과제를 수행하고 결과물을 제출합니다.";
+    case "sharing":
+      return "기획팀이 이어서 일할 수 있게 오늘 한 일을 설명합니다.";
     case "checkoutReview":
-      return "18:00입니다. 결과물을 올리고 남은 일을 정리합니다.";
-    case "dinner":
-      return "꼭 끝낼 일이 남아 19:00부터 추가근무를 합니다.";
-    case "overtime":
-      return "남은 일을 끝내면 바로 마칠 수 있습니다.";
-    case "overtimeReview":
-      return "22:00입니다. 한 일을 올리고 남은 일은 이월합니다.";
+      return "기록을 바탕으로 오늘을 정리하고 확정합니다.";
     case "off":
-      return "해낸 일과 다음 근무일 계획을 확인합니다.";
+      return "해낸 일과 다음 활동일 과제를 확인합니다.";
   }
 }
 
 export function NowPanel({ view, onGo, place }: { view: OfficeView; onGo: (place: PlaceId) => void; place: PlaceId }) {
   const step = nextStepOf(view);
-  const tasks = view.state.day.tasks;
-  const done = tasks.filter((t) => t.status === "done").length;
-  const open = tasks.filter((t) => t.status === "open").length;
-  const working = ["working", "checkoutReview", "overtime", "overtimeReview"].includes(view.phase.value);
+  const tasks = view.day.tasks;
+  const done = tasks.filter((t) => t.status === "submitted" || t.status === "reviewed").length;
+  const open = tasks.length - done;
 
-  const openDeliverable = () => {
+  const openSubmit = () => {
     onGo("desk");
-    // 내 책상 화면이 그려진 다음 프레임에 첫 빈 결과물 칸으로 옮긴다.
+    // 내 책상 화면이 그려진 다음 프레임에 첫 '결과물 제출' 버튼으로 옮긴다.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        const fields = Array.from(
-          document.querySelectorAll<HTMLInputElement>('input[aria-label$=" 결과물"]:not([disabled])'),
+        const button = Array.from(document.querySelectorAll<HTMLButtonElement>(".panel-area button")).find(
+          (b) => b.textContent === "결과물 제출" && !b.disabled,
         );
-        const target = fields.find((f) => !f.value.trim()) ?? fields[0];
-        target?.focus();
-        target?.scrollIntoView({ block: "center", behavior: "smooth" });
+        button?.focus();
+        button?.scrollIntoView({ block: "center", behavior: "smooth" });
       }),
     );
   };
@@ -77,9 +71,9 @@ export function NowPanel({ view, onGo, place }: { view: OfficeView; onGo: (place
       )}
 
       {tasks.length > 0 ? (
-        <div className="now-progress" aria-label={`오늘 업무 ${tasks.length}건 중 ${done}건 완료`}>
+        <div className="now-progress" aria-label={`오늘 과제 ${tasks.length}건 중 ${done}건 제출`}>
           <div className="row" style={{ justifyContent: "space-between" }}>
-            <span className="small">오늘 해낸 일</span>
+            <span className="small">제출한 과제</span>
             <span className="small" style={{ fontWeight: 700 }}>
               {done} / {tasks.length}
             </span>
@@ -93,13 +87,13 @@ export function NowPanel({ view, onGo, place }: { view: OfficeView; onGo: (place
       <div className="now-quick" role="group" aria-label="바로 열기">
         <span className="small muted">바로 열기</span>
         <button className="btn secondary small" onClick={() => onGo("desk")}>
-          체크리스트{open > 0 ? ` · 남은 ${open}건` : ""}
+          과제{open > 0 ? ` · 남은 ${open}건` : ""}
         </button>
         <button
           className="btn secondary small"
-          onClick={openDeliverable}
-          disabled={!working || open + done === 0}
-          title={working ? "내 책상의 결과물 칸으로 바로 갑니다." : "근무 중에 결과물을 올릴 수 있습니다."}
+          onClick={openSubmit}
+          disabled={!view.can.editTasks || tasks.length === 0}
+          title={view.can.editTasks ? "내 책상의 결과물 제출로 바로 갑니다." : "과제를 확정한 뒤 결과물을 제출할 수 있습니다."}
         >
           결과물 제출
         </button>

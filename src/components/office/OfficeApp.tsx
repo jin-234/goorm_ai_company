@@ -2,7 +2,7 @@
 /**
  * 웹 화면의 큰 틀: 위 막대 + 왼쪽 장소 이름표 + 오른쪽 패널.
  * 3D 없이도 하루 흐름이 끝까지 이어지는 2D 화면(웹 기획서 7장).
- * 단계가 바뀌면 그 단계의 패널로 자동으로 옮긴다(맥 앱과 같은 규칙).
+ * 단계가 바뀌면 그 단계의 패널로 자동으로 옮긴다.
  */
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
@@ -11,7 +11,8 @@ import { Desk } from "./panels/Desk";
 import { MailBox } from "./panels/Mail";
 import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
-import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
+import { Checkout, DayEnd } from "./panels/Review";
+import { Share } from "./panels/Share";
 import { applySavedTextScale, Settings } from "./panels/Settings";
 import { Weekly } from "./panels/Weekly";
 import { NowPanel } from "./NowPanel";
@@ -27,9 +28,9 @@ interface PlaceInfo {
 }
 
 const PLACES: PlaceInfo[] = [
-  { id: "door", name: "출입문", sub: (v) => (v.state.day.checkInAt != null ? "출근 완료" : "출근") },
-  { id: "meeting", name: "회의실", sub: (v) => (v.phase.value === "morningPT" ? "지금 아침 PT" : "아침 PT") },
-  { id: "desk", name: "내 책상", sub: (v) => `체크리스트 · ${v.seat.title}` },
+  { id: "door", name: "출입문", sub: (v) => (v.day.checkInAt != null ? "출근 완료" : "출근") },
+  { id: "meeting", name: "회의실", sub: (v) => (v.phase.value === "morningPT" ? "지금 아침보고" : "아침보고") },
+  { id: "desk", name: "내 책상", sub: (v) => `과제·공유·마감 · ${v.seat.title}` },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
   { id: "weekly", name: "주간보고", sub: (v) => (v.clock.isFriday ? "오늘 제출" : "금요일에 제출") },
   { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
@@ -81,10 +82,10 @@ export function OfficeApp() {
     );
   }
 
-  if (!view.state.onboarded) {
+  if (!view.onboarded) {
     return (
       <>
-        <Onboarding office={office} />
+        <Onboarding office={office} view={view} />
         <Toast text={office.toast} />
       </>
     );
@@ -141,15 +142,11 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
     case "manager":
       return <MailBox office={office} view={view} onGo={go} />;
     case "desk":
-      if (view.seat.kind === "absentCandidate") return <DayEnd office={office} view={view} onGo={go} />;
       switch (view.phase.value) {
+        case "sharing":
+          return <Share office={office} view={view} />;
         case "checkoutReview":
           return <Checkout office={office} view={view} />;
-        case "dinner":
-        case "overtime":
-          return <Overtime office={office} view={view} />;
-        case "overtimeReview":
-          return <OvertimeEnd office={office} view={view} />;
         case "off":
           return <DayEnd office={office} view={view} onGo={go} />;
         default:
