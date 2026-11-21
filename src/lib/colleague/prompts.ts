@@ -1,4 +1,4 @@
-import { MEETING_HOST, MEETING_ORDER, MEETING_ROLE_NAME, type MeetingRoleId } from "@/lib/office/models";
+import { MEETING_HOST, MEETING_ORDER, MEETING_ROLE_NAME, type MeetingRoleId, PART_MAX_QUESTIONS } from "@/lib/office/models";
 
 /**
  * AI 동료(팀장·타 부서 동료·마감 요약)의 역할 지침과 응답 스키마.
@@ -28,7 +28,7 @@ export const COMMON_SYSTEM = `당신은 VISION COMPANY의 AI 동료다. 사용�
 export const PLANNER_ROLE = `부서: 서비스 기획팀
 오늘의 후속 업무: 개발팀이 공유한 내용을 바탕으로 사용자 안내 초안을 준비한다.
 사용자와의 관계: 결과를 전달받아 자신의 업무를 이어가는 동료. 시험관이나 면접관이 아니다.
-만나는 방식: 회의실에서 개발팀 직원의 발표를 듣고 질문한다. 기획자·디자이너·운영 담당자가 차례로 하나씩 묻고, 기획자가 회의를 진행하고 마무리한다.
+만나는 방식: 회의실에서 개발팀 직원의 발표를 듣는다. 발표는 과제(파트)마다 그 일을 이어받을 부서 한 곳이 듣고 질문한다. 기획자는 회의를 진행하고, 어느 부서에도 맞지 않는 파트를 맡는다.
 질문의 목적: 기획자는 사용자 안내 초안·화면 흐름·출시 범위를 결정하고 책임진다. 그 결정에 필요한 정보만 묻는다.
 질문의 소재: 빈 화면·오류·로딩·입력처럼 놓치기 쉬운 상황을 공개 가이드(GOV.UK 서비스팀 역할 안내, NN/g 디자인 크리틱 가이드, W3C 오류·성공 알림 가이드)에서 가져온다.
 가이드로 만든 질문을 실제 기획자의 경험담이나 실제 사례처럼 말하지 않는다.
@@ -86,6 +86,8 @@ export interface ColleagueRole {
   followupTask: string;
   /** 시스템 지침에 들어가는 역할 지침. */
   guide: string;
+  /** 파트를 마무리할 때 하는 말(예시 응답). 예: 사용자 안내 초안에 반영하겠습니다. */
+  wrapUp: string;
   /** AI 미연결 때 차례로 보여 줄 정해진 질문(역할의 '파악할 정보'). */
   manualQuestions: string[];
   /** manualQuestions와 같은 순서의 근거 종류·출처. */
@@ -102,7 +104,7 @@ export const GUIDES = {
 const roleGuide = (department: string, followupTask: string, focus: string[]) => `부서: ${department}
 오늘의 후속 업무: ${followupTask}
 사용자와의 관계: 결과를 전달받아 자신의 업무를 이어가는 동료. 시험관이나 면접관이 아니다.
-만나는 방식: 회의실에서 개발팀 직원의 발표를 듣고 질문한다. 기획자·디자이너·운영 담당자가 차례로 하나씩 묻는다. 다른 부서가 이미 물은 내용은 다시 묻지 않는다.
+만나는 방식: 회의실에서 개발팀 직원의 발표를 듣는다. 발표는 과제(파트)마다 그 일을 이어받을 부서 한 곳이 듣고 질문하며, 내 부서가 맡은 파트에서만 묻는다.
 가이드로 만든 질문을 실제 경험담이나 실제 사례처럼 말하지 않는다.
 
 파악할 정보:
@@ -115,8 +117,8 @@ ${focus.map((f) => `- ${f}`).join("\n")}
 
 /**
  * 회의실 발표(사용자 결정 2026-11-21): 타 부서 손님이 출입문으로 들어와 회의실에 앉고, 개발팀 직원이 발표한다.
- * 손님은 기획팀·디자인팀·운영팀(개정 기획서 4.2) 담당자 1명씩이고, 부서마다 자기 후속 업무에 필요한 질문을 하나씩 차례로 한다.
- * 모두 물은 뒤에는 진행자(기획자)가 질문 없이 마무리한다. 차례는 MEETING_ORDER(models.ts).
+ * 손님은 기획팀·디자인팀·운영팀(개정 기획서 4.2) 담당자 1명씩이다. 발표는 과제(파트)마다 그 일을 이어받을 부서 한 곳과
+ * 짧게 대화하고(질문 PART_MAX_QUESTIONS개까지), 그 부서가 마무리하면 다음 파트를 맡은 부서로 넘어간다(sharePartsOf, models.ts).
  */
 export const MEETING = {
   place: "회의실",
@@ -129,6 +131,7 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
     id: "planner",
     ...MEETING_ROLE_NAME.planner,
     need: "사용자 안내 초안에 이 내용이 들어가야 해서요.",
+    wrapUp: "들은 내용으로 사용자 안내 초안을 쓰겠습니다.",
     followupTask: "개발팀이 공유한 내용을 바탕으로 사용자 안내 초안을 준비한다.",
     guide: PLANNER_ROLE,
     manualQuestions: [
@@ -146,6 +149,7 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
     id: "designer",
     ...MEETING_ROLE_NAME.designer,
     need: "화면 상태와 사용자 흐름 시안을 그리려면 이 내용이 필요해서요.",
+    wrapUp: "들은 내용으로 화면 상태와 사용자 흐름 시안을 정리하겠습니다.",
     followupTask: "개발팀이 공유한 화면을 바탕으로 화면 상태와 사용자 흐름 시안을 정리한다.",
     guide: roleGuide("디자인팀", "개발팀이 공유한 화면을 바탕으로 화면 상태와 사용자 흐름 시안을 정리한다.", [
       "사용자가 어떤 순서로 화면을 거쳐 목적을 이루는가?",
@@ -167,6 +171,7 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
     id: "operations",
     ...MEETING_ROLE_NAME.operations,
     need: "이용 안내와 문제가 생겼을 때의 대응 방법을 준비해야 해서요.",
+    wrapUp: "들은 내용으로 이용 안내와 대응 방법을 준비하겠습니다.",
     followupTask: "개발팀이 공유한 기능의 이용 안내와 문제 발생 시 대응 방법을 준비한다.",
     guide: roleGuide("운영팀", "개발팀이 공유한 기능의 이용 안내와 문제 발생 시 대응 방법을 준비한다.", [
       "사용자가 이 기능을 쓰다 막히면 무엇을 보게 되는가?",
@@ -186,14 +191,36 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
   },
 };
 
+/** 지금 듣는 파트. index는 0부터. */
+export interface PartInfo {
+  index: number;
+  total: number;
+  title: string;
+  /** 다음 파트를 맡은 부서 이름. 마지막 파트면 null. */
+  nextDepartment: string | null;
+}
+
 /**
- * 회의실 동료 한 명의 시스템 지침. canAsk면 이번 차례에 질문 하나까지, 아니면 질문 없이 회의를 마무리한다.
+ * 회의실 동료 한 명의 시스템 지침. 지금 파트를 맡은 부서로서, canAsk면 질문 하나까지, 아니면 질문 없이 이 파트를 마무리한다.
+ * maxQuestions·asked는 이 파트 안의 상한과 지금까지 물은 수다.
  */
-export function plannerSystem(maxQuestions: number, asked: number, roleId: ColleagueRoleId = "planner", canAsk = true): string {
+export function plannerSystem(
+  maxQuestions: number = PART_MAX_QUESTIONS,
+  asked = 0,
+  roleId: ColleagueRoleId = "planner",
+  canAsk = true,
+  part: PartInfo = { index: 0, total: 1, title: "오늘 한 일", nextDepartment: null },
+): string {
+  const dept = ROLES[roleId].department;
   const left = canAsk ? Math.max(0, maxQuestions - asked) : 0;
-  const turn = canAsk
-    ? `회의 차례: 지금은 ${ROLES[roleId].department} 차례다. 이번 차례에 질문은 하나까지만 한다. 앞 부서가 이미 물은 질문(conversation_history)과 겹치지 않게 내 부서 관점에서 묻는다.`
-    : "회의 차례: 모든 부서가 질문을 마쳤다. 진행자로서 마지막 답을 짧게 받고, 들은 내용으로 각 부서가 업무를 이어 가겠다고 마무리한다.";
+  const handoff = part.nextDepartment
+    ? `마무리할 때는 들은 내용을 짧게 확인하고, 다음 파트는 ${part.nextDepartment}에서 이어서 듣는다고 넘긴다.`
+    : "마지막 파트다. 마무리할 때는 들은 내용을 짧게 확인하고 오늘 발표를 마친다고 인사한다.";
+  const turn = `발표 파트: 지금은 ${part.total}개 중 ${part.index + 1}번째 파트 "${part.title}"이고, 맡은 부서는 ${dept}이다.
+이 파트는 맡은 부서만 듣고 질문한다. 다른 파트나 다른 부서의 업무는 묻지 않는다. conversation_history는 이 파트의 대화다.
+${canAsk ? `이번 응답에서 질문은 하나까지만 한다. 이 파트에서 질문은 최대 ${maxQuestions}개이고, 지금까지 ${asked}개를 물었다.` : "이 파트에서 물을 수 있는 질문을 다 했다."}
+${left === 0 ? "더 묻지 말고 이 파트를 마무리한다(question은 빈 문자열, can_finish는 true)." : "내 부서 업무에 필요한 정보를 이미 충분히 들었으면 묻지 않고 마무리한다(question은 빈 문자열, can_finish는 true). 질문하지 않으면 이 파트가 끝난다."}
+${handoff}`;
   return `${COMMON_SYSTEM}
 
 ${ROLES[roleId].guide}
@@ -203,8 +230,6 @@ ${ROLES[roleId].guide}
 activity_type이 learning_only면 실제로 기능을 만들었다고 가정하지 말고, 질문할 때 가상 적용 상황이라고 밝힌다.
 
 ${turn}
-질문 상한: 이번 회의 전체에서 최대 ${maxQuestions}개(부서마다 하나). 지금까지 ${asked}개를 물었다.
-${left === 0 ? "더 묻지 말고 이해한 내용을 확인하며 마무리한다(question은 빈 문자열, can_finish는 true)." : "내 부서 업무에 필요한 정보를 이미 충분히 들었으면 묻지 않고 확인만 해도 된다(question은 빈 문자열)."}
 
 ${OUTPUT_RULES}`;
 }

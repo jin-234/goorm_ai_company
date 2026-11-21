@@ -67,10 +67,10 @@ Solar 키가 없거나 `OFFICE_AI_MODE=sample`이면 `source: "sample"`(AI 연�
 | 경로 | 본문 | 응답 |
 | --- | --- | --- |
 | `POST /api/office/draft` | `{ goal, availableMinutes? }` | `{ source, proposal: { tasks, question }, solarError, result, office }` — 제안만, 확정은 `confirmTasks` |
-| `POST /api/office/share` | `{ message }` (건너뛰기는 `"이 질문은 건너뛸게요."`) | `{ source, reply, solarError, office }` — 사용자·기획자 두 턴을 서버가 기록 |
+| `POST /api/office/share` | `{ message }` (건너뛰기는 `"이 질문은 건너뛸게요."`) | `{ source, reply, solarError, office }` — 사용자 턴과, 지금 파트를 맡은 부서의 응답 한 턴을 서버가 기록 |
 | `POST /api/office/review-draft` | — | `{ source, review, solarError, office }` — `day.review` 초안으로 저장 |
 
-기획자 `reply`: `acknowledgement`, `question`(물음표 하나), `question_reason`, `question_basis`(`role_need` \| `ux_guide`, 질문 없으면 `""`), `basis_ref`(근거 출처 이름), `known_facts[]`, `open_questions[]`, `evidence_refs[]`(`"턴 n"`·`"제출물 id"`), `can_finish`. 질문은 공유당 최대 3개(기본 1~2개).
+기획자 `reply`: `acknowledgement`, `question`(물음표 하나), `question_reason`, `question_basis`(`role_need` \| `ux_guide`, 질문 없으면 `""`), `basis_ref`(근거 출처 이름), `known_facts[]`, `open_questions[]`, `evidence_refs[]`(`"턴 n"`·`"제출물 id"`), `can_finish`. 발표는 과제마다 파트 하나(`day.share.parts[]`: `taskId`, `title`, `role`)이고 맡은 부서 한 곳이 듣는다. 질문은 파트당 최대 2개이며, 부서가 질문 없이 답하면 그 파트가 끝나고 다음 파트로 넘어간다.
 
 Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `shared_scope_and_limits`, `open_questions[]`, `job_connection`, `next_action`, `evidence_refs[]`.
 

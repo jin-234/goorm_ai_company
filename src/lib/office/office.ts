@@ -31,14 +31,16 @@ import {
   type EmployeeProfile,
   isIncoming,
   type Mail,
-  MEETING_HOST,
-  MEETING_ORDER,
+  PART_MAX_QUESTIONS,
   type MeetingRoleId,
   newTask,
   newWorkDay,
   type PlannerReply,
   readScopeOf,
   type Review,
+  type SharePart,
+  sharePartsOf,
+  sharePartState,
   STATE_VERSION,
   type Submission,
   type SubmissionKind,
@@ -536,20 +538,28 @@ export class Office implements OfficeState {
     this.closeSpans(this.now);
     this.day.phase = "sharing";
     this.day.share.state = "awaiting_explanation";
+    this.day.share.parts = sharePartsOf(this.day.tasks);
+    this.day.share.maxQuestions = this.day.share.parts.length * PART_MAX_QUESTIONS;
     this.log("shareStart", `회의실 발표 시작 ${hm(this.now)}`);
   }
 
-  /**
-   * 회의실에서 다음에 말할 동료. 기획자 → 디자이너 → 운영 담당자 순서로 한 번씩 말하고(질문은 하나까지),
-   * 모두 말한 뒤에는 진행자(기획자)가 질문 없이 마무리한다.
-   */
-  get shareSpeaker(): { role: MeetingRoleId; canAsk: boolean } {
-    const spoken = this.day.share.turns.filter((t) => t.role === "planner").length;
-    return spoken < MEETING_ORDER.length ? { role: MEETING_ORDER[spoken], canAsk: true } : { role: MEETING_HOST, canAsk: false };
+  /** 발표 파트(과제마다 한 부서). 옛 기록에 없으면 과제로 다시 만든다. */
+  get shareParts(): SharePart[] {
+    return this.day.share.parts ?? sharePartsOf(this.day.tasks);
   }
 
   /**
-   * 공유 대화 한 턴을 남긴다. 동료 턴은 차례(shareSpeaker)대로 말한 부서를 붙이고, 차례가 아닌 질문은 받지 않는다.
+   * 회의실에서 다음에 말할 동료: 지금 파트를 맡은 부서. 파트마다 질문은 PART_MAX_QUESTIONS개까지 하고,
+   * 질문 없이 말하면(마무리) 다음 파트를 맡은 부서로 넘어간다. 모든 파트가 끝난 뒤에는 마지막 부서가 질문 없이 답한다.
+   */
+  get shareSpeaker(): { role: MeetingRoleId; canAsk: boolean; part: number } {
+    const parts = this.shareParts;
+    const { index, done, askedInPart } = sharePartState(parts, this.day.share.turns);
+    return { role: parts[index].role, canAsk: !done && askedInPart < PART_MAX_QUESTIONS, part: index };
+  }
+
+  /**
+   * 공유 대화 한 턴을 남긴다. 동료 턴은 지금 파트를 맡은 부서를 붙이고, 질문할 수 없는 차례의 질문은 받지 않는다.
    * 사용자가 이미 답한 질문을 다시 묻지 않는 판단은 AI 쪽에서 하고, 여기서는 기록과 차례·상한만 지킨다.
    */
   recordShareTurn(input: ShareTurnInput): void {
@@ -570,10 +580,17 @@ export class Office implements OfficeState {
     if (asks && (!canAsk || share.questionCount >= share.maxQuestions)) throw new OfficeError("shareQuestionLimit");
     share.turns.push({ id: crypto.randomUUID(), role: "planner", speaker, at: this.now, reply, source: input.source ?? "manual" });
     if (asks) share.questionCount += 1;
-    share.knownFacts = [...reply.known_facts];
-    share.openQuestions = [...reply.open_questions];
-    // 질문이 없으면 다음 부서 차례로 넘어간다. 마지막 부서까지 말했고 질문이 없으면 정리할 수 있다.
-    share.state = !asks && !this.shareSpeaker.canAsk ? "ready_to_summarize" : "clarifying";
+    // 파트마다 그 부서가 마지막으로 정리한 것을 이어 붙인다(다음 부서가 앞 파트 정리를 지우지 않게).
+    const { turnPart, done } = sharePartState(this.shareParts, share.turns);
+    const lastByPart = new Map<number, PlannerReply>();
+    share.turns.forEach((t, i) => {
+      if (t.role === "planner" && t.reply) lastByPart.set(turnPart[i], t.reply);
+    });
+    const unique = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) === i);
+    share.knownFacts = unique([...lastByPart.values()].flatMap((r) => r.known_facts));
+    share.openQuestions = unique([...lastByPart.values()].flatMap((r) => r.open_questions));
+    // 질문이 없으면 이 파트를 마치고 다음 파트로 넘어간다. 마지막 파트까지 마쳤으면 정리할 수 있다.
+    share.state = done ? "ready_to_summarize" : "clarifying";
   }
 
   /** 공유를 끝내고 하루 마감으로 간다. 수행 중에 바로 부르면 공유를 건너뛴 것으로 남긴다(공유가 맞지 않는 학습). */

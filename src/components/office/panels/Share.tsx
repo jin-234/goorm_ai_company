@@ -1,11 +1,11 @@
 "use client";
 /**
  * 회의실 · 타 부서 공유(발표). 타 부서 AI 동료들이 회의실에 와 있고, 내가 오늘 한 일을 발표한다(개정 기획서 3.1, 4.2, 4.3 B·E).
- * 기획자 → 디자이너 → 운영 담당자가 자기 후속 업무에 필요한 것을 하나씩 차례로 묻고, 기획자가 마무리한다.
+ * 발표는 과제(파트)마다 그 일을 이어받을 부서 한 곳과 짧게 대화하고, 그 부서가 마무리하면 다음 파트의 부서로 넘어간다.
  * 사용자는 건너뛰거나 언제든 마칠 수 있다. AI 미연결이면 정해진 안내를 'AI가 말한 것'처럼 보이지 않게 따로 표시한다.
  */
 import { useEffect, useRef, useState } from "react";
-import { MEETING_ORDER, MEETING_ROLE_NAME, type MeetingRoleId } from "@/lib/office/models";
+import { MEETING_ROLE_NAME, type MeetingRoleId, type SharePart, sharePartsOf, sharePartState } from "@/lib/office/models";
 import { api, isManual, isSample, type OfficeView, type PlannerReply, type ShareTurn } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, ManualMark, Notice, PanelHeader, type PlaceId, SampleMark } from "../ui";
@@ -79,35 +79,58 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-/** 질문 차례: 말한 부서는 ✓, 다음 차례는 굵게. */
-function TurnOrder({ turns, active }: { turns: ShareTurn[]; active: boolean }) {
-  const spoken = turns.filter((t) => t.role === "planner").length;
+/** 부서마다 하는 일(회의에 온 부서 안내). */
+const ROLE_JOB: Record<MeetingRoleId, string> = {
+  planner: "사용자 안내 초안·출시 범위를 준비합니다. 회의 진행도 맡습니다.",
+  designer: "화면 상태와 사용자 흐름 시안을 정리합니다.",
+  operations: "이용 안내와 문제가 생겼을 때의 대응을 준비합니다.",
+};
+
+/** 파트 순서: 끝난 파트는 ✓, 지금 파트는 굵게. */
+function PartOrder({ parts, index, done, active }: { parts: SharePart[]; index: number; done: boolean; active: boolean }) {
   return (
-    <div className="small muted" aria-label="질문 차례">
-      {MEETING_ORDER.map((id, i) => (
-        <span key={id}>
-          {i > 0 ? " → " : ""}
-          <span style={active && i === spoken ? { fontWeight: 700, color: "var(--ink, inherit)" } : undefined}>
-            {MEETING_ROLE_NAME[id].short}
-            {i < spoken ? " ✓" : ""}
-          </span>
-        </span>
-      ))}
-      {" → 마무리"}
+    <ol className="small muted" aria-label="발표 파트" style={{ margin: 0, paddingLeft: 20 }}>
+      {parts.map((p, i) => {
+        const finished = done || i < index;
+        const now = active && !done && i === index;
+        return (
+          <li key={`${p.taskId ?? "day"}-${i}`} style={now ? { fontWeight: 700, color: "var(--ink, inherit)" } : undefined}>
+            {`${p.title} → ${MEETING_ROLE_NAME[p.role].department}`}
+            {finished ? " ✓" : now ? " · 지금" : ""}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** 대화 기록. 파트가 바뀌는 곳에 어느 파트를 어느 부서가 듣는지 줄을 넣는다. */
+function Transcript({ turns, parts, turnPart }: { turns: ShareTurn[]; parts: SharePart[]; turnPart: number[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-live="polite">
+      {turns.map((t, i) => {
+        const part = turnPart[i];
+        const divider =
+          i === 0 || part !== turnPart[i - 1] ? (
+            <PartDivider key={`part-${part}`} index={part} part={parts[part]} total={parts.length} />
+          ) : null;
+        const body =
+          t.role === "user" ? (
+            <UserBubble key={t.id} text={t.text ?? ""} />
+          ) : t.reply ? (
+            <PlannerBubble key={t.id} reply={t.reply} speaker={t.speaker ?? "planner"} manual={isManual(t.source)} sample={isSample(t.source)} />
+          ) : null;
+        return divider ? [divider, body] : body;
+      })}
     </div>
   );
 }
 
-function Transcript({ turns }: { turns: ShareTurn[] }) {
+function PartDivider({ index, part, total }: { index: number; part: SharePart | undefined; total: number }) {
+  if (!part) return null;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-live="polite">
-      {turns.map((t) =>
-        t.role === "user" ? (
-          <UserBubble key={t.id} text={t.text ?? ""} />
-        ) : t.reply ? (
-          <PlannerBubble key={t.id} reply={t.reply} speaker={t.speaker ?? "planner"} manual={isManual(t.source)} sample={isSample(t.source)} />
-        ) : null,
-      )}
+    <div className="small muted" style={{ borderTop: "1px solid var(--line, #ddd)", paddingTop: 6 }}>
+      {`파트 ${index + 1}/${total} · ${part.title} · ${MEETING_ROLE_NAME[part.role].department}`}
     </div>
   );
 }
@@ -131,7 +154,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
     <PanelHeader
       place="회의실 · 타 부서 공유"
       title="오늘 한 일 발표"
-      detail={"기획팀·디자인팀·운영팀 담당자가 회의실에 와 있습니다. 오늘 한 일을 발표해 주세요.\n발표가 끝나면 세 부서가 자기 업무에 필요한 것을 하나씩 차례로 묻습니다."}
+      detail={"오늘 확정한 과제마다 그 일을 이어받을 부서 한 곳과 이야기합니다.\n한 부서와 대화가 끝나면 다음 과제를 맡은 부서로 넘어갑니다."}
     />
   );
 
@@ -189,18 +212,26 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
 
   const active = phase === "sharing";
   const subs = view.day.submissions;
+  const parts = share.parts ?? sharePartsOf(view.day.tasks);
+  const { index: partIndex, done: allDone, turnPart } = sharePartState(parts, turns);
+  const current = parts[partIndex];
+  const currentDept = MEETING_ROLE_NAME[current.role].department;
+  // 지금 파트에서 아직 내가 말하지 않았으면, 이 파트를 설명할 차례다.
+  const partStarted = turns.some((t, i) => t.role === "user" && turnPart[i] === partIndex);
+  const roles = parts.map((p) => p.role).filter((r, i, a) => a.indexOf(r) === i);
   return (
     <div className="panel">
       {header}
 
-      <Card title="회의에 온 부서 (가상 역할)">
+      <Card title="발표 순서와 듣는 부서 (가상 역할)">
+        <PartOrder parts={parts} index={partIndex} done={allDone} active={active} />
         <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          <li>AI 기획자: 사용자 안내 초안·출시 범위를 준비합니다. 회의 진행도 맡습니다.</li>
-          <li>AI 디자이너: 화면 상태와 사용자 흐름 시안을 정리합니다.</li>
-          <li>AI 운영 담당자: 이용 안내와 문제가 생겼을 때의 대응을 준비합니다.</li>
+          {roles.map((r) => (
+            <li key={r}>{`${MEETING_ROLE_NAME[r].title}: ${ROLE_JOB[r]}`}</li>
+          ))}
         </ul>
         <p className="small muted" style={{ margin: 0 }}>
-          각자 자기 업무에 필요한 것만 하나씩 묻습니다. 기술 퀴즈나 채점은 하지 않습니다.
+          과제마다 맡은 부서가 자기 업무에 필요한 것만 한두 가지 묻습니다. 기술 퀴즈나 채점은 하지 않습니다.
         </p>
       </Card>
 
@@ -226,21 +257,19 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
         title="대화"
         aside={<span className="chip">{`질문 ${share.questionCount} / 최대 ${share.maxQuestions}`}</span>}
       >
-        <TurnOrder turns={turns} active={active} />
-        {turns.length === 0 ? (
-          <Notice kind="info" title="먼저 오늘 한 일을 한두 문장으로 설명해 주세요">
-            예: 도시를 입력하면 날씨를 보여 주는 화면을 만들었습니다.
+        {turns.length > 0 ? <Transcript turns={turns} parts={parts} turnPart={turnPart} /> : null}
+        {active && !allDone && !partStarted ? (
+          <Notice kind="info" title={`파트 ${partIndex + 1} · '${current.title}'을(를) ${currentDept}에 설명해 주세요`}>
+            {turns.length === 0 ? "한두 문장이면 됩니다. 예: 도시를 입력하면 날씨를 보여 주는 화면을 만들었습니다." : "앞 파트는 마쳤습니다. 이 과제에서 한 일과 결과를 이야기해 주세요."}
           </Notice>
-        ) : (
-          <Transcript turns={turns} />
-        )}
+        ) : null}
         <div ref={endRef} />
 
         {active ? (
           <>
             {manual ? (
               <Notice kind="info" title="직접 기록 · AI 미연결">
-                {"AI 동료에게 연결하지 못해, 내 설명만 기록합니다.\n세 부서가 알고 싶어 할 것을 생각하며 적어 보세요.\n· 기획: 누가 무엇을 할 수 있게 됐나요?\n· 디자인: 화면은 어떤 순서로, 불러오는 중·실패 때는 어떻게 보이나요?\n· 운영: 쓰다가 막히면 무엇을 보고, 알려진 문제는 무엇인가요?"}
+                {"AI 동료에게 연결하지 못해, 내 설명만 기록합니다.\n과제를 맡은 부서가 알고 싶어 할 것을 생각하며 적어 보세요.\n· 기획: 누가 무엇을 할 수 있게 됐나요?\n· 디자인: 화면은 어떤 순서로, 불러오는 중·실패 때는 어떻게 보이나요?\n· 운영: 쓰다가 막히면 무엇을 보고, 알려진 문제는 무엇인가요?"}
                 <div style={{ marginTop: 8 }}>
                   <button className="btn secondary small" onClick={() => setManual(false)} disabled={sending}>
                     AI 동료에 다시 연결해 보기
@@ -249,7 +278,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
               </Notice>
             ) : null}
             {share.state === "ready_to_summarize" ? (
-              <Notice kind="ok" title="세 부서가 필요한 내용을 받았습니다">
+              <Notice kind="ok" title="모든 파트를 공유했습니다">
                 더 덧붙일 말이 없으면 공유를 마쳐도 됩니다.
               </Notice>
             ) : null}
@@ -277,7 +306,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
               aria-label="AI 동료들에게 보낼 말"
               rows={3}
               value={message}
-              placeholder={turns.length === 0 ? "오늘 한 일과 결과를 설명해 주세요." : "질문에 답하거나 덧붙일 말을 적어 주세요."}
+              placeholder={!partStarted && !allDone ? `'${current.title}'에서 한 일과 결과를 설명해 주세요.` : "질문에 답하거나 덧붙일 말을 적어 주세요."}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) void send(message);
@@ -310,23 +339,23 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
         )}
       </Card>
 
-      {last?.reply && (last.reply.known_facts.length > 0 || last.reply.open_questions.length > 0) ? (
+      {share.knownFacts.length > 0 || share.openQuestions.length > 0 ? (
         <Card title="AI 동료들이 정리한 것">
-          {last.reply.known_facts.length > 0 ? (
+          {share.knownFacts.length > 0 ? (
             <div>
               <div style={{ fontWeight: 700 }}>전달받은 내용</div>
               <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-                {last.reply.known_facts.map((f) => (
+                {share.knownFacts.map((f) => (
                   <li key={f}>{f}</li>
                 ))}
               </ul>
             </div>
           ) : null}
-          {last.reply.open_questions.length > 0 ? (
+          {share.openQuestions.length > 0 ? (
             <div>
               <div style={{ fontWeight: 700 }}>아직 모르는 것</div>
               <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-                {last.reply.open_questions.map((q) => (
+                {share.openQuestions.map((q) => (
                   <li key={q}>{q}</li>
                 ))}
               </ul>
