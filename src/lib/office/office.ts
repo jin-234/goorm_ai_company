@@ -1,7 +1,7 @@
 /**
  * VISION COMPANY의 상태와 규칙(개정 기획서 3.1·4.5·6장 1단계).
  *
- * 하루: 입사 → 출근 → 아침보고(과제 확정) → 수행·제출 → 기획팀 공유 → 하루 마감 → (다음 활동일)
+ * 하루: 입사 → 출근 → 아침보고(과제 확정) → 수행·제출 → 회의실 발표 → 하루 마감 → (다음 활동일)
  * 단계는 사용자 행동으로만 넘어간다. 시각은 '마감할 때가 됐다'는 안내에만 쓴다.
  * 카메라 착석 판정·지각·자동 추가근무는 없다.
  *
@@ -303,17 +303,17 @@ export class Office implements OfficeState {
     return submission;
   }
 
-  // MARK: 기획팀 공유
+  // MARK: 회의실 발표
 
   get canStartSharing(): boolean {
     return this.day.phase === "working" && this.day.tasks.length > 0;
   }
 
   startSharing(): void {
-    if (!this.canStartSharing) throw OfficeError.notAllowedNow("기획팀 공유는 과제를 확정하고 수행한 뒤에 시작합니다.");
+    if (!this.canStartSharing) throw OfficeError.notAllowedNow("회의실 발표는 과제를 확정하고 수행한 뒤에 시작합니다.");
     this.day.phase = "sharing";
     this.day.share.state = "awaiting_explanation";
-    this.log("shareStart", `기획팀 공유 시작 ${hm(this.now)}`);
+    this.log("shareStart", `회의실 발표 시작 ${hm(this.now)}`);
   }
 
   /**
@@ -321,14 +321,14 @@ export class Office implements OfficeState {
    * 사용자가 이미 답한 질문을 다시 묻지 않는 판단은 AI 쪽(f4)에서 하고, 여기서는 기록과 상한만 지킨다.
    */
   recordShareTurn(input: ShareTurnInput): void {
-    if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("공유 대화는 기획팀 공유 중에만 남깁니다.");
+    if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("발표 대화는 회의실 발표 중에만 남깁니다.");
     const share = this.day.share;
     if (input.role === "user") {
       const text = (input.text ?? "").trim();
       if (!text) throw OfficeError.notAllowedNow("설명할 내용을 적어 주세요.");
       share.turns.push({ id: crypto.randomUUID(), role: "user", at: this.now, text: text.slice(0, WorkRules.maxFieldLength) });
       if (share.state === "awaiting_explanation") share.state = "clarifying";
-      this.log("shareTurn", "기획팀에 설명");
+      this.log("shareTurn", "회의실에서 발표");
       return;
     }
     const reply = input.reply;
@@ -347,13 +347,13 @@ export class Office implements OfficeState {
     const share = this.day.share;
     if (this.day.phase === "working" && this.day.tasks.length > 0) {
       share.endedBy = "skipped";
-      this.log("shareEnd", "기획팀 공유 건너뜀");
+      this.log("shareEnd", "회의실 발표 건너뜀");
     } else if (this.day.phase === "sharing") {
       share.endedBy = reason;
       if (share.turns.length > 0) share.state = "user_confirmed";
-      this.log("shareEnd", reason === "done" ? "기획팀 공유 마침" : "기획팀 공유를 사용자가 종료");
+      this.log("shareEnd", reason === "done" ? "회의실 발표 마침" : "회의실 발표를 사용자가 종료");
     } else {
-      throw OfficeError.notAllowedNow("기획팀 공유 중이 아닙니다.");
+      throw OfficeError.notAllowedNow("회의실 발표 중이 아닙니다.");
     }
     this.day.phase = "checkoutReview";
   }

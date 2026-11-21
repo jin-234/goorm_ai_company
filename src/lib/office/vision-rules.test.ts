@@ -106,7 +106,7 @@ describe("수행과 제출", () => {
   });
 });
 
-describe("기획팀 공유", () => {
+describe("회의실 발표", () => {
   test("질문을 세고, 상한에 닿으면 더 묻지 않고 요약 준비 상태가 된다", () => {
     const office = workingOffice();
     expect(() => office.recordShareTurn({ role: "user", text: "x" })).toThrow(OfficeError);

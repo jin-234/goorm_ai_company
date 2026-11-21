@@ -43,7 +43,7 @@ export const PHASE_LABEL: Record<Phase, string> = {
   beforeCheckIn: "출근 전",
   morningPT: "아침보고",
   working: "수행 중",
-  sharing: "기획팀 공유",
+  sharing: "회의실 발표",
   checkoutReview: "하루 마감",
   off: "마감 완료",
 };
@@ -133,7 +133,7 @@ export interface Submission {
 
 export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
 
-// MARK: 기획팀 공유(ReportTurn)
+// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀 담당자 1명씩이 듣고, 기획자가 질문한다
 
 export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
 
