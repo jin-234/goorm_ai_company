@@ -1,0 +1,62 @@
+﻿id,department,signal_user_says,question_angle,source_id,basis_type,persona_fit
+QB-DEV-01,dev_lead,"기능을 '완성했다', '된다'고 말함","의도한 대로 동작하는지 어떻게 확인했는지, 지금 바로 시연해 볼 수 있는지 묻는다",S07,practitioner_source,P_dev_A
+QB-DEV-02,dev_lead,입력·클릭·요청을 받는 기능을 설명함,"빈 값, 아주 긴 값, 같은 요청이 거의 동시에 두 번 들어오는 경우처럼 경계 상황에서 어떻게 되는지 묻는다",S07,practitioner_source,P_dev_A
+QB-DEV-03,dev_lead,나중을 위해 기능이나 옵션을 미리 넣어 두었다고 함,"지금 당장 필요하지 않은데 미리 만든 부분이 있는지, 그걸 빼면 무엇이 단순해지는지 묻는다",S07,practitioner_source,P_dev_B
+QB-DEV-04,dev_lead,함수·컴포넌트·변수를 새로 만들었다고 함,"이 코드를 처음 여는 동료가 이름만 보고 역할을 알 수 있는지, 가장 헷갈릴 곳은 어디인지 묻는다",S07,practitioner_source,P_dev_C
+QB-DEV-05,dev_lead,주석을 달았다고 하거나 복잡한 로직을 설명함,"주석이 '무엇을 하는지'가 아니라 '왜 이렇게 했는지'를 말하고 있는지, 코드를 더 단순하게 바꿀 수는 없는지 묻는다",S07,practitioner_source,P_dev_C
+QB-DEV-06,dev_lead,직접 눌러 보며 확인했다고 함,"코드가 나중에 깨졌을 때 그걸 알려줄 장치(테스트나 확인 절차)가 있는지, 없다면 다음 사람은 어떻게 알 수 있는지 묻는다",S07,practitioner_source,P_dev_A
+QB-DEV-07,dev_lead,실행 방법·설정·키가 필요한 기능을 설명함,실행 방법이나 필요한 설정이 바뀌었다면 README 같은 문서에도 남겼는지 묻는다,S07,practitioner_source,P_dev_C
+QB-DEV-08,dev_lead,급하게 동작부터 되게 만들었다고 함,"이번 변경이 전체 코드를 더 나아지게 했는지, 아니면 나중에 갚을 복잡함을 남겼는지 스스로 평가해 보게 한다",S07,practitioner_source,P_dev_B
+QB-DEV-09,dev_lead,정리(포맷·이름 변경)와 기능 추가를 함께 했다고 함,"모양 정리와 기능 변경이 한 번에 섞여 있는지, 나눴다면 리뷰하는 사람이 무엇을 더 쉽게 볼 수 있는지 묻는다",S07,practitioner_source,P_dev_B
+QB-DEV-10,dev_lead,생각보다 오래 걸렸거나 막혔다고 함,"미리 알았다면 피했을 기술적 함정(rabbit hole)이 무엇이었는지, 다음에 비슷한 일을 할 때 먼저 확인할 것은 무엇인지 묻는다",S11,practitioner_source,P_dev_B
+QB-DEV-11,dev_lead,이것저것 다 하려다 못 끝냈다고 함,"이번에 일부러 하지 않기로 한 것(no-go)을 정했는지, 정한다면 무엇을 빼겠는지 묻는다",S11,practitioner_source,P_dev_B
+QB-DEV-12,dev_lead,작업 범위를 설명함,"이 기능에 쓸 시간을 먼저 정한다면(appetite) 며칠이 적당하고, 그 안에 맞추려면 해법이 어떻게 달라지는지 묻는다",S11,practitioner_source,P_dev_B
+QB-DEV-13,dev_lead,버튼으로 서버 요청을 보내는 기능,"요청이 늦을 때 첫 클릭이 접수됐다는 걸 화면이 보여주는지, 사용자가 다시 눌렀을 때 무슨 일이 생기는지 묻는다",S05,guide_scenario,P_dev_C
+QB-DEV-14,dev_lead,폼·입력 검증을 만들었다고 함,"제출했다가 오류가 나면 키보드 포커스가 어디로 가는지, 마우스 없이도 고칠 수 있는지 묻는다",S03,guide_scenario,P_dev_C
+QB-DEV-15,dev_lead,API 키·사용자 정보·저장 기능이 등장함,"보안이나 개인정보처럼 따로 전문가의 확인이 필요한 부분이 있는지, 있다면 누구에게 물어볼지 묻는다",S07,practitioner_source,P_dev_A
+QB-DES-01,designer,디자인과 조금 다르게 구현했다고 함,"데이터를 받아오는 방식 같은 제약 때문에 원래 디자인대로 못 한 부분이 있는지, 있다면 어떤 제약이었는지 묻는다",S08,practitioner_source,P_des_B
+QB-DES-02,designer,화면 흐름을 순서대로 설명함,방금 말한 화면 순서 중에 빠진 상태가 없는지(눌림·비활성·실패 등) 같이 짚어보자고 한다,S08,practitioner_source,P_des_B
+QB-DES-03,designer,버튼·입력칸 등 컴포넌트를 새로 만들었다고 함,"이미 있던 컴포넌트를 고쳐 쓰거나 넓힐 수는 없었는지, 다른 화면에서도 다시 쓸 수 있는 패턴인지 묻는다",S08,practitioner_source,P_des_B
+QB-DES-04,designer,PC 또는 모바일 한쪽에서만 확인했다고 함,"화면 폭이 기준점과 기준점 사이일 때(예: 큰 폰, 작은 태블릿) 레이아웃이 어떻게 되는지 묻는다",S08,practitioner_source,P_des_B
+QB-DES-05,designer,글자·카드·목록 화면을 만들었다고 함,사용자가 기본 글꼴 크기를 키우거나 창 크기를 줄이면 화면이 어떻게 변하는지 묻는다,S08,practitioner_source,P_des_A
+QB-DES-06,designer,사용자가 입력한 텍스트나 받아온 데이터를 보여줌,"아주 긴 이름, 일부만 채워진 데이터, 다른 언어가 들어올 때 줄바꿈과 말줄임이 어떻게 되는지 묻는다",S08,practitioner_source,P_des_C
+QB-DES-07,designer,링크·버튼·카드를 배치함,"키보드 탭을 누르면 어떤 순서로 이동하는지, 그게 링크인지 버튼인지 구분돼 있는지 묻는다",S08,practitioner_source,P_des_B
+QB-DES-08,designer,큰 제목·섹션 구조가 있는 화면,눈에 크게 보이는 글자가 화면낭독기에서도 제목으로 읽히는지 묻는다,S08,practitioner_source,P_des_A
+QB-DES-09,designer,로그인·회원 기능과 관련된 화면,로그인하지 않은 사용자(게스트)는 이 화면에서 무엇을 할 수 있고 무엇을 못 하는지 묻는다,S09,practitioner_source,P_des_A
+QB-DES-10,designer,검색 기능을 만들었다고 함,검색어를 잘못 입력하거나 오타가 났을 때 화면이 어떻게 반응하는지 묻는다,S09,practitioner_source,P_des_C
+QB-DES-11,designer,여러 화면을 오가는 흐름,"이 화면에서 뒤로가기를 누르면 어디로 가는지, 입력하던 내용은 남는지 묻는다",S09,practitioner_source,P_des_A
+QB-DES-12,designer,필수 입력이 있는 폼,"필수 칸을 비우고 제출하면 사용자가 무엇을 보게 되는지, 어떤 칸을 고쳐야 하는지 바로 알 수 있는지 묻는다",S09,practitioner_source,P_des_C
+QB-DES-13,designer,목록·결과가 비어 있을 수 있는 화면,"아무것도 없을 때 화면이 그냥 비어 있는지, 채우는 방법과 바로 시작할 버튼을 보여주는지 묻는다",S04,guide_scenario,P_des_C
+QB-DES-14,designer,데이터를 불러와서 보여주는 화면,불러오는 중에 '결과 없음'이 먼저 잠깐 보였다가 바뀌지는 않는지 묻는다,S04,guide_scenario,P_des_A
+QB-DES-15,designer,요청 후 기다리는 시간이 있는 기능,"1초 넘게 걸리면 무엇이 보이는지, 10초 넘게 걸리는 경우도 있는지 묻는다",S05,guide_scenario,P_des_B
+QB-DES-16,designer,저장·제출·완료가 있는 기능,작업이 끝났다는 걸 사용자가 무엇으로 알게 되는지(성공 메시지) 묻는다,S03,guide_scenario,P_des_C
+QB-DES-17,designer,오류를 색(빨간 테두리 등)으로 표시한다고 함,색을 구분하기 어려운 사람이나 화면을 못 보는 사람은 무엇으로 오류를 알게 되는지 묻는다,S03,guide_scenario,P_des_C
+QB-MKT-01,marketer,새 기능·화면을 소개함,"이 기능이 없다면 고객은 지금 무엇으로 이 문제를 해결하고 있는지(다른 앱, 수작업, 그냥 포기) 묻는다",S13,practitioner_source,P_mkt_B
+QB-MKT-02,marketer,기능의 특징을 나열함,그 대안들에는 없고 우리 것에만 있는 특징이 무엇인지 하나만 꼽게 한다,S13,practitioner_source,P_mkt_B
+QB-MKT-03,marketer,기술적 특징을 말함,그 특징 덕분에 고객이 '할 수 있게 되는 일'이 무엇인지 고객의 말로 바꿔 보게 한다,S13,practitioner_source,P_mkt_B
+QB-MKT-04,marketer,'누구나 쓸 수 있다'고 함,"이 가치를 가장 반길 고객이 누구인지, 그 사람의 하루 중 어떤 순간인지 좁혀 보게 한다",S13,practitioner_source,P_mkt_B
+QB-MKT-05,marketer,기능 이름이나 소개 문구를 정하려 함,이걸 어떤 종류의 서비스로 소개해야 고객이 바로 이해할지(예: 일정 앱? 메모 앱?) 묻는다,S13,practitioner_source,P_mkt_B
+QB-MKT-06,marketer,출시·공개 계획이 있음,"이번 결과가 노리는 것이 만족, 자주 쓰기, 처음 써 보기, 다시 오기, 일을 끝내기 중 무엇에 가장 가까운지 고르게 한다",S12,practitioner_source,P_mkt_A
+QB-MKT-07,marketer,목표를 말함,그 목표가 이뤄지면 고객이 실제로 어떤 행동을 하게 되는지(신호) 묻는다,S12,practitioner_source,P_mkt_A
+QB-MKT-08,marketer,고객 행동을 말함,"그 행동을 어떤 숫자로 셀 수 있을지, 지금 그 숫자를 기록하고 있는지 묻는다",S12,practitioner_source,P_mkt_A
+QB-MKT-09,marketer,결과에 자신 있어 함,"고객 반응이 예상과 다르면 무엇을 먼저 바꿀 수 있는지(문구, 화면, 기능 범위) 묻는다",S06,role_reasoning,P_mkt_A
+QB-MKT-10,marketer,로그인·저장·위치 등 고객 정보를 다룸,"고객 정보를 어디에 얼마나 저장하는지, 고객에게 무엇을 미리 알려야 하는지 묻는다",S06,role_reasoning,P_mkt_C
+QB-MKT-11,marketer,"'실시간', '정확한' 같은 강한 표현을 씀","안내 문구에 그 표현을 써도 되는지, 지금 만든 것 기준으로 사실인지 묻는다",S06,role_reasoning,P_mkt_C
+QB-MKT-12,marketer,한 번 쓰고 끝나는 기능,고객이 다음 주에도 이 기능을 다시 찾을 이유가 무엇인지 묻는다,S06,role_reasoning,P_mkt_C
+QB-MKT-13,marketer,같은 대상을 여러 이름으로 부름,"고객에게 보여줄 용어를 하나로 정했는지, 개발팀 안에서 쓰는 말과 고객이 쓰는 말이 다르지 않은지 묻는다",S16,practitioner_source,P_mkt_C
+QB-MKT-14,marketer,계산·규칙·기준이 있는 기능,"그 계산 기준을 고객에게 한두 줄로 어떻게 설명할 수 있을지, 어디에 보여줄지 묻는다",S16,practitioner_source,P_mkt_C
+QB-PLN-01,planner,할 수 있는 것을 설명함,"이번에 하지 않은 것과, 나중에 다시 검토할 것을 나눠 말해 달라고 한다",S10,practitioner_source,P_pln_B
+QB-PLN-02,planner,'사용자는 이렇게 쓸 것'이라고 말함,"기술, 사용자 행동, 사업 측면에서 아직 확인되지 않은 가정이 무엇인지 묻는다",S10,practitioner_source,P_pln_A
+QB-PLN-03,planner,'이건 아직 정해지지 않았다'고 함,"그 결정을 누가 언제까지 내려야 하는지, 결정이 늦어지면 무엇이 멈추는지 묻는다",S16,practitioner_source,P_pln_C
+QB-PLN-04,planner,기능 목표를 말함,"이 기능이 성공했다고 볼 기준이 무엇인지, 그 기준은 누가 정했는지 묻는다",S10,practitioner_source,P_pln_A
+QB-PLN-05,planner,외부 API·외부 데이터를 씀,"외부에서 예상과 다른 값(0, 빈 값, 이상한 값)이 오면 서비스 정책상 어떻게 처리할지 묻는다",S15,practitioner_source,P_pln_C
+QB-PLN-06,planner,검색·입력 기능,"검색 결과가 없을 때, 조건에 안 맞게 입력했을 때 어떤 문구를 보여줄지 정했는지 묻는다",S15,practitioner_source,P_pln_A
+QB-PLN-07,planner,서버 요청이 있는 기능,네트워크가 끊기거나 서버 오류가 나면 공통으로 어떻게 안내하고 다시 시도하게 할지 원칙이 있는지 묻는다,S15,practitioner_source,P_pln_C
+QB-PLN-08,planner,범위가 넓어지고 있음,"이 기능에 쓸 시간을 먼저 정한다면 얼마이고, 그 안에서 무엇을 남길지 묻는다",S11,practitioner_source,P_pln_B
+QB-PLN-09,planner,구현 중 막혔던 부분을 언급,"다른 사람이 이어서 작업할 때 빠질 수 있는 함정이 무엇인지, 문서에 미리 적어 둘 것이 있는지 묻는다",S11,practitioner_source,P_pln_C
+QB-PLN-10,planner,새로운 개념·상태 이름이 등장함,"그 용어의 정의가 무엇인지, 화면·문서·코드에서 같은 뜻으로 쓰이는지 묻는다",S16,practitioner_source,P_pln_A
+QB-PLN-11,planner,공통 컴포넌트·기존 기능을 건드림,이번 변경이 다른 팀이나 이미 검증 중인 기능에 영향을 주지 않는지 확인했는지 묻는다,S14,practitioner_source,P_pln_C
+QB-PLN-12,planner,작아 보이는 기능인데 오래 걸렸다고 함,"기존 구조 때문에 생각보다 어려웠던 부분이 무엇인지, 기획에서 미리 알았으면 좋았을 점이 무엇인지 묻는다",S14,practitioner_source,P_pln_B
+QB-PLN-13,planner,다음 할 일 후보를 여러 개 말함,그중 먼저 할 것과 그렇게 정한 이유를 팀이 이해할 수 있게 말해 달라고 한다,S10,practitioner_source,P_pln_B
+QB-PLN-14,planner,구현하다가 원래 계획을 바꿨다고 함,"바뀐 내용을 기획 문서에 누가 언제 반영할지, 지금 문서와 실제가 다른 부분이 어디인지 묻는다",S10,practitioner_source,P_pln_A
+QB-PLN-15,planner,결과를 '이렇게 만들었다'고만 설명,"이 결과로 '누가, 무엇을, 왜' 할 수 있게 됐는지 한 문장 스토리로 말해 보게 한다",S01,role_reasoning,P_pln_A

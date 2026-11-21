@@ -20,7 +20,7 @@
 | 502 | `{ error: { type: "solar" \| "stt", ... } }` | 외부 AI·음성 인식 실패(AI 동료 경로는 실패해도 수동 양식으로 200을 준다) |
 | 500 | `{ error: { type: "server", message } }` | 서버 오류 |
 
-규칙 오류 `code`: `notAllowedNow`, `noTasks`, `taskIncomplete`(details=과제별 빠진 칸), `taskNotFound`, `emptySubmission`, `noSubmission`, `shareQuestionLimit`, `choiceMissing`(details=과제명), `invalidProfile`.
+규칙 오류 `code`: `notAllowedNow`, `noTasks`, `taskIncomplete`(details=과제별 빠진 칸), `taskNotFound`, `emptySubmission`, `noSubmission`, `choiceMissing`(details=과제명), `invalidProfile`.
 
 ## 엔드포인트
 
@@ -49,8 +49,9 @@
 | `returnFromAllowance` | — | — |
 | `submitCheckout` | — (보통·엄격, 마감 시각의 퇴근 점검) | `{ checkout: { kind: "noOvertime" } \| { kind: "overtime", count } }` |
 | `endOvertime` | — (저녁시간·추가근무 중이면 일찍 끝냄, 점검 중이면 점검 제출) | `{ overtime: completed \| ranToEnd \| abandoned }` |
-| `startSharing` | `earlyReason?` (엄격에서 마감 시각 전이면 필수) | — |
-| `recordShareTurn` | `role: "user"`, `text` (기획자 턴은 `/api/office/share`가 남긴다) | — |
+| `startSharing` | `earlyReason?` (엄격에서 마감 시각 전이면 필수) — ① 개발팀장 사전 보고를 연다(팀장 페르소나 고르기, 부록 B 인사) | — |
+| `enterMeeting` | — 컨펌 카드 [회의실로 가기]. ② 부서 회의(디자인·마케팅·기획, 진행 기획팀). 컨펌 결과와 관계없이 들어갈 수 있다 | — |
+| `anotherRound` | — 회의 정리 뒤 [한 바퀴 더]. 회의록은 바퀴가 끝나면 다시 정리해 덮어쓴다 | — |
 | `endSharing` | `reason?`: `done` \| `userStopped`, `earlyReason?` — 수행 중에 부르면 공유를 건너뜀(`endedBy: "skipped"`) | — |
 | `saveReviewDraft` | `review`(아래 Review 8칸) — 사용자 수정으로 저장 | — |
 | `confirmReview` | `review`, `choices: { [taskId]: "adjust" \| "carryOver" \| "endToday" }`(제출하지 않은 과제마다), `reasons?` | `{ close: { submitted, adjusted, carried, ended } }` |
@@ -67,10 +68,10 @@ Solar 키가 없거나 `OFFICE_AI_MODE=sample`이면 `source: "sample"`(AI 연�
 | 경로 | 본문 | 응답 |
 | --- | --- | --- |
 | `POST /api/office/draft` | `{ goal, availableMinutes? }` | `{ source, proposal: { tasks, question }, solarError, result, office }` — 제안만, 확정은 `confirmTasks` |
-| `POST /api/office/share` | `{ message }` (건너뛰기는 `"이 질문은 건너뛸게요."`) | `{ source, reply, solarError, office }` — 사용자 턴과, 지금 파트를 맡은 부서의 응답 한 턴을 서버가 기록 |
+| `POST /api/office/share` | `{ message }` | `{ source, replies: Turn[], solarError, office }` — 사용자 말을 먼저 저장하고, 단계에 맞는 동료 발언을 만든다(팀장 review·confirm / 부서 feedback·ask / 진행자 close + 회의록). 한 번에 여러 턴이 생길 수 있다 |
 | `POST /api/office/review-draft` | — | `{ source, review, solarError, office }` — `day.review` 초안으로 저장 |
 
-기획자 `reply`: `acknowledgement`, `question`(물음표 하나), `question_reason`, `question_basis`(`role_need` \| `ux_guide`, 질문 없으면 `""`), `basis_ref`(근거 출처 이름), `known_facts[]`, `open_questions[]`, `evidence_refs[]`(`"턴 n"`·`"제출물 id"`), `can_finish`. 발표는 과제마다 파트 하나(`day.share.parts[]`: `taskId`, `title`, `role`)이고 맡은 부서 한 곳이 듣는다. 질문은 파트당 최대 2개이며, 부서가 질문 없이 답하면 그 파트가 끝나고 다음 파트로 넘어간다.
+회의실 발표의 규칙·프롬프트·응답 형식은 `docs/ai-colleague/AI동료_프롬프트.md`가 기준이다. 동료 `reply`는 그 문서 10장 형식 그대로이고(`acknowledgement`, `feedback{strength,perspective,try_next}`, `question`, `question_reason`, `anchor_quote`, `lens_id`, `question_type`, `bank_id`, `basis{type,source_ids,note}`, `understanding_check{layer,status,gap}`, `difficulty`, `known_facts`, `open_questions`, `evidence_refs`, `term_explain`, `terms_used`, `can_finish`, confirm 턴만 `confirm{decision,summary,notes}`), 화면용으로 `basisLabel`(근거 한 줄)·`termFallback`(용어 뜻을 물었는데 풀이가 비었을 때 용어집 뜻)이 붙는다. 응답은 13.3 검사에 걸리면 1회 다시 요청한다.
 
 Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `shared_scope_and_limits`, `open_questions[]`, `job_connection`, `next_action`, `evidence_refs[]`.
 
@@ -94,7 +95,7 @@ Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `sh
 
 `day.tasks[]`: `id`, `title`, `completionCriteria`, `shareForm`, `status`(`confirmed` → `in_progress` → `submitted` → `reviewed`, 또는 `incomplete`), `statusLabel`, `outcome`, `outcomeLabel`, `outcomeReason`, `carriedFrom`, `carriedFromTaskId`, `carryCount`, `submissionCount`.
 
-`day.share`: `state`(`awaiting_explanation` → `clarifying` → `ready_to_summarize` → `user_confirmed`), `questionCount`, `maxQuestions`, `turns[]`, `knownFacts[]`, `openQuestions[]`, `endedBy`.
+`day.share`: `stage`(`null` → `review` → `confirm` → `meeting` → `closed`), `turns[]`(`{ id, at, role: user|colleague|system, stage: review|meeting, dept?, meetingRole?, text?, reply?, source? }`), `review{ lead{personaId,personaLabel}, questionCount, maxQuestions: 2, turns, confirm{decision,decisionLabel,summary,notes} }`, `meeting{ host, participants[{dept,name,team,personaId,personaLabel}], round, turns, close{recap,openByDept,tryNext}, stats{clear,partial,unclear} }`, `minutes{ folder, aiSummarized, files[{name,markdown}] }`, `canAnotherRound`, `explainedTerms`, `endedBy`. `can`에 `talkInShare`·`enterMeeting`·`anotherRound`가 있다.
 
 `day.review`: `draft`, `draftSource`(`solar` \| `sample` \| `manual`), `aiDraft`(AI 원본, 사용자 수정과 구분), `editedByUser`, `confirmed`, `confirmedAt`, `choices`.
 

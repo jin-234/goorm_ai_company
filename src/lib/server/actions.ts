@@ -4,12 +4,8 @@
  */
 import {
   isTaskLevel,
-  COLLECTED_CASES_AVAILABLE,
-  QUESTION_BASES,
-  type QuestionBasis,
   CHECK_IN_METHODS,
   type CheckInMethod,
-  type PlannerReply,
   PRESENCE_STATES,
   type PresenceState,
   REVIEW_LIST_FIELDS,
@@ -121,33 +117,6 @@ export function reviewOf(value: unknown): Review {
   return review;
 }
 
-/** 타 부서 동료 응답(개정 기획서 4.3 E). */
-export function plannerReplyOf(value: unknown): PlannerReply {
-  const r = obj(value, "reply");
-  const text = (key: string) => {
-    const v = r[key] ?? "";
-    if (typeof v !== "string") throw new BadRequest(`reply.${key}는 문자열이어야 합니다.`);
-    return v.slice(0, WorkRules.maxFieldLength);
-  };
-  const question = text("question");
-  let basis = (typeof r.question_basis === "string" ? r.question_basis : "") as QuestionBasis | "";
-  if (basis !== "" && !QUESTION_BASES.includes(basis)) basis = "role_need";
-  // 수집한 사례 데이터가 없으면 AI가 '실제 사례'라고 해도 공개 가이드 기반 시나리오로 낮춘다.
-  if (basis === "collected_case" && !COLLECTED_CASES_AVAILABLE) basis = "ux_guide";
-  if (question.trim() && basis === "") basis = "role_need";
-  return {
-    acknowledgement: text("acknowledgement"),
-    question,
-    question_reason: text("question_reason"),
-    question_basis: question.trim() ? basis : "",
-    basis_ref: question.trim() ? text("basis_ref").slice(0, 120) : "",
-    known_facts: strList(r.known_facts, "reply.known_facts"),
-    open_questions: strList(r.open_questions, "reply.open_questions"),
-    evidence_refs: strList(r.evidence_refs, "reply.evidence_refs"),
-    can_finish: r.can_finish === true,
-  };
-}
-
 function choicesOf(body: Json): Record<string, TaskOutcome> {
   const raw = obj(body.choices ?? {}, "choices");
   const out: Record<string, TaskOutcome> = {};
@@ -176,7 +145,8 @@ export const ACTION_TYPES = [
   "setTaskStatus",
   "submitWork",
   "startSharing",
-  "recordShareTurn",
+  "enterMeeting",
+  "anotherRound",
   "endSharing",
   "saveReviewDraft",
   "confirmReview",
@@ -230,12 +200,13 @@ export function applyAction(office: Office, body: Json): unknown {
     case "startSharing":
       office.startSharing(str(body, "earlyReason", false));
       return null;
-    case "recordShareTurn": {
-      // 화면은 사용자 턴만 보낸다. 동료 턴은 /api/office/share(서버)가 AI 응답을 받아 남긴다.
-      if (body.role !== "user") throw new BadRequest("화면에서는 role이 user인 턴만 남길 수 있습니다.");
-      office.recordShareTurn({ role: "user", text: str(body, "text") });
+    case "enterMeeting":
+      // 컨펌 카드 [회의실로 가기]. 컨펌 결과와 관계없이 부서 회의로 간다.
+      office.enterMeeting();
       return null;
-    }
+    case "anotherRound":
+      office.anotherRound();
+      return null;
     case "endSharing": {
       const reason = body.reason ?? "done";
       if (reason !== "done" && reason !== "userStopped") throw new BadRequest("reason은 done 또는 userStopped입니다.");

@@ -190,162 +190,169 @@ export interface Submission {
 
 export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
 
-// MARK: 회의실 발표(ReportTurn) — 과제(파트)마다 그 일을 이어받을 부서 한 곳과 짧게 대화한다
+// MARK: 회의실 발표 — ① 개발팀장 사전 보고 → ② 부서 회의(디자인·마케팅·기획) → ③ 회의록
+// 규칙·프롬프트의 원본은 docs/ai-colleague/AI동료_프롬프트.md. 응답 모양은 그 문서 10장 그대로다.
 
-/** 회의실에 오는 타 부서 AI 동료. */
-export type MeetingRoleId = "planner" | "designer" | "operations";
-/** 회의에 올 수 있는 부서. 파트를 맡길 부서를 고를 때 점수가 같으면 이 순서를 따른다. */
-export const MEETING_ORDER: MeetingRoleId[] = ["planner", "designer", "operations"];
-/** 회의 진행자. 어느 부서에도 맞지 않는 파트는 기획자가 듣는다. */
-export const MEETING_HOST: MeetingRoleId = "planner";
-/** 화면과 프롬프트가 같이 쓰는 이름. */
-export const MEETING_ROLE_NAME: Record<MeetingRoleId, { title: string; department: string; short: string }> = {
-  planner: { title: "AI 기획자", department: "서비스 기획팀", short: "기획자" },
-  designer: { title: "AI 디자이너", department: "디자인팀", short: "디자이너" },
-  operations: { title: "AI 운영 담당자", department: "운영팀", short: "운영 담당자" },
-};
-
-/**
- * 발표 한 파트(사용자 결정 2026-11-21: 세 부서 모두에게 설명하지 않고, 한 파트는 한 부서와 대화한다).
- * 파트는 오늘 확정한 과제 하나이고, 그 과제를 이어받을 부서 한 곳이 듣는다.
- */
-export interface SharePart {
-  taskId: string | null;
-  title: string;
-  role: MeetingRoleId;
-}
-
-/** 한 파트에서 부서가 할 수 있는 질문 수. 다 묻거나 더 물을 것이 없으면 마무리하고 다음 파트로 넘긴다. */
-export const PART_MAX_QUESTIONS = 2;
-
-/** 파트를 맡길 부서를 고르는 단서. 맞는 것이 없으면 기획자(MEETING_HOST)가 듣는다. */
-const DEPARTMENT_HINTS: [MeetingRoleId, RegExp][] = [
-  ["designer", /화면|UI|UX|디자인|레이아웃|버튼|페이지|컴포넌트|스타일|CSS|반응형|접근성|애니메이션|입력창|폼/gi],
-  ["operations", /배포|운영|오류|에러|장애|로그|모니터|알림|서버|권한|보안|성능|백업|문의|이용\s*제한/gi],
-];
-
-/** 과제 글(제목·완료 기준)로 부서마다 점수를 매긴다. 제목은 두 배로 센다. */
-function departmentScores(task: { title: string; completionCriteria?: string }): Record<MeetingRoleId, number> {
-  const scores: Record<MeetingRoleId, number> = { planner: 0, designer: 0, operations: 0 };
-  for (const [role, re] of DEPARTMENT_HINTS) {
-    scores[role] += 2 * (task.title.match(re)?.length ?? 0) + (task.completionCriteria?.match(re)?.length ?? 0);
-  }
-  return scores;
-}
-
-/**
- * 과제마다 파트를 만들고 맡을 부서를 정한다. 가장 맞는 부서를 고르되, 이미 다른 파트를 맡은 부서보다
- * 단서가 있는 다른 부서를 먼저 고른다(같은 부서가 모든 파트를 듣지 않게). 과제가 없으면 기획자에게 한 파트.
- */
-export function sharePartsOf(tasks: { id?: string; title: string; completionCriteria?: string }[]): SharePart[] {
-  if (tasks.length === 0) return [{ taskId: null, title: "오늘 한 일", role: MEETING_HOST }];
-  const used = new Set<MeetingRoleId>();
-  return tasks.map((task) => {
-    const scores = departmentScores(task);
-    const ranked = MEETING_ORDER.filter((r) => scores[r] > 0).sort((a, b) => scores[b] - scores[a]);
-    const role = ranked.find((r) => !used.has(r)) ?? ranked[0] ?? MEETING_HOST;
-    used.add(role);
-    return { taskId: task.id ?? null, title: task.title, role };
-  });
-}
-
-/**
- * 대화 기록으로 지금 몇 번째 파트인지 계산한다. 부서가 질문 없이 말하면(마무리) 그 파트가 끝난다.
- * turnPart[i]는 i번째 턴이 속한 파트. 모든 파트가 끝난 뒤의 턴은 마지막 파트로 센다.
- */
-export function sharePartState(parts: SharePart[], turns: ShareTurn[]): { index: number; done: boolean; askedInPart: number; turnPart: number[] } {
-  const last = Math.max(0, parts.length - 1);
-  let index = 0;
-  let asked = 0;
-  const turnPart: number[] = [];
-  for (const t of turns) {
-    turnPart.push(Math.min(index, last));
-    if (t.role !== "planner") continue;
-    if (t.reply?.question?.trim()) asked += 1;
-    else {
-      index += 1;
-      asked = 0;
-    }
-  }
-  const done = index >= parts.length;
-  return { index: Math.min(index, last), done, askedInPart: done ? 0 : asked, turnPart };
-}
-
-export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
-
-/**
- * 기획자 질문의 근거 종류(사용자 원칙 2026-11-21).
- * - role_need: 기획자가 결정·책임지는 일(사용자 안내·화면 흐름·출시 범위)에 필요한 정보. 질문의 목적.
- * - ux_guide: 공개 UX·접근성 가이드로 구성한 시나리오(빈 화면·오류·로딩·입력처럼 놓치기 쉬운 상황). 질문의 소재.
- * - collected_case: 현직자 인터뷰 등에서 실제로 수집한 사례. 현실성 검증용.
- * 가이드로 만든 질문을 '실제 기획자가 했던 질문'으로 포장하지 않는다.
- */
-export type QuestionBasis = "role_need" | "ux_guide" | "collected_case";
-export const QUESTION_BASES: QuestionBasis[] = ["role_need", "ux_guide", "collected_case"];
-/** 수집한 인터뷰 사례 데이터가 아직 없다. 생기기 전까지 collected_case는 ux_guide로 낮춘다(실제 사례인 척 방지). */
-export const COLLECTED_CASES_AVAILABLE = false;
-
-/** 타 부서 AI 동료 응답(개정 기획서 4.3 E). */
-export interface PlannerReply {
-  acknowledgement: string;
-  /** 질문이 필요 없거나 끝낼 때는 빈 문자열. */
-  question: string;
-  question_reason: string;
-  /** 질문의 근거 종류. question이 비면 "". */
-  question_basis: QuestionBasis | "";
-  /** 근거 출처 이름(예: "W3C 오류·성공 알림 가이드"). 없거나 question이 비면 "". */
-  basis_ref: string;
-  known_facts: string[];
-  open_questions: string[];
-  evidence_refs: string[];
-  can_finish: boolean;
-}
+export type ColleagueDept = "dev_lead" | "designer" | "marketer" | "planner";
+export type ColleagueMeetingRole = "review" | "confirm" | "ask" | "feedback" | "close";
 
 /**
  * solar = AI가 답함.
- * sample = AI 연결 전 예시 응답(Solar 키가 없을 때). 대화는 실제처럼 이어지지만 화면에 '예시 응답(AI 연결 전)'으로 표시한다.
+ * sample = AI 연결 전 예시 응답(Solar 키가 없을 때). 화면에 '예시 응답(AI 연결 전)'으로 표시한다.
  * manual = AI를 부르다 실패해 정해진 안내 문구(AI가 말한 것처럼 표시하지 않는다).
  */
 export type ColleagueSource = "solar" | "sample" | "manual";
 
+export interface ColleagueFeedback {
+  strength: string;
+  perspective: string;
+  try_next: string;
+}
+
+export interface UnderstandingCheck {
+  layer: "what" | "how" | "why";
+  status: "clear" | "partial" | "unclear";
+  gap: string;
+}
+
+export interface TermUse {
+  id: string;
+  term: string;
+  plain: string;
+}
+
+export interface TermExplain extends TermUse {
+  example: string;
+  why_we_use: string;
+}
+
+export interface LeadConfirm {
+  decision: "approved" | "approved_with_notes" | "revise";
+  summary: string;
+  notes: string[];
+}
+
+/** AI 동료 응답(문서 10장 [응답 형식]). */
+export interface ColleagueReply {
+  department: ColleagueDept;
+  persona_id: string;
+  acknowledgement: string;
+  feedback: ColleagueFeedback | null;
+  question: string;
+  question_reason: string;
+  anchor_quote: string;
+  lens_id: string;
+  question_type: string;
+  bank_id: string;
+  basis: { type: string; source_ids: string[]; note: string };
+  understanding_check: UnderstandingCheck | null;
+  difficulty: number;
+  known_facts: string[];
+  open_questions: string[];
+  evidence_refs: string[];
+  term_explain: TermExplain | null;
+  terms_used: TermUse[];
+  can_finish: boolean;
+  /** confirm 단계에서만. */
+  confirm?: LeadConfirm;
+}
+
+export type ShareStage = "review" | "confirm" | "meeting" | "closed";
+
 export interface ShareTurn {
   id: string;
-  /** planner = 타 부서 AI 동료의 말(이름은 옛 기록과 맞추려고 그대로 둔다). 누가 말했는지는 speaker. */
-  role: "user" | "planner";
-  /** 말한 부서. 없으면(옛 기록) 기획자. */
-  speaker?: MeetingRoleId;
   at: Instant;
-  /** 사용자가 쓴 글. */
+  /** user = 사용자, colleague = AI 동료, system = 부록 B 고정 안내 문구. */
+  role: "user" | "colleague" | "system";
+  stage: "review" | "meeting";
+  dept?: ColleagueDept;
+  meetingRole?: ColleagueMeetingRole;
   text?: string;
-  /** 동료 응답. */
-  reply?: PlannerReply;
+  reply?: ColleagueReply;
   source?: ColleagueSource;
 }
 
-/** 회의 전체 질문 상한의 기본값(파트 하나). 발표를 시작할 때 파트 수 × PART_MAX_QUESTIONS로 다시 정한다. */
-export const MAX_SHARE_QUESTIONS = PART_MAX_QUESTIONS;
+export interface MeetingClose {
+  recap: string;
+  /** "부서: 내용" */
+  openByDept: string[];
+  tryNext: string;
+}
 
-/** 동료 턴을 말한 부서. */
-export const speakerOf = (t: ShareTurn): MeetingRoleId => t.speaker ?? "planner";
+export interface MinutesFile {
+  name: string;
+  markdown: string;
+}
+
+export interface Minutes {
+  /** 회의록/2026-11-21/1402_날씨 조회 화면 */
+  folder: string;
+  aiSummarized: boolean;
+  files: MinutesFile[];
+}
 
 export interface ShareSession {
-  state: ShareState | null;
-  questionCount: number;
-  maxQuestions: number;
-  /** 발표 파트(과제마다 한 부서). 발표를 시작할 때 정한다. 없으면(옛 기록) 과제로 다시 만든다. */
-  parts?: SharePart[];
+  stage: ShareStage | null;
   turns: ShareTurn[];
-  /** 동료들이 지금까지 알게 된 사실(파트마다 마지막 응답의 known_facts를 이어 붙임). 반복 질문을 줄이는 데 쓴다. */
+  review: { personaId: string; questionCount: number; confirm: LeadConfirm | null } | null;
+  meeting: {
+    host: ColleagueDept;
+    participants: { dept: ColleagueDept; personaId: string }[];
+    round: number;
+    /** 이번 바퀴에서 다음에 질문할 참석자 순번. */
+    nextAsk: number;
+    /** 질문하고 사용자의 답을 기다리는 부서(그 답에 feedback을 줘야 함). */
+    awaitingFeedback: ColleagueDept | null;
+    /** 이번 바퀴 변화구 질문을 맡은 부서(13.2). */
+    curveballDept: ColleagueDept | null;
+    close: MeetingClose | null;
+  } | null;
+  /** 1~3, 기본 2(문서 4장 [난이도]). */
+  difficulty: number;
+  /** 연속으로 구체적으로 답한 횟수. */
+  concreteStreak: number;
+  /** 이번 세션에 쓴 렌즈·질문 형식·변화구 기법. */
+  usedLenses: string[];
+  usedQuestionTypes: string[];
+  usedCurveballs: string[];
+  /** 이번 세션에서 이미 쉬운 뜻을 붙여 준 용어 ID. */
+  explainedTerms: string[];
+  /** 동료가 알게 된 사실·남은 질문(다음 요청 맥락으로 넘김). */
   knownFacts: string[];
-  /** 아직 남은 질문(파트마다 마지막 응답의 open_questions를 이어 붙임). */
   openQuestions: string[];
+  minutes: Minutes | null;
   /** 공유를 끝낸 방식. */
   endedBy: "done" | "userStopped" | "skipped" | null;
 }
 
 export function newShareSession(): ShareSession {
-  return { state: null, questionCount: 0, maxQuestions: MAX_SHARE_QUESTIONS, turns: [], knownFacts: [], openQuestions: [], endedBy: null };
+  return {
+    stage: null,
+    turns: [],
+    review: null,
+    meeting: null,
+    difficulty: 2,
+    concreteStreak: 0,
+    usedLenses: [],
+    usedQuestionTypes: [],
+    usedCurveballs: [],
+    explainedTerms: [],
+    knownFacts: [],
+    openQuestions: [],
+    minutes: null,
+    endedBy: null,
+  };
 }
+
+/** 사용자별 최근 사용 기록(13.4, 최근 12개). 다음 세션의 used_*로 넘긴다. */
+export interface ColleagueRecent {
+  lenses: string[];
+  questionTypes: string[];
+  curveballs: string[];
+  personas: string[];
+}
+
+export const emptyColleagueRecent = (): ColleagueRecent => ({ lenses: [], questionTypes: [], curveballs: [], personas: [] });
 
 // MARK: 하루 마감(DailyReview)
 
