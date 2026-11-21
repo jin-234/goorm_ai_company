@@ -15,6 +15,7 @@ import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
 import { applySavedTextScale, Settings } from "./panels/Settings";
 import { Weekly } from "./panels/Weekly";
 import { NowPanel } from "./NowPanel";
+import { OfficeStage } from "./OfficeStage";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
 import { type OfficeHandle, useOffice } from "./useOffice";
@@ -117,7 +118,10 @@ export function OfficeApp() {
             ))}
           </nav>
         </div>
-        <main>{renderPanel(place, office, view, setPlace)}</main>
+        <main className="panel-area">
+          <OfficeStage view={view} onGo={setPlace} />
+          {renderPanel(place, office, view, setPlace)}
+        </main>
       </div>
       <Toast text={office.toast} />
     </div>
