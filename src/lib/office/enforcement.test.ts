@@ -2,7 +2,7 @@
 import { describe, expect, test } from "vitest";
 import { emptyReview } from "./models";
 import { Office } from "./office";
-import { LateFee, OfficeError } from "./rules";
+import { OfficeError } from "./rules";
 import { makeOffice, monday, sampleTasks, workingOffice } from "./test-helpers";
 import { addDays, at, hm, nextWorkday } from "./time";
 
@@ -29,14 +29,15 @@ describe("입사 때 관리 강도 고르기", () => {
 });
 
 describe("출근과 지각(보통·엄격)", () => {
-  test("시작 시각보다 늦으면 지각으로 기록하고 지각비 예상액 메일을 보낸다", () => {
+  test("시작 시각보다 늦으면 지각으로 기록하고 근태 메일을 보낸다", () => {
     const office = makeOffice(8 * 60 + 55, monday, "standard");
     office.advance(at(monday, 9 * 60 + 10));
     expect(office.checkIn().late).toBe(true);
     expect(office.day.isLate).toBe(true);
     const mail = office.mails.find((m) => m.kind === "attendance")!;
     expect(mail.subject).toContain("지각 기록 09:10");
-    expect(mail.body).toContain("청구하지 않습니다");
+    expect(mail.body).toContain("이번 달 지각 1회");
+    expect(mail.body).not.toContain("지각비");
   });
 
   test("09:00:59까지는 지각이 아니다", () => {
@@ -61,7 +62,7 @@ describe("출근과 지각(보통·엄격)", () => {
     expect(office.day.absentCandidate).toBe(false);
     office.startNextWorkday();
     expect(office.history[0]).toMatchObject({ dayOff: true, absentCandidate: false });
-    expect(office.monthStats.points).toBe(0);
+    expect(office.monthStats).toEqual({ late: 0, absent: 0 });
   });
 
   test("다음 활동일을 쉬는 날로 미리 알릴 수 있다", () => {
@@ -85,13 +86,7 @@ describe("출근과 지각(보통·엄격)", () => {
   });
 });
 
-describe("지각비와 회복", () => {
-  test("지각 1점·결근 후보 3점, 2점까지 면제, 1점당 1,000원, 월 5,000원 상한", () => {
-    expect(LateFee.estimateFromPoints(2)).toBe(0);
-    expect(LateFee.estimateFromPoints(4)).toBe(2000);
-    expect(LateFee.estimateFromPoints(20)).toBe(5000);
-  });
-
+describe("결근 후보와 복귀", () => {
   test("출근하지 않고 다음 날로 넘기면 결근 후보, 돌아온 날은 늦어도 지각이 아니고 환영 메일을 받는다", () => {
     const office = makeOffice(8 * 60 + 55, monday, "standard");
     office.checkIn();
@@ -106,25 +101,7 @@ describe("지각비와 회복", () => {
     expect(office.mails.at(-1)!.body).toContain("다시 와서 반갑습니다");
     office.advance(at(office.today, 11 * 60));
     expect(office.checkIn().late).toBe(false);
-    expect(office.monthStats).toMatchObject({ absent: 1, late: 0, points: 3, estimatedFee: 1000 });
-  });
-
-  test("연속 3일 제시간에 출근하면 1점을 덜어 준다", () => {
-    const office = makeOffice(8 * 60 + 55, monday, "standard");
-    const closeDay = () => {
-      office.confirmTasks({ tasks: leveled([1, 1]) });
-      office.endSharing();
-      office.confirmReview(emptyReview(), Object.fromEntries(office.unsubmittedTasks.map((t) => [t.id, "endToday" as const])));
-      office.startNextWorkday();
-    };
-    office.advance(at(monday, 9 * 60 + 30));
-    office.checkIn(); // 월 지각
-    closeDay();
-    for (let i = 0; i < 3; i++) {
-      office.checkIn(); // 화·수·목 제시간
-      closeDay();
-    }
-    expect(office.monthStats).toMatchObject({ late: 1, recovered: 1, points: 0 });
+    expect(office.monthStats).toEqual({ absent: 1, late: 0 });
   });
 });
 

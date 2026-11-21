@@ -21,7 +21,7 @@ function detailLines(o: Option, start: string, end: string): string[] {
   if (!o.attendance) return ["출근 버튼만 누르고, 언제든 마감", "지각·착석 확인·추가근무 없음"];
   if (o.strictAway || o.earlyLeaveReason)
     return ["보통 규칙 전부 +", "등록 안 한 자리 비움은 짧아도 경고", "마감 시각 전 마감은 사유 필요"];
-  return [`${start} 지나면 지각 (지각비는 예상액만)`, "착석 확인 · 점심·자리 비움 등록", `${end} 퇴근 점검, 중요 과제가 남으면 추가근무`];
+  return [`${start} 지나면 지각, ${end}까지 안 오면 결근 후보`, "착석 확인 · 점심·자리 비움 등록", `${end} 퇴근 점검, 중요 과제가 남으면 추가근무`];
 }
 
 export function EnforcementPicker({
@@ -74,12 +74,11 @@ export function EnforcementPicker({
 
 /** 이번 달 근태 한 줄. 보통·엄격에서만. */
 export function MonthLine({ view }: { view: OfficeView }) {
-  if (!view.enforcement.rules.lateFee && view.attendance.month.points === 0) return null;
+  if (!view.enforcement.rules.attendance) return null;
   const m = view.attendance.month;
   return (
     <div className="small muted">
-      이번 달 지각 {m.late}회 · 결근 후보 {m.absent}회{m.recovered ? ` · 연속 출근으로 ${m.recovered}점 덜어 냄` : ""} · 누적 {m.points}점 · 지각비 예상{" "}
-      {m.estimatedFee.toLocaleString("ko-KR")}원 (시연용, 청구 안 함)
+      이번 달 지각 {m.late}회 · 결근 후보 {m.absent}회
     </div>
   );
 }

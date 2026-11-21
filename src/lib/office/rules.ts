@@ -29,8 +29,6 @@ export const WorkRules = {
   dinnerMinutes: 60,
   /** 추가근무 3시간(저녁시간 다음부터). */
   overtimeMinutes: 180,
-  /** 이 횟수만큼 연속으로 제시간에 출근하면 지각 점수 1점을 덜어 준다. */
-  recoveryStreak: 3,
 } as const;
 
 /** 관리 강도. 자리를 지키게 하는 장치의 세기를 참여자가 고른다. */
@@ -45,8 +43,6 @@ export interface EnforcementInfo {
   summary: string;
   /** 출근 시각을 보고 지각·결근 후보를 기록한다. */
   attendance: boolean;
-  /** 지각비 예상액을 계산한다(시연용, 청구하지 않음). */
-  lateFee: boolean;
   /** 착석 확인(지금은 버튼, 카메라는 브라우저 안 판정). */
   seatCheck: boolean;
   /** 점심·자리 비움 등록. */
@@ -66,7 +62,6 @@ export const ENFORCEMENT: Record<EnforcementLevel, EnforcementInfo> = {
     label: "가볍게",
     summary: "출근 버튼만 누릅니다. 지각·착석 확인·추가근무 없이 언제든 마감합니다.",
     attendance: false,
-    lateFee: false,
     seatCheck: false,
     allowances: false,
     strictAway: false,
@@ -78,7 +73,6 @@ export const ENFORCEMENT: Record<EnforcementLevel, EnforcementInfo> = {
     label: "보통",
     summary: "출근 시각과 지각을 기록하고 착석을 확인합니다. 마감 시각에 퇴근 점검을 하고, 중요한 과제가 남으면 추가근무를 합니다.",
     attendance: true,
-    lateFee: true,
     seatCheck: true,
     allowances: true,
     strictAway: false,
@@ -90,7 +84,6 @@ export const ENFORCEMENT: Record<EnforcementLevel, EnforcementInfo> = {
     label: "엄격",
     summary: "보통에 더해, 등록하지 않은 자리 비움을 짧아도 경고하고 마감 시각 전에 마감하려면 사유를 적습니다.",
     attendance: true,
-    lateFee: true,
     seatCheck: true,
     allowances: true,
     strictAway: true,
@@ -102,31 +95,10 @@ export const ENFORCEMENT: Record<EnforcementLevel, EnforcementInfo> = {
 
 export const isEnforcementLevel = (v: unknown): v is EnforcementLevel => v === "light" || v === "standard" || v === "strict";
 
-/** 지각비. 시연에서는 예상액으로만 보여 주고 실제로 청구하지 않는다. */
-export const LateFee = {
-  pointsPerLate: 1,
-  pointsPerAbsence: 3,
-  freePoints: 2,
-  wonPerPoint: 1_000,
-  monthlyCap: 5_000,
-
-  estimateFromPoints(points: number): number {
-    return Math.min(this.monthlyCap, Math.max(0, points - this.freePoints) * this.wonPerPoint);
-  },
-
-  /** 예: 3,000원 */
-  won(amount: number): string {
-    return amount.toLocaleString("ko-KR") + "원";
-  },
-};
-
-/** 이번 달 근태 집계. recovered는 연속 출근으로 덜어 준 점수. */
+/** 이번 달 근태 집계. */
 export interface MonthStats {
   late: number;
   absent: number;
-  recovered: number;
-  points: number;
-  estimatedFee: number;
 }
 
 export type OfficeErrorCode =

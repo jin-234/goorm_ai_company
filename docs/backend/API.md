@@ -83,7 +83,7 @@ Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `sh
 | `phase` | `{ value, label, headline }` |
 | `pastActivityEnd` | 사용자가 정한 마감 시각이 지났는지 |
 | `enforcement` | `chosen`(고른 강도), `level`(오늘 실제 강도), `rules`(켜진 장치), `options`(세 강도 설명) |
-| `attendance` | `isLate`, `absentCandidate`, `dayOff`, `returning`, `presence`, `monitoring`, `activeAllowance`, `lunchUsed`, `unauthorizedAwayMinutes`, `cameraOffMinutes`, `month`(`late`·`absent`·`recovered`·`points`·`estimatedFee`), `lateFee`(규칙 값) |
+| `attendance` | `isLate`, `absentCandidate`, `dayOff`, `returning`, `presence`, `monitoring`, `activeAllowance`, `lunchUsed`, `unauthorizedAwayMinutes`, `cameraOffMinutes`, `month`(`late`·`absent`) |
 | `overtime` | `dinnerHM`·`overtimeHM`, `targetIds`(지금 남은 2·3단계), `assignedIds`, `outcome`, `checkoutAt`, `earlyLeaveReason` |
 | `day` | `date`, `checkInAt`, `checkInMethod`, `goal`, `tasks[]`, `submissions[]`, `share`, `review`, `unsubmittedTaskIds`, `events` |
 | `pendingCarry` | 다음 활동일에 붙을 이월 과제(원본 ID `carriedFromTaskId` 보존) |

@@ -12,7 +12,7 @@ import {
   TASK_OUTCOME_LABEL,
   type WorkTask,
 } from "./models";
-import { ENFORCEMENT, type EnforcementLevel, LateFee, type MonthStats, WorkRules } from "./rules";
+import { ENFORCEMENT, type EnforcementLevel, type MonthStats, WorkRules } from "./rules";
 import { type DayKey, type Instant, Clock, hm, koreanShort } from "./time";
 
 /** 강도마다 무엇을 기록하는지 한 덩어리로. 입사 메일과 강도 변경 안내가 같이 쓴다. */
@@ -21,10 +21,7 @@ export function enforcementLines(level: EnforcementLevel, profile: EmployeeProfi
   const lines = [`관리 강도: ${info.label}`, info.summary];
   if (info.attendance) {
     lines.push(`· ${Clock.hm(profile.activityStart)}보다 늦게 출근하면 지각, ${Clock.hm(profile.activityEnd)}까지 출근하지 않으면 결근 후보로 기록합니다.`);
-    lines.push(
-      `· 지각비 예상액: 지각 ${LateFee.pointsPerLate}점, 결근 후보 ${LateFee.pointsPerAbsence}점, ${LateFee.freePoints}점까지 면제, 1점당 ${LateFee.won(LateFee.wonPerPoint)}, 월 ${LateFee.won(LateFee.monthlyCap)} 상한(시연용이며 청구하지 않습니다).`,
-    );
-    lines.push(`· ${WorkRules.recoveryStreak}일 연속 제시간에 출근하면 1점씩 덜어 드립니다. 미리 알린 쉬는 날은 세지 않습니다.`);
+    lines.push("· 미리 알린 쉬는 날은 결근 후보로 세지 않습니다.");
   }
   if (info.seatCheck) lines.push("· 근무 중 착석을 확인합니다. 점심 1시간과 자리 비움(건당 15분)은 등록하면 확인을 쉽니다.");
   if (info.checkoutAndOvertime) {
@@ -40,7 +37,7 @@ export function enforcementLines(level: EnforcementLevel, profile: EmployeeProfi
 }
 
 const statsLine = (stats: MonthStats) =>
-  `이번 달 누적 ${stats.points}점입니다. (지각 ${stats.late}회, 결근 후보 ${stats.absent}회${stats.recovered ? `, 연속 출근으로 ${stats.recovered}점 덜어 냄` : ""})`;
+  `이번 달 지각 ${stats.late}회, 결근 후보 ${stats.absent}회입니다.`;
 
 const join = (lines: string[]) => lines.join("\n");
 
@@ -114,8 +111,6 @@ export const MailTemplates = {
       `기준 시각(${Clock.hm(profile.activityStart)})보다 늦어 지각으로 기록합니다.`,
       "",
       statsLine(stats),
-      `지각비 예상액은 ${LateFee.won(stats.estimatedFee)}입니다. 시연용 예상액이며 청구하지 않습니다.`,
-      `${WorkRules.recoveryStreak}일 연속 제시간에 출근하면 1점씩 덜어 드립니다.`,
     ]);
     return newMail({ sentAt: at, from: "hr", to: "me", kind: "attendance", subject: `[근태] 지각 기록 ${hm(checkIn)}`, body });
   },
@@ -125,7 +120,6 @@ export const MailTemplates = {
       `${koreanShort(day)} ${Clock.hm(profile.activityEnd)}까지 출근 기록이 없어 결근 후보로 기록합니다.`,
       "",
       statsLine(stats),
-      `지각비 예상액은 ${LateFee.won(stats.estimatedFee)}입니다. 시연용 예상액이며 청구하지 않습니다.`,
       "",
       "다음 활동일에 돌아오면 그날은 늦어도 지각으로 세지 않습니다.",
       "쉬어야 하는 날은 출입문에서 '오늘은 쉬는 날'을 미리 눌러 두면 결근 후보로 세지 않습니다.",

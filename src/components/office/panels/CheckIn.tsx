@@ -48,7 +48,7 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
     if (res == null) return;
     office.notify(
       res.late
-        ? `출근했습니다. 지각으로 기록했습니다.\n${a.lateFee.recoveryStreak}일 연속 제시간에 오면 1점씩 덜어 드립니다.`
+        ? "출근했습니다. 지각으로 기록했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요."
         : "출근했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.",
     );
     onDone();

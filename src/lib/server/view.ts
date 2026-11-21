@@ -4,7 +4,7 @@
  */
 import { mailTag, PHASE_LABEL, partyName, TASK_LEVEL_LABEL, TASK_OUTCOME_LABEL, TASK_STATUS_LABEL } from "../office/models";
 import type { Office } from "../office/office";
-import { ENFORCEMENT, ENFORCEMENT_LEVELS, LateFee, WorkRules } from "../office/rules";
+import { ENFORCEMENT, ENFORCEMENT_LEVELS, WorkRules } from "../office/rules";
 import { phaseHeadline, seatDetail, seatIsWarning, seatShowsWorkingAvatar, seatStatusOf, seatTitle } from "../office/seat-status";
 import { dayString, hm, isFriday, koreanLong, koreanShort, weekLabel } from "../office/time";
 
@@ -53,14 +53,6 @@ export function officeView(office: Office) {
       unauthorizedAwayMinutes: office.unauthorizedAwayMinutes,
       cameraOffMinutes: office.cameraOffMinutes,
       month: office.monthStats,
-      lateFee: {
-        pointsPerLate: LateFee.pointsPerLate,
-        pointsPerAbsence: LateFee.pointsPerAbsence,
-        freePoints: LateFee.freePoints,
-        wonPerPoint: LateFee.wonPerPoint,
-        monthlyCap: LateFee.monthlyCap,
-        recoveryStreak: WorkRules.recoveryStreak,
-      },
     },
     overtime: {
       dinnerStart: office.activityEndDate,
