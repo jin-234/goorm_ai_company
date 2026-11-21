@@ -1,7 +1,7 @@
 "use client";
 /**
  * 내 책상 · 수행과 결과물 제출(개정 기획서 3.1).
- * 확정한 과제마다 시작 → 결과물 남기기 → 제출 완료(또는 오늘은 못 끝냄). 다 되면 기획팀 공유로 넘어간다.
+ * 확정한 과제마다 시작 → 결과물 남기기 → 제출 완료(또는 오늘은 못 끝냄). 다 되면 회의실에서 타 부서에 발표한다.
  */
 import { hm } from "@/lib/office/time";
 import type { OfficeView } from "../api";
@@ -16,7 +16,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
   const handled = tasks.filter((t) => t.status === "submitted" || t.status === "incomplete").length;
 
   const skipSharing = async () => {
-    if (!window.confirm("오늘은 기획팀 공유 없이 하루 마감으로 갈까요?")) return;
+    if (!window.confirm("오늘은 회의실 발표 없이 하루 마감으로 갈까요?")) return;
     if ((await office.act("endSharing", { reason: "userStopped" })) != null) office.notify("공유를 건너뛰었습니다.\n하루 마감을 해 주세요.");
   };
 
@@ -47,7 +47,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
         <Card title="과제" aside={<span className="chip">{`제출 ${submitted} / ${tasks.length}`}</span>}>
           {view.day.checkInAt != null ? <div className="small muted">활동 시작 {hm(view.day.checkInAt)}</div> : null}
           <p className="small muted pre" style={{ margin: 0 }}>
-            {"비밀키·고객 정보·비공개 회사 코드는 남기지 마세요.\n남긴 결과물은 기획팀 공유 때 AI 기획자에게 전송될 수 있습니다."}
+            {"비밀키·고객 정보·비공개 회사 코드는 남기지 마세요.\n남긴 결과물은 회의실 발표 때 AI 동료에게 전송될 수 있습니다."}
           </p>
           <div style={{ display: "grid", gap: 10 }}>
             {tasks.map((t) => (
@@ -58,7 +58,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
       ) : null}
 
       {phase === "working" ? (
-        <Card title="다 했으면 기획팀에 공유하기">
+        <Card title="다 했으면 회의실에서 발표하기">
           <p className="muted pre" style={{ margin: 0 }}>
             {handled === tasks.length
               ? "모든 과제를 제출했거나 못 끝낸 것으로 정했습니다.\nAI 기획자에게 오늘 한 일을 설명해 주세요."
@@ -66,7 +66,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
           </p>
           <div className="row">
             <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing}>
-              기획팀에 공유하러 가기
+              회의실에서 발표하기
             </button>
             <button
               className="btn plain"
@@ -79,9 +79,9 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
           </div>
         </Card>
       ) : phase === "sharing" ? (
-        <Notice kind="info" title="기획팀과 공유하는 중입니다">
+        <Notice kind="info" title="회의실에서 발표하는 중입니다">
           <button className="btn secondary small" onClick={() => onGo("share")}>
-            기획팀으로 가기
+            회의실로 가기
           </button>
         </Notice>
       ) : null}

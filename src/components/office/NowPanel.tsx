@@ -16,11 +16,10 @@ function whyNow(view: OfficeView): string {
     case "morningPT":
       return "AI 팀장과 오늘 끝낼 작은 범위와 완료 기준을 정합니다.";
     case "working":
-      if (view.can.submitWeekly) return "금요일에는 주간보고서를 올립니다.";
       if (view.mail.unreadCount > 0) return "팀장 메일에 확인할 내용이 있습니다.";
       return view.pastActivityEnd ? "정한 마감 시각이 지났습니다. 결과물을 올리고 공유하면 됩니다." : "과제를 하고 결과물을 올립니다.";
     case "sharing":
-      return "기획팀 동료에게 오늘 한 일을 설명합니다. 언제든 마칠 수 있습니다.";
+      return "회의실에 부서별 담당자가 와 있습니다. 오늘 한 일을 발표하고, 언제든 마칠 수 있습니다.";
     case "checkoutReview":
       return "오늘 정리를 확인하고, 남은 일은 범위 조정·이월·오늘 종료 중에서 고릅니다.";
     case "off":

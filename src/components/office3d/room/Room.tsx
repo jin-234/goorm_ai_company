@@ -8,12 +8,15 @@ import { BADGE_READER, DECOR, DOOR_X, headingOf, MEETING, ROOM, SEATS, type Seat
 import type { DeskProps } from "../crew/schedule";
 import type { Light } from "./daylight";
 import { screenKind, type TaskLine } from "./screens";
+import { GUEST_SEATS } from "../crew/share";
 import {
   Box, Chair, Cylinder, Desk, DeskBag, FONT, Keyboard, Monitor, Mouse, Mug, PALETTE, Panel, PaperStack, Plant,
   roundRect, signTexture, useTextTexture,
 } from "./parts";
 
 export type ClickPlace = "door" | "desk" | "manager" | "meeting" | "share" | "pantry" | "restroom" | "director";
+/** 회의실이 지금 무엇에 쓰이는지: 아침보고(AI 팀장) 또는 타 부서 공유(부서별 담당자 1명씩). */
+export type MeetingMode = "morning" | "share";
 
 interface RoomProps {
   /** 분 단위 빛(시계·복도등·화면 밝기). */
@@ -31,6 +34,8 @@ interface RoomProps {
   facade?: number;
   /** 출입문 유리를 젖빛으로(0 맑음 ~ 1 젖빛). 출근 전 클로즈업에서 회사 안이 보이지 않게. */
   frosted?: number;
+  /** 회의실 용도(화면 슬라이드·손님 명패·누르면 열리는 곳). */
+  meetingMode?: MeetingMode;
   /** 내 모니터에 띄울 오늘의 과제(view.day.tasks). */
   myTasks?: TaskLine[];
   onClick: (place: ClickPlace) => void;
@@ -57,7 +62,7 @@ function clickable(place: ClickPlace, onClick: (p: ClickPlace) => void) {
   };
 }
 
-export function Room({ light, lightRef, minute, desks, doors, reader = 0, facade = 0, frosted = 0, myTasks = [], onClick }: RoomProps) {
+export function Room({ light, lightRef, minute, desks, doors, reader = 0, facade = 0, frosted = 0, meetingMode = "morning", myTasks = [], onClick }: RoomProps) {
   return (
     <group>
       <Shell lightRef={lightRef} facade={facade} />
@@ -66,7 +71,7 @@ export function Room({ light, lightRef, minute, desks, doors, reader = 0, facade
         <Station key={id} id={id} props={desks[id]} night={light.night} lamp={light.lamp} minute={minute} myTasks={myTasks} onClick={onClick} />
       ))}
       <IslandPartition />
-      <MeetingRoom night={light.night} onClick={onClick} />
+      <MeetingRoom night={light.night} mode={meetingMode} onClick={onClick} />
       <Pantry onClick={onClick} />
       <Restroom open={doors.restroom} onClick={onClick} />
       <Entrance open={doors.entrance} hall={light.hall} reader={reader} frosted={frosted} onClick={onClick} />
@@ -276,7 +281,7 @@ function Station({ id, props, night, lamp, minute, myTasks, onClick }: { id: Sea
   const look = lookOf(id);
   const front = seat.deskOffset - seat.deskDepth / 2;
   const isBoss = id === "manager" || id === "director";
-  const place: ClickPlace | null = id === "me" ? "desk" : id === "manager" ? "manager" : id === "director" ? "director" : id === "planner" ? "share" : null;
+  const place: ClickPlace | null = id === "me" ? "desk" : id === "manager" ? "manager" : id === "director" ? "director" : null;
   const handlers = place ? clickable(place, onClick) : {};
   return (
     <group position={[seat.chair[0], 0, seat.chair[1]]} rotation={[0, headingOf(seat.facing), 0]} {...handlers}>
@@ -300,7 +305,6 @@ function Station({ id, props, night, lamp, minute, myTasks, onClick }: { id: Sea
       {props.mugOnDesk && <group position={[0.52, 0.76, -(front + 0.2)]} rotation={[0, -0.6, 0]}><Mug color={look.mugColor} /></group>}
       {props.bagAtDesk && <group position={[-0.5, 0, -0.05]} rotation={[0, 0.25, 0]}><DeskBag kind={look.bagKind} color={look.bagColor} /></group>}
       {id === "me" && <MyDeskPlate depth={seat.deskDepth} offset={seat.deskOffset} />}
-      {id === "planner" && <TeamSign depth={seat.deskDepth} offset={seat.deskOffset} width={seat.deskWidth} />}
       {place && (
         // 누르기 쉬운 범위: 책상과 의자, 의자 뒤 조금까지 덮는 보이지 않는 상자.
         <mesh position={[0, 0.6, -(seat.deskOffset + seat.deskDepth / 2 - 0.45) / 2]}>
@@ -325,32 +329,6 @@ function MyDeskPlate({ depth, offset }: { depth: number; offset: number }) {
   );
 }
 
-/** 기획팀 책상 앞(통로 쪽) 가장자리에 세운 부서 팻말. 다른 부서 자리임을 보여 준다. */
-function TeamSign({ depth, offset, width }: { depth: number; offset: number; width: number }) {
-  const tex = useTextTexture((ctx, w, h) => {
-    ctx.fillStyle = "#E58B3A";
-    roundRect(ctx, 0, 0, w, h, 16);
-    ctx.fill();
-    ctx.fillStyle = "#FFFFFF";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `700 34px ${FONT}`;
-    ctx.fillText("서비스 기획팀", w / 2, h * 0.38);
-    ctx.font = `500 22px ${FONT}`;
-    ctx.fillText("다른 부서 · AI 기획자", w / 2, h * 0.75);
-  }, 320, 110, []);
-  // 자리 좌표계: 앉은 사람 앞이 −Z. 책상 먼 가장자리(통로 쪽)는 z = −(offset + depth/2).
-  return (
-    <group position={[-width / 2 + 0.32, 0.76, -(offset + depth / 2) + 0.03]} rotation={[0, Math.PI, 0]}>
-      <Box size={[0.5, 0.02, 0.1]} at={[0, 0.01, 0]} color={PALETTE.charcoal} />
-      <group position={[0, 0.11, 0]} rotation={[-0.12, 0, 0]}>
-        <Box size={[0.48, 0.17, 0.02]} at={[0, 0, -0.012]} color="#C86F27" round={0.01} />
-        <Panel w={0.46} h={0.158} texture={tex} emissive={0.12} />
-      </group>
-    </group>
-  );
-}
-
 function IslandPartition() {
   const x0 = ROOM.islandX[2] - ROOM.islandDeskWidth / 2;
   const x1 = ROOM.islandX[0] + ROOM.islandDeskWidth / 2;
@@ -368,8 +346,8 @@ function Glass({ size, at }: { size: [number, number, number]; at: [number, numb
   );
 }
 
-function MeetingRoom({ night, onClick }: { night: number; onClick: (p: ClickPlace) => void }) {
-  const screen = useTextTexture((ctx, w, h) => {
+function MeetingRoom({ night, mode, onClick }: { night: number; mode: MeetingMode; onClick: (p: ClickPlace) => void }) {
+  const morning = useTextTexture((ctx, w, h) => {
     ctx.fillStyle = "#FBFAF5";
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = PALETTE.green;
@@ -393,12 +371,33 @@ function MeetingRoom({ night, onClick }: { night: number; onClick: (p: ClickPlac
       ctx.fillRect(340, y + 16, 220, 8);
     });
   }, 640, 320, []);
+  // 타 부서 공유 슬라이드: 부서별 담당자 1명씩에게 오늘 한 일을 설명한다.
+  const share = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = "#FBFAF5";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = PALETTE.green;
+    ctx.fillRect(0, 0, w, 70);
+    ctx.fillStyle = "#fff";
+    ctx.font = `700 34px ${FONT}`;
+    ctx.fillText("개발팀 → 기획팀 · 디자인팀 공유", 28, 48);
+    const rows = ["오늘 한 일과 결과물", "사용자 안내에 필요한 것", "확인할 상황: 빈 화면 · 오류 · 로딩 · 입력"];
+    rows.forEach((text, i) => {
+      const y = 110 + i * 62;
+      ctx.fillStyle = i === 2 ? "#E58B3A" : PALETTE.green;
+      ctx.beginPath(); ctx.arc(44, y + 20, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#333";
+      ctx.font = `600 26px ${FONT}`;
+      ctx.fillText(text, 66, y + 29);
+    });
+  }, 640, 320, []);
+  const screen = mode === "share" ? share : morning;
+  const place: ClickPlace = mode === "share" ? "share" : "meeting";
   const { meetingX0: X0, meetingX1: X1, meetingZ0: Z0, meetingZ1: Z1, meetingDoorX0: D0, meetingDoorX1: D1 } = ROOM;
   const glassH = 2.3;
   const frame = PALETTE.green;
   const posts = [X0 + 0.05, (X0 + D0) / 2, D0, D1, X1];
   return (
-    <group {...clickable("meeting", onClick)}>
+    <group {...clickable(place, onClick)}>
       <Glass size={[D0 - X0, glassH, 0.03]} at={[(X0 + D0) / 2, glassH / 2, Z1]} />
       <Glass size={[0.03, glassH, Z1 - Z0]} at={[X1, glassH / 2, (Z0 + Z1) / 2]} />
       {posts.map((x) => <Box key={x} size={[0.06, glassH, 0.06]} at={[x, glassH / 2, Z1]} color={frame} />)}
@@ -415,12 +414,31 @@ function MeetingRoom({ night, onClick }: { night: number; onClick: (p: ClickPlac
           <Chair />
         </group>
       ))}
+      {/* 공유 중: 손님 자리 앞 탁자에 부서 명패(부서당 담당자 1명) */}
+      {mode === "share" && GUEST_SEATS.map((g) => (
+        <DeptPlate key={g.dept} dept={g.dept} at={[MEETING.chairs[g.chair].at[0], 0.765, MEETING.table[1] + MEETING.tableSize[1] / 2 - 0.12]} />
+      ))}
       {/* 뒷벽 화면 */}
       <group position={[MEETING.screenX, 1.55, Z0 + 0.14]}>
         <Box size={[1.72, 0.98, 0.05]} at={[0, 0, -0.02]} color={PALETTE.charcoal} round={0.02} />
         <group position={[0, 0, 0.007]}>
           <Panel w={1.62} h={0.9} texture={screen} emissive={0.55 + 0.45 * (1 - night)} />
         </group>
+      </group>
+    </group>
+  );
+}
+
+/** 탁자 위 세움 명패. 글자는 의자 쪽(+Z)을 보고, 반대편(화면 쪽)에서도 읽히게 양면. */
+function DeptPlate({ dept, at }: { dept: string; at: [number, number, number] }) {
+  const tex = useTextTexture(signTexture(dept, "#FFFFFF", PALETTE.greenDark), 256, 96, [dept]);
+  return (
+    <group position={at}>
+      <Box size={[0.34, 0.02, 0.08]} at={[0, 0.01, 0]} color={PALETTE.charcoal} shadow={false} />
+      <group position={[0, 0.075, 0]} rotation={[-0.15, 0, 0]}>
+        <Box size={[0.32, 0.12, 0.012]} at={[0, 0, 0]} color={PALETTE.white} round={0.006} />
+        <group position={[0, 0, 0.0075]}><Panel w={0.3} h={0.1} texture={tex} emissive={0.1} /></group>
+        <group position={[0, 0, -0.0075]} rotation={[0, Math.PI, 0]}><Panel w={0.3} h={0.1} texture={tex} emissive={0.1} /></group>
       </group>
     </group>
   );
@@ -695,6 +713,8 @@ function Decor({ minute }: { minute: number }) {
         <Box size={[1.9, 1.15, 0.04]} at={[0, 0, 0]} color={PALETTE.oakDeep} />
         <group position={[0, 0, 0.022]}><Panel w={1.8} h={1.05} texture={board} /></group>
       </group>
+      {/* 책장 위 뒷벽의 회사 간판(시계 왼쪽) */}
+      <CompanySign />
       {/* 책장 */}
       <group position={[-0.75, 0, -HD + T / 2 + 0.2]}>
         {/* 앞이 트인 책장: 뒷판·옆판·위아래 판 */}
@@ -791,6 +811,39 @@ function RoundTree({ at }: { at: [number, number, number] }) {
           <meshStandardMaterial color={i ? PALETTE.leafDeep : PALETTE.leaf} roughness={0.85} />
         </mesh>
       ))}
+    </group>
+  );
+}
+
+/**
+ * 뒷벽 회사 간판: 책장(가운데 x −0.75, 높이 1.9) 위, 벽시계(x 1.42) 왼쪽. 출근 장면의 건물 정면 간판과 같은 모양.
+ * 회의실 유리벽(x ≤ −2.3)·시계(x ≥ 1.08)와 겹치지 않게 x −1.55 ~ 0.05 사이에 둔다.
+ */
+function CompanySign() {
+  const tex = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = PALETTE.green;
+    roundRect(ctx, 0, 0, w, h, 16);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.brass;
+    ctx.lineWidth = 6;
+    roundRect(ctx, 12, 12, w - 24, h - 24, 9);
+    ctx.stroke();
+    ctx.fillStyle = "#F4ECDB";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `800 ${Math.round(h * 0.4)}px ${FONT}`;
+    ctx.fillText("VISION COMPANY", w / 2, h * 0.46);
+    ctx.fillStyle = "#CFE3D8";
+    ctx.font = `600 ${Math.round(h * 0.15)}px ${FONT}`;
+    ctx.fillText("개발팀", w / 2, h * 0.8);
+  }, 720, 200, []);
+  const z = -HD + T / 2 + 0.02;
+  return (
+    <group position={[-0.75, 2.42, z]}>
+      <Box size={[1.6, 0.46, 0.05]} at={[0, 0, 0.01]} color={PALETTE.greenDark} round={0.02} />
+      <group position={[0, 0, 0.037]}>
+        <Panel w={1.52} h={0.4} texture={tex} emissive={0.12} />
+      </group>
     </group>
   );
 }

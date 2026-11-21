@@ -12,6 +12,8 @@ const reply = (fields: Partial<PlannerReply> = {}): PlannerReply => ({
   acknowledgement: "설명 고맙습니다.",
   question: "아직 지원하지 않는 것은 무엇인가요?",
   question_reason: "사용자 안내에 한계를 적어야 해서요.",
+  question_basis: "role_need",
+  basis_ref: "",
   known_facts: ["도시를 입력하면 날씨가 보인다"],
   open_questions: ["실패 안내"],
   evidence_refs: [],
@@ -104,7 +106,7 @@ describe("수행과 제출", () => {
   });
 });
 
-describe("기획팀 공유", () => {
+describe("회의실 발표", () => {
   test("질문을 세고, 상한에 닿으면 더 묻지 않고 요약 준비 상태가 된다", () => {
     const office = workingOffice();
     expect(() => office.recordShareTurn({ role: "user", text: "x" })).toThrow(OfficeError);
@@ -239,18 +241,6 @@ describe("새로고침 후 복원", () => {
 });
 
 describe("시연 도구", () => {
-  test("금요일로 가면 마감하지 못한 과제는 이월되고, 제출한 과제는 이월하지 않는다", () => {
-    const office = workingOffice();
-    const [a] = office.day.tasks;
-    office.submitWork(a.id, "text", "결과");
-    office.setTaskStatus(a.id, "submitted");
-    office.jumpToFriday();
-    expect(office.pendingCarry.map((t) => t.title)).toEqual([sampleTasks()[1].title]);
-    expect(office.canSubmitWeekly).toBe(false);
-    office.checkIn();
-    expect(office.canSubmitWeekly).toBe(true);
-  });
-
   test("다음 정각은 단계를 바꾸지 않는다", () => {
     const office = workingOffice();
     const r = office.skipHour();

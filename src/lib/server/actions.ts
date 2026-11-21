@@ -3,6 +3,11 @@
  * 입력 모양 검증은 여기서 하고(BadRequest), 규칙 위반은 OfficeError로 던진다.
  */
 import {
+  COLLECTED_CASES_AVAILABLE,
+  QUESTION_BASES,
+  type QuestionBasis,
+  CHECK_IN_METHODS,
+  type CheckInMethod,
   type PlannerReply,
   REVIEW_LIST_FIELDS,
   REVIEW_TEXT_FIELDS,
@@ -101,10 +106,18 @@ export function plannerReplyOf(value: unknown): PlannerReply {
     if (typeof v !== "string") throw new BadRequest(`reply.${key}는 문자열이어야 합니다.`);
     return v.slice(0, WorkRules.maxFieldLength);
   };
+  const question = text("question");
+  let basis = (typeof r.question_basis === "string" ? r.question_basis : "") as QuestionBasis | "";
+  if (basis !== "" && !QUESTION_BASES.includes(basis)) basis = "role_need";
+  // 수집한 사례 데이터가 없으면 AI가 '실제 사례'라고 해도 공개 가이드 기반 시나리오로 낮춘다.
+  if (basis === "collected_case" && !COLLECTED_CASES_AVAILABLE) basis = "ux_guide";
+  if (question.trim() && basis === "") basis = "role_need";
   return {
     acknowledgement: text("acknowledgement"),
-    question: text("question"),
+    question,
     question_reason: text("question_reason"),
+    question_basis: question.trim() ? basis : "",
+    basis_ref: question.trim() ? text("basis_ref").slice(0, 120) : "",
     known_facts: strList(r.known_facts, "reply.known_facts"),
     open_questions: strList(r.open_questions, "reply.open_questions"),
     evidence_refs: strList(r.evidence_refs, "reply.evidence_refs"),
@@ -145,11 +158,8 @@ export const ACTION_TYPES = [
   "saveReviewDraft",
   "confirmReview",
   "skipHour",
-  "saveWeeklyDraft",
-  "submitWeeklyReport",
   "markMailRead",
   "startNextWorkday",
-  "jumpToFriday",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -161,8 +171,13 @@ export function applyAction(office: Office, body: Json): unknown {
     case "onboard":
       office.completeOnboarding(onboardInput(body));
       return null;
-    case "checkIn":
-      return office.checkIn();
+    case "checkIn": {
+      const method = body.method ?? null;
+      if (method !== null && !CHECK_IN_METHODS.includes(method as CheckInMethod)) {
+        throw new BadRequest("method는 camera 또는 noCamera입니다.");
+      }
+      return office.checkIn(method as CheckInMethod | null);
+    }
     case "saveGoal":
       office.saveGoal(str(body, "goal"));
       return null;
@@ -206,31 +221,11 @@ export function applyAction(office: Office, body: Json): unknown {
       if (!result) throw OfficeError.notAllowedNow("지금은 시간을 넘길 수 없습니다.");
       return { skip: result };
     }
-    case "saveWeeklyDraft":
-      office.saveWeeklyDraft({
-        ...("completed" in body ? { completed: str(body, "completed") } : {}),
-        ...("incomplete" in body ? { incomplete: str(body, "incomplete") } : {}),
-        ...("nextGoals" in body ? { nextGoals: str(body, "nextGoals") } : {}),
-      });
-      return null;
-    case "submitWeeklyReport": {
-      const draft = office.weeklyDraft;
-      const report = {
-        completed: "completed" in body ? str(body, "completed") : draft.completed,
-        incomplete: "incomplete" in body ? str(body, "incomplete") : draft.incomplete,
-        nextGoals: "nextGoals" in body ? str(body, "nextGoals") : draft.nextGoals,
-      };
-      office.saveWeeklyDraft(report);
-      return { report: office.submitWeeklyReport(report) };
-    }
     case "markMailRead":
       office.markRead(str(body, "id"));
       return null;
     case "startNextWorkday":
       office.startNextWorkday();
-      return null;
-    case "jumpToFriday":
-      office.jumpToFriday();
       return null;
     default:
       throw new BadRequest(`알 수 없는 행동입니다: ${String(type)}`);

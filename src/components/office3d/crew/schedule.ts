@@ -10,7 +10,7 @@
  *   한 곳(커피·정수기·화장실·창가)은 한 번에 한 사람만 쓴다.
  * - 점심(85%, 활동 시간이 12~13시를 덮을 때만) 12:00~12:58: 가방은 두고 나갔다 온다.
  * - 퇴근(활동 마감 1~12분 뒤): 의자 옆 가방을 집어 들고(짐 챙기기) 문으로 나간다.
- * - 기획팀 AI 기획자는 내가 공유하러 오면(단계 sharing) 자리에 앉아 듣는다.
+ * - 타 부서 공유(단계 sharing)는 손님이 회의실로 오는 별도 연출이다(crew/share.ts).
  */
 import type { Holding, Pose } from "../person";
 import {
@@ -18,7 +18,7 @@ import {
   type Place, type SeatId, type Spot, type Vec2,
 } from "./layout";
 
-export const COWORKERS = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "planner"] as const satisfies readonly SeatId[];
+export const COWORKERS = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB"] as const satisfies readonly SeatId[];
 export type CoworkerId = (typeof COWORKERS)[number];
 /** 아침보고는 AI 팀장과 둘이 한다(개정 기획서: 동료 7명 연출보다 팀장·기획자 대화 우선). */
 export const PT_AUDIENCE: CoworkerId[] = ["manager"];
@@ -234,7 +234,7 @@ function buildErrand(id: CoworkerId, t0: number, kind: "coffee" | "water" | "res
 export interface CrewOptions {
   /** 지금 아침보고 중인지(view.phase.value === "morningPT"). 팀장이 회의실에 앉는다. */
   morningPT?: boolean;
-  /** 지금 기획팀에 공유 중인지(view.phase.value === "sharing"). 기획자가 자리에 앉아 듣는다. */
+  /** 지금 타 부서 공유 중인지(view.phase.value === "sharing"). 손님 연출은 crew/share.ts. */
   sharing?: boolean;
   /** 아침보고를 듣는 사람을 바꿀 때. */
   audience?: CoworkerId[];
@@ -273,11 +273,6 @@ export function coworkerAt(id: CoworkerId, now: number, options: CrewOptions = {
       snapshot: { id, visible: true, position: [chair.at[0], SEATED_Y, chair.at[1]], heading: headingOf(chair.facing), pose: "sitListen", holding: {}, doing: "아침 PT 듣기" },
       desk: { mugOnDesk: true, bagAtDesk, screenOn: false },
     };
-  }
-
-  // 공유 중: 기획자는 하던 일을 멈추고 자리에 앉아 내 설명을 듣는다(늦은 시각이어도 남아 있는다).
-  if (options.sharing && id === "planner") {
-    return { snapshot: seatedSnapshot(id, "sitListen", {}, "공유 듣기"), desk: { mugOnDesk: true, bagAtDesk: true, screenOn: true } };
   }
 
   const seg = plan.segments.find((s) => now >= s.t0 && now < s.t1);
@@ -334,10 +329,9 @@ export function meAt(now: number, seat: { kind: SeatKind; reason?: string }, pha
   const checkedIn = !["beforeCheckIn", "absentCandidate", "off"].includes(seat.kind);
   const desk: DeskProps = { mugOnDesk: true, bagAtDesk: checkedIn, screenOn: checkedIn };
   if (phase === "sharing" && checkedIn) {
-    // 기획팀 책상 앞에 서서 기획자에게 오늘 한 일을 설명한다.
-    const info = SPOTS.share;
-    const at = info.points[info.points.length - 1];
-    return { snapshot: { id: "me", visible: true, position: [at[0], 0, at[1]], heading: headingOf(info.facing), pose: "present", holding: {}, doing: "기획팀에 공유" }, desk };
+    // 회의실 화면 옆에서 타 부서 손님에게 오늘 한 일을 발표한다(손님은 crew/share.ts).
+    const at = MEETING.presenter;
+    return { snapshot: { id: "me", visible: true, position: [at[0], 0, at[1]], heading: headingOf(MEETING.presenterFacing), pose: "present", holding: {}, doing: "타 부서 공유 발표" }, desk };
   }
   if (phase === "morningPT" && checkedIn) {
     const at = MEETING.presenter;
@@ -349,7 +343,7 @@ export function meAt(now: number, seat: { kind: SeatKind; reason?: string }, pha
       return { snapshot: { id: "me", visible: true, position: [OUTSIDE_MAT[0], 0, OUTSIDE_MAT[1]], heading: headingOf([0, -1]), pose: "stand", holding: { bag: "worn" }, doing: "출근 전, 문 밖" }, desk };
     case "seated":
     case "checking":
-    case "sharing": // 단계가 sharing이면 위에서 기획팀 앞에 세운다. 여기 오는 건 단계가 앞서 바뀐 경우뿐이라 자리에 둔다.
+    case "sharing": // 단계가 sharing이면 위에서 회의실 발표 자리에 세운다. 여기 오는 건 단계가 앞서 바뀐 경우뿐이라 자리에 둔다.
     case "review": {
       const sip = sipping("me", now);
       return { snapshot: seatedSnapshot("me", sip ? "sitMug" : "sitType", sip ? { cup: "mug" } : {}, "일하는 중"), desk: { ...desk, mugOnDesk: !sip, typing: true } };

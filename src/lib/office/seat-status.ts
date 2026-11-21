@@ -10,7 +10,7 @@ export type SeatStatus =
   | { kind: "beforeCheckIn" }
   /** 아침보고·수행 중 */
   | { kind: "seated" }
-  /** 기획팀 공유 중(기획팀 자리 앞) */
+  /** 회의실 발표 중(기획팀·디자인팀 담당자가 듣는다) */
   | { kind: "sharing" }
   /** 하루 마감 작성 중 */
   | { kind: "review" }
@@ -19,7 +19,7 @@ export type SeatStatus =
 const TITLES: Record<SeatStatus["kind"], string> = {
   beforeCheckIn: "출근 전",
   seated: "활동 중",
-  sharing: "기획팀 공유 중",
+  sharing: "회의실 발표 중",
   review: "마감 작성 중",
   off: "마감 완료",
 };
@@ -49,7 +49,7 @@ export function seatDetail(s: SeatStatus): string {
     case "seated":
       return "확정한 과제를 수행하고 결과물을 제출합니다.";
     case "sharing":
-      return "기획팀에 오늘 한 일을 설명하고 있습니다.";
+      return "회의실에서 기획팀·디자인팀 담당자에게 오늘 한 일을 발표하고 있습니다.";
     case "review":
       return "해낸 일과 다음 행동을 확인하고 있습니다.";
     case "off":
@@ -70,7 +70,7 @@ export function phaseHeadline(office: Office): string {
     case "working":
       return late ? `수행 중 · 마감 시각 ${end}이 지났습니다` : `수행 중 · 마감 ${end}`;
     case "sharing":
-      return "기획팀 공유 · 오늘 한 일 설명하기";
+      return "회의실 발표 · 오늘 한 일 발표하기";
     case "checkoutReview":
       return "하루 마감 · 해낸 일과 다음 행동 확인";
     case "off":

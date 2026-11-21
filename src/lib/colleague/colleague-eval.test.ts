@@ -30,6 +30,8 @@ const reply = (over: Partial<PlannerReply> = {}): PlannerReply => ({
   acknowledgement: "설명 고맙습니다.",
   question: "이 화면으로 사용자는 무엇을 할 수 있나요?",
   question_reason: "안내 첫 문장에 필요합니다.",
+  question_basis: "role_need",
+  basis_ref: "",
   known_facts: [],
   open_questions: [],
   evidence_refs: [],
@@ -251,5 +253,45 @@ describe.skipIf(!live.apiKey)("실제 Solar 평가(UPSTAGE_API_KEY)", { timeout:
     office.recordShareTurn({ role: "user", text: "도시를 입력하면 오늘 날씨와 기온을 볼 수 있습니다. 실패 안내는 아직 없습니다." });
     const second = await plannerReply(client, office);
     if (first.value.question && second.value.question) expect(isRepeatQuestion(second.value.question, [first.value.question])).toBe(false);
+  });
+});
+
+// MARK: - 질문 근거(사용자 원칙 2026-11-21)
+
+describe("질문 근거: 가이드 기반 시나리오를 실제 사례로 포장하지 않는다", () => {
+  it("수집한 사례 데이터가 없으면 AI가 collected_case라고 해도 ux_guide로 낮춘다", async () => {
+    const office = sharingOffice();
+    const { client } = fakeSolar(reply({ question: "실패하면 화면에 무엇이 보이나요?", question_basis: "collected_case", basis_ref: "현직 기획자 인터뷰" }));
+    const out = await plannerReply(client, office);
+    expect(out.value.question_basis).toBe("ux_guide");
+  });
+
+  it("질문이 없으면 근거도 비우고, 모르는 근거 값은 role_need로 둔다", async () => {
+    const office = sharingOffice();
+    const done = await plannerReply(fakeSolar(reply({ question: "", can_finish: true, question_basis: "ux_guide", basis_ref: "W3C" })).client, office);
+    expect(done.value).toMatchObject({ question_basis: "", basis_ref: "" });
+    const odd = await plannerReply(fakeSolar({ ...reply({ question: "누가 쓰나요?" }), question_basis: "interview" }).client, office);
+    expect(odd.value.question_basis).toBe("role_need");
+  });
+
+  it("예시·수동 응답도 질문마다 근거 종류와 출처를 채운다(역할 필요 → 오류·빈 화면 가이드 순)", async () => {
+    const office = sharingOffice();
+    const noKey = new SolarClient({ apiKey: null, baseURL: "https://example.invalid", model: "m", timeout: 5 });
+    office.recordShareTurn({ role: "user", text: "날씨 화면을 만들었습니다." });
+    const first = await plannerReply(noKey, office);
+    expect(first.value).toMatchObject({ question_basis: "role_need", basis_ref: "GOV.UK 서비스팀 역할 안내" });
+    office.recordShareTurn({ role: "planner", reply: first.value, source: first.source });
+    office.recordShareTurn({ role: "user", text: "도시 이름만 알면 누구나 볼 수 있습니다." });
+    const second = await plannerReply(noKey, office);
+    expect(second.value).toMatchObject({ question_basis: "ux_guide", basis_ref: "W3C 오류·성공 알림 가이드" });
+    expect(second.value.question).toContain("실패");
+  });
+
+  it("역할 지침에 질문 목적·소재와 '실제 경험담처럼 말하지 않는다'가 들어 있고, 스키마가 근거 필드를 요구한다", async () => {
+    const { PLANNER_SCHEMA } = await import("./prompts");
+    const system = plannerSystem(3, 0);
+    expect(system).toContain("사용자 안내 초안·화면 흐름·출시 범위를 결정하고 책임진다");
+    expect(system).toContain("실제 기획자의 경험담이나 실제 사례처럼 말하지 않는다");
+    expect(PLANNER_SCHEMA.required).toEqual(expect.arrayContaining(["question_basis", "basis_ref"]));
   });
 });

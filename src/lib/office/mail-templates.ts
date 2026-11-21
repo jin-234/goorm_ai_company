@@ -8,11 +8,9 @@ import {
   type Mail,
   newMail,
   TASK_OUTCOME_LABEL,
-  type WeeklyReport,
   type WorkTask,
-  weeklyBodyText,
 } from "./models";
-import { type DayKey, type Instant, Clock, isFriday, koreanShort, weekLabel } from "./time";
+import { type DayKey, type Instant, Clock, koreanShort } from "./time";
 
 const join = (lines: string[]) => lines.join("\n");
 
@@ -31,7 +29,7 @@ export const MailTemplates = {
       "1. 출근 버튼으로 활동을 시작합니다.",
       `2. 아침보고에서 ${Cast.managerName} 팀장(AI)과 오늘 끝낼 작은 범위와 완료 기준을 정합니다.`,
       "3. 수행하고 결과물(글·코드·링크)을 제출합니다.",
-      `4. ${Cast.plannerTeam} ${Cast.plannerName}(AI)에게 오늘 한 일을 설명합니다.`,
+      `4. 회의실에서 오늘 한 일을 발표합니다. ${Cast.plannerTeam}·디자인팀 담당자(AI)가 듣고, ${Cast.plannerName}(AI)이 필요한 것을 묻습니다.`,
       "5. 하루 마감에서 요약을 확인·수정하고 다음 행동을 정합니다.",
       "",
       "미완료는 범위 조정·다음 활동일 이월·오늘 종료 중에서 고르며, 사유 입력은 선택입니다.",
@@ -55,7 +53,6 @@ export const MailTemplates = {
       lines.push("", `지난 활동일에서 이월한 과제 ${carried.length}건이 오늘 목록에 함께 들어갑니다.`);
       for (const t of carried) lines.push(`· ${t.title} (이월 ${t.carryCount}회)`);
     }
-    if (isFriday(day)) lines.push("", "오늘은 금요일입니다. 마감 뒤 주간보고서를 쓸 수 있습니다.");
     return newMail({ sentAt: at, from: "manager", to: "me", kind: "notice", subject: `[공지] ${koreanShort(day)} 활동 안내`, body: join(lines) });
   },
 
@@ -85,15 +82,4 @@ export const MailTemplates = {
     return newMail({ sentAt: at, from: "manager", to: "me", kind: "dayClosed", subject: `[업무] ${koreanShort(day)} 마감 확인`, body: join(lines) });
   },
 
-  weeklyReport(name: string, report: WeeklyReport, day: DayKey, at: Instant): Mail {
-    return newMail({
-      sentAt: at,
-      from: "me",
-      to: "manager",
-      kind: "weeklyReport",
-      subject: `[주간보고] ${weekLabel(day)} · ${name}`,
-      body: weeklyBodyText(report) + `\n\n${name} 드림`,
-      isRead: true,
-    });
-  },
 };
