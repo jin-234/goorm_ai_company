@@ -5,10 +5,10 @@
  *
  * 관리 강도(참여자가 고름, 기본 보통):
  * - 가볍게: 단계는 사용자 행동으로만 넘어간다. 지각·착석 확인·추가근무가 없다.
- * - 보통: 출근 시각으로 지각·결근 후보를 기록하고(지각비 예상액), 근무 중 착석을 확인한다.
+ * - 보통: 출근 시각으로 지각·결근 후보를 기록하고, 근무 중 착석을 확인한다.
  *   마감 시각에 퇴근 점검을 하고 2·3단계 과제가 남으면 저녁시간 → 추가근무(3시간) → 추가근무 점검으로 넘어간다.
  * - 엄격: 보통에 더해 허용 밖 자리 비움을 짧아도 기록·경고하고, 마감 시각 전 마감에 사유를 받는다.
- * 놓친 날 복귀: 미리 알린 쉬는 날은 세지 않고, 돌아온 날은 지각으로 세지 않으며, 연속 출근하면 점수를 덜어 준다.
+ * 놓친 날 복귀: 미리 알린 쉬는 날은 세지 않고, 돌아온 날은 지각으로 세지 않는다.
  *
  * 화면·네트워크와 무관한 순수 로직이라 그대로 시험할 수 있다.
  * 상태는 `toJSON()`으로 꺼내 저장하고 `Office.fromJSON()`으로 되살린다(새로고침 후 복원).
@@ -52,7 +52,6 @@ import {
   type EnforcementInfo,
   type EnforcementLevel,
   isEnforcementLevel,
-  LateFee,
   type MonthStats,
   OfficeError,
   WorkRules,
@@ -305,37 +304,20 @@ export class Office implements OfficeState {
 
   // MARK: 근태 집계
 
-  /** 이번 달 지각·결근 후보와 지각비 예상액. 연속 출근으로 점수를 덜어 준다. */
+  /** 이번 달 지각·결근 후보 횟수. */
   get monthStats(): MonthStats {
     const inMonth = (d: DayKey) => d.year === this.today.year && d.month === this.today.month;
     const days = [
       ...this.history.filter((r) => inMonth(r.date) && !sameDay(r.date, this.today)),
-      { date: this.today, checkInAt: this.day.checkInAt, isLate: this.day.isLate, absentCandidate: this.day.absentCandidate, dayOff: this.day.dayOff, level: this.level },
-    ].sort((a, b) => at(a.date, 0) - at(b.date, 0));
+      { checkInAt: this.day.checkInAt, isLate: this.day.isLate, absentCandidate: this.day.absentCandidate },
+    ];
     let late = 0;
     let absent = 0;
-    let recovered = 0;
-    let streak = 0;
-    const raw = () => late * LateFee.pointsPerLate + absent * LateFee.pointsPerAbsence;
     for (const d of days) {
-      if (d.absentCandidate) {
-        absent++;
-        streak = 0;
-      } else if (d.checkInAt != null) {
-        if (d.isLate) {
-          late++;
-          streak = 0;
-        } else if (d.level && ENFORCEMENT[d.level].attendance) {
-          streak++;
-          if (streak >= WorkRules.recoveryStreak) {
-            streak = 0;
-            if (raw() - recovered > 0) recovered++;
-          }
-        }
-      }
+      if (d.absentCandidate) absent++;
+      else if (d.checkInAt != null && d.isLate) late++;
     }
-    const points = Math.max(0, raw() - recovered);
-    return { late, absent, recovered, points, estimatedFee: LateFee.estimateFromPoints(points) };
+    return { late, absent };
   }
 
   // MARK: 입사
@@ -395,7 +377,7 @@ export class Office implements OfficeState {
     if (this.day.returning) this.log("returned", "다시 돌아옴 · 오늘은 지각으로 세지 않음");
     if (late) {
       this.log("late", `지각 · 기준 ${Clock.hm(this.profile.activityStart)}`);
-      if (this.rules.lateFee) this.post(MailTemplates.lateRecorded(this.now, this.profile, this.monthStats, this.now));
+      if (this.rules.attendance) this.post(MailTemplates.lateRecorded(this.now, this.profile, this.monthStats, this.now));
     }
     return { checkInAt: this.now, method, late };
   }
@@ -1013,7 +995,7 @@ export class Office implements OfficeState {
   private markAbsent(time: Instant): void {
     this.day.absentCandidate = true;
     this.log("absentCandidate", "출근 기록 없음 · 결근 후보", undefined, time);
-    if (this.rules.lateFee) this.post(MailTemplates.absentCandidate(this.day.date, this.profile, this.monthStats, time));
+    if (this.rules.attendance) this.post(MailTemplates.absentCandidate(this.day.date, this.profile, this.monthStats, time));
   }
 
   // MARK: 다음 활동일

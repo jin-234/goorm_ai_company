@@ -167,7 +167,7 @@ describe("행동 API로 하루 보내기", () => {
     expect(view.mail.unreadCount).toBe(2);
     expect("weekly" in view).toBe(false);
     expect(JSON.parse(JSON.stringify(view)).profile.name).toBe("김서울");
-    expect(view.attendance.month).toMatchObject({ late: 0, absent: 0, points: 0, estimatedFee: 0 });
+    expect(view.attendance.month).toEqual({ late: 0, absent: 0 });
     expect(JSON.stringify(view)).not.toMatch(/submitWeekly|jumpToFriday/);
   });
 });
