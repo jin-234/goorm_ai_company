@@ -86,15 +86,17 @@ function shotPosition(shot: (typeof SHOTS)[Focus]) {
 
 export function Office3D({ view, onPlace, speed = 1, focus: initialFocus = "overview", onEntranceEnd, onLeaveEnd, className, style }: Office3DProps) {
   const [focus, setFocus] = useState<Focus>(initialFocus);
+  // 이름표(drei Html)를 붙일 곳을 고정한다. 지정하지 않으면 이벤트 연결 시점에 붙일 곳이 바뀌어 이름표마다 root를 다시 만든다.
+  const host = useRef<HTMLDivElement>(null);
   useEffect(() => setFocus(initialFocus), [initialFocus]);
   const handle = (place: ClickPlace) => {
     setFocus(place);
     if (place === "door" || place === "desk" || place === "manager" || place === "meeting" || place === "share") onPlace?.(place);
   };
   return (
-    <div className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }} data-office3d-focus={focus}>
+    <div ref={host} className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }} data-office3d-focus={focus}>
       <Canvas shadows dpr={[1, 2]} camera={{ fov: 20, near: 2, far: 160, position: shotPosition(SHOTS.overview).toArray() }} gl={{ preserveDrawingBuffer: true, toneMapping: NeutralToneMapping, toneMappingExposure: 1.6 }}>
-        <Scene view={view} speed={speed} focus={focus} onClick={handle} onEntranceStart={() => setFocus("overview")} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} />
+        <Scene view={view} speed={speed} focus={focus} onClick={handle} onEntranceStart={() => setFocus("overview")} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} labelHost={host} />
       </Canvas>
       {focus !== "overview" && (
         <button type="button" onClick={() => setFocus("overview")} style={overviewButton}>
@@ -118,12 +120,13 @@ interface SceneProps {
   onEntranceStart: () => void;
   onEntranceEnd?: () => void;
   onLeaveEnd?: () => void;
+  labelHost: React.RefObject<HTMLDivElement | null>;
 }
 
 /** 카메라가 지금 따라갈 구도와 빠르기(클수록 빨리 붙는다). 장면이 매 프레임 정하고 CameraRig가 읽는다. */
 export type CameraAim = { shot: Focus; rate: number };
 
-function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, onLeaveEnd }: SceneProps) {
+function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, onLeaveEnd, labelHost }: SceneProps) {
   const read = readView(view);
   // 가상 시계: 서버 시각에서 실제 시간만큼 흘린다.
   const anchor = useRef({ base: read.now, at: typeof performance === "undefined" ? 0 : performance.now() });
@@ -269,7 +272,8 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       <CameraRig aim={aim} />
       <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} myTasks={myTasks} onClick={onClick} />
       <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : id === "planner" ? onClick("share") : undefined)} />
-      {!cinematic && <Labels onClick={onClick} />}
+      {/* 이름표는 늘 붙여 두고 연출 중엔 감추기만 한다. 지웠다 다시 만들면 drei Html이 렌더 도중 떼어져 React 경고가 난다. */}
+      <Labels onClick={onClick} hidden={cinematic} host={labelHost} />
     </>
   );
 }
@@ -397,12 +401,12 @@ const LABELS: { text: string; at: [number, number, number]; place: ClickPlace }[
   { text: "팀장 자리", at: [4.5, 1.75, 1.0], place: "manager" },
 ];
 
-function Labels({ onClick }: { onClick: (p: ClickPlace) => void }) {
+function Labels({ onClick, hidden, host }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null> }) {
   return (
     <>
       {LABELS.map((l) => (
-        <Html key={l.text} position={l.at} center zIndexRange={[10, 0]}>
-          <button type="button" style={labelStyle} onClick={() => onClick(l.place)}>
+        <Html key={l.place} portal={host as React.MutableRefObject<HTMLElement>} position={l.at} center zIndexRange={[10, 0]} style={{ visibility: hidden ? "hidden" : "visible" }}>
+          <button type="button" style={labelStyle} onClick={() => onClick(l.place)} tabIndex={hidden ? -1 : 0} aria-hidden={hidden}>
             {l.text}
           </button>
         </Html>
