@@ -11,7 +11,7 @@ import { plannerReplyOf, reviewOf } from "@/lib/server/actions";
 import { SolarClient, SolarError } from "@/lib/solar/client";
 import {
   type ColleagueRoleId, leaderSystem, PLANNER_SCHEMA, PLANNER_SCHEMA_NAME, plannerSystem, PROPOSAL_SCHEMA, PROPOSAL_SCHEMA_NAME,
-  REVIEW_SCHEMA, REVIEW_SCHEMA_NAME, ROLES, reviewSystem, SKIP_MESSAGE,
+  MEETING, REVIEW_SCHEMA, REVIEW_SCHEMA_NAME, ROLES, reviewSystem, SKIP_MESSAGE,
 } from "./prompts";
 
 export type Source = "solar" | "sample" | "manual";
@@ -83,6 +83,12 @@ function plannerContext(office: Office, roleId: ColleagueRoleId = "planner") {
   const day = office.day;
   return {
     activity_type: activityTypeOf(day.submissions),
+    meeting: {
+      place: MEETING.place,
+      format: "개발팀 직원의 발표를 듣고 질문한다",
+      attendees: [...MEETING.askers, ...MEETING.listeners].map((id) => ROLES[id].department),
+      asking_role: ROLES[roleId].department,
+    },
     user_profile: { target_role: office.profile.targetRole, experience: clip(office.profile.experience ?? "", 300) },
     daily_goal: day.goal,
     tasks: day.tasks.map((t) => ({ title: t.title, completion_criteria: t.completionCriteria, share_form: t.shareForm, status: t.status })),
@@ -164,6 +170,8 @@ export function guardPlannerReply(raw: PlannerReply, ctx: { turns: ShareTurn[]; 
   reply.known_facts = reply.known_facts.map(stripJudgement).filter(Boolean);
   if (!question) {
     reply.question_reason = "";
+    reply.question_basis = "";
+    reply.basis_ref = "";
     reply.can_finish = true;
   }
 
@@ -211,11 +219,15 @@ export function manualPlannerReply(
   roleId: ColleagueRoleId = "planner",
 ): PlannerReply {
   const questions = ROLES[roleId].manualQuestions;
-  const next = ctx.questionCount < Math.min(ctx.maxQuestions, questions.length) ? questions[ctx.questionCount] : "";
+  const index = ctx.questionCount;
+  const next = index < Math.min(ctx.maxQuestions, questions.length) ? questions[index] : "";
+  const basis = next ? ROLES[roleId].manualBasis[index] : null;
   return {
     acknowledgement: "",
     question: next,
     question_reason: next ? "사용자 안내 초안에 들어갈 항목입니다(정해진 양식)." : "",
+    question_basis: basis?.basis ?? "",
+    basis_ref: basis?.ref ?? "",
     known_facts: ctx.knownFacts,
     open_questions: ctx.openQuestions,
     evidence_refs: [],
@@ -299,9 +311,11 @@ export function samplePlannerReply(office: Office, roleId: ColleagueRoleId = "pl
   const last = users[users.length - 1]?.t.text?.trim() ?? "";
   const skipped = last === SKIP_MESSAGE;
 
-  const pool = ROLES[roleId].manualQuestions.filter((q) => !isRepeatQuestion(q, asked));
+  const role = ROLES[roleId];
+  const pool = role.manualQuestions.map((q, i) => ({ q, ...role.manualBasis[i] })).filter(({ q }) => !isRepeatQuestion(q, asked));
   const limit = Math.min(SAMPLE_QUESTIONS, share.maxQuestions);
-  const question = asked.length < limit ? (pool[0] ?? "") : "";
+  const pick = asked.length < limit ? pool[0] : undefined;
+  const question = pick?.q ?? "";
   const learningOnly = activityTypeOf(office.day.submissions) === "learning_only";
 
   return {
@@ -316,8 +330,10 @@ export function samplePlannerReply(office: Office, roleId: ColleagueRoleId = "pl
         ? "안내 초안에 필요해서요. 직접 만든 기능이 아니면 가상으로 적용한다고 생각하고 답해 주셔도 됩니다."
         : "사용자 안내 초안에 이 내용이 들어가야 해서요."
       : "",
+    question_basis: pick?.basis ?? "",
+    basis_ref: pick?.ref ?? "",
     known_facts: said.map(({ t }) => snippet(t.text ?? "", 60)),
-    open_questions: [...share.openQuestions, ...(question ? [] : pool.slice(0, 1))].filter((q, i, a) => a.indexOf(q) === i),
+    open_questions: [...share.openQuestions, ...(question ? [] : pool.slice(0, 1).map((p) => p.q))].filter((q, i, a) => a.indexOf(q) === i),
     evidence_refs: said.map(({ ref }) => ref),
     can_finish: !question,
   };

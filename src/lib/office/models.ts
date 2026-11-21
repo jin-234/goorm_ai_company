@@ -1,8 +1,8 @@
 /**
  * VISION COMPANY 데이터 모델(개정 기획서 4.5).
- * 근태·통제 대신 실행·설명·기록을 남긴다. 카메라·지각·강제 추가근무는 없다.
+ * 실행·설명·기록이 중심이고, 지각·착석 확인·추가근무는 참여자가 고른 관리 강도에 따라서만 켜진다.
  */
-import { WorkRules } from "./rules";
+import { DEFAULT_ENFORCEMENT, type EnforcementLevel, WorkRules } from "./rules";
 import type { DayKey, Instant } from "./time";
 
 /** 저장 상태의 형식 번호. 형식이 바뀌면 옛 상태는 버리고 새로 시작한다. */
@@ -20,6 +20,8 @@ export interface EmployeeProfile {
   activityStart: number;
   /** 사용자가 정한 활동 마감 시각(자정 기준 분). 지나면 '마감할 때'라고 안내만 한다. */
   activityEnd: number;
+  /** 관리 강도. 입사 때 고르고 설정에서 언제든 바꾼다. */
+  enforcement: EnforcementLevel;
 }
 
 export function defaultProfile(name = "김서울"): EmployeeProfile {
@@ -29,24 +31,74 @@ export function defaultProfile(name = "김서울"): EmployeeProfile {
     experience: "",
     activityStart: WorkRules.defaultActivityStart,
     activityEnd: WorkRules.defaultActivityEnd,
+    enforcement: DEFAULT_ENFORCEMENT,
   };
 }
 
 // MARK: 하루의 단계
 
-/** 단계는 사용자 행동으로만 넘어간다. 시각에 따른 강제 이동은 없다. */
-export type Phase = "beforeCheckIn" | "morningPT" | "working" | "sharing" | "checkoutReview" | "off";
+/**
+ * 가볍게: 단계는 사용자 행동으로만 넘어간다.
+ * 보통·엄격: 마감 시각이 되면 퇴근 점검(checkout)으로, 2·3단계가 남으면 저녁시간 → 추가근무 → 추가근무 점검으로 시각에 따라 넘어간다.
+ * 퇴근 점검·추가근무가 끝나면 수행(working)으로 돌아와 회의실 발표와 하루 마감을 한다.
+ */
+export type Phase =
+  | "beforeCheckIn"
+  | "morningPT"
+  | "working"
+  | "checkout"
+  | "dinner"
+  | "overtime"
+  | "overtimeReview"
+  | "sharing"
+  | "checkoutReview"
+  | "off";
 
-export const PHASES: Phase[] = ["beforeCheckIn", "morningPT", "working", "sharing", "checkoutReview", "off"];
+export const PHASES: Phase[] = ["beforeCheckIn", "morningPT", "working", "checkout", "dinner", "overtime", "overtimeReview", "sharing", "checkoutReview", "off"];
 
 export const PHASE_LABEL: Record<Phase, string> = {
   beforeCheckIn: "출근 전",
   morningPT: "아침보고",
   working: "수행 중",
-  sharing: "기획팀 공유",
+  checkout: "퇴근 점검",
+  dinner: "저녁시간",
+  overtime: "추가근무",
+  overtimeReview: "추가근무 점검",
+  sharing: "회의실 발표",
   checkoutReview: "하루 마감",
   off: "마감 완료",
 };
+
+// MARK: 근태(보통·엄격)
+
+export type AllowanceKind = "lunch" | "away" | "dinner";
+export const ALLOWANCE_LABEL: Record<AllowanceKind, string> = { lunch: "점심", away: "자리 비움", dinner: "저녁시간" };
+
+/** 착석 확인을 쉬는 허용 시간. */
+export interface Allowance {
+  id: string;
+  kind: AllowanceKind;
+  reason: string;
+  start: Instant;
+  end: Instant;
+  /** 실제로 끝난 시각(일찍 복귀하면 end보다 이르다). */
+  endedAt: Instant | null;
+}
+
+/** 자리 상태. 지금은 버튼으로 알리고, 카메라 판정은 브라우저 안에서 같은 값을 보낸다. 영상은 서버로 오지 않는다. */
+export type PresenceState = "present" | "absent" | "cameraOff" | "unknown";
+export const PRESENCE_STATES: PresenceState[] = ["present", "absent", "cameraOff", "unknown"];
+
+/** 허용 시간 밖 자리 비움, 또는 카메라가 꺼져 있던 구간. */
+export interface AwaySpan {
+  id: string;
+  kind: "unauthorized" | "cameraOff";
+  start: Instant;
+  end: Instant | null;
+}
+
+/** 추가근무 결과. completed = 다 끝냄, ranToEnd = 종료 시각까지 함, abandoned = 일찍 그만둠(보충근무 미이행), lowered = 강도를 낮춰 끝냄. */
+export type OvertimeOutcome = "completed" | "ranToEnd" | "abandoned" | "lowered";
 
 // MARK: 과제(Task)
 
@@ -75,6 +127,8 @@ export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
 export interface WorkTask {
   id: string;
   title: string;
+  /** 중요도(보통·엄격). 가볍게에서는 1로 둔다. 2·3단계가 마감 시각에 남으면 추가근무 대상이다. */
+  level: TaskLevel;
   /** 완료 기준. 무엇이 되면 끝인지. */
   completionCriteria: string;
   /** 공유 형태. 예: 화면 캡처와 3줄 설명 */
@@ -96,6 +150,8 @@ export interface TaskInput {
   title: string;
   completionCriteria: string;
   shareForm: string;
+  /** 중요도. 보통·엄격에서는 꼭 정한다. */
+  level?: TaskLevel | null;
 }
 
 export function newTask(fields: TaskInput & Partial<WorkTask> & { confirmedAt: Instant }): WorkTask {
@@ -108,6 +164,7 @@ export function newTask(fields: TaskInput & Partial<WorkTask> & { confirmedAt: I
     outcome: null,
     outcomeReason: "",
     ...fields,
+    level: fields.level ?? 1,
   };
 }
 
@@ -133,9 +190,21 @@ export interface Submission {
 
 export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
 
-// MARK: 기획팀 공유(ReportTurn)
+// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀 담당자 1명씩이 듣고, 기획자가 질문한다
 
 export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
+
+/**
+ * 기획자 질문의 근거 종류(사용자 원칙 2026-11-21).
+ * - role_need: 기획자가 결정·책임지는 일(사용자 안내·화면 흐름·출시 범위)에 필요한 정보. 질문의 목적.
+ * - ux_guide: 공개 UX·접근성 가이드로 구성한 시나리오(빈 화면·오류·로딩·입력처럼 놓치기 쉬운 상황). 질문의 소재.
+ * - collected_case: 현직자 인터뷰 등에서 실제로 수집한 사례. 현실성 검증용.
+ * 가이드로 만든 질문을 '실제 기획자가 했던 질문'으로 포장하지 않는다.
+ */
+export type QuestionBasis = "role_need" | "ux_guide" | "collected_case";
+export const QUESTION_BASES: QuestionBasis[] = ["role_need", "ux_guide", "collected_case"];
+/** 수집한 인터뷰 사례 데이터가 아직 없다. 생기기 전까지 collected_case는 ux_guide로 낮춘다(실제 사례인 척 방지). */
+export const COLLECTED_CASES_AVAILABLE = false;
 
 /** AI 기획자 응답(개정 기획서 4.3 E). */
 export interface PlannerReply {
@@ -143,6 +212,10 @@ export interface PlannerReply {
   /** 질문이 필요 없거나 끝낼 때는 빈 문자열. */
   question: string;
   question_reason: string;
+  /** 질문의 근거 종류. question이 비면 "". */
+  question_basis: QuestionBasis | "";
+  /** 근거 출처 이름(예: "W3C 오류·성공 알림 가이드"). 없거나 question이 비면 "". */
+  basis_ref: string;
   known_facts: string[];
   open_questions: string[];
   evidence_refs: string[];
@@ -259,8 +332,27 @@ export type ActivityEventKind =
   | "endToday"
   | "adjust"
   | "timeSkip"
-  | "weeklyReport"
-  | "note";
+  | "note"
+  | "enforcement"
+  | "late"
+  | "absentCandidate"
+  | "dayOff"
+  | "lowered"
+  | "returned"
+  | "lunchStart"
+  | "lunchEnd"
+  | "awayStart"
+  | "awayEnd"
+  | "unauthorizedAwayStart"
+  | "unauthorizedAwayEnd"
+  | "cameraOff"
+  | "cameraOn"
+  | "checkout"
+  | "earlyLeave"
+  | "dinnerStart"
+  | "overtimeStart"
+  | "overtimeEnd"
+  | "supplementMissed";
 
 export interface ActivityEvent {
   id: string;
@@ -273,10 +365,19 @@ export interface ActivityEvent {
 
 // MARK: 오늘(DailySession)
 
+/**
+ * 출근 방식. 출입문에서 카메라로 자리에 앉은 얼굴을 확인했는지(camera), 카메라 없이 출근했는지(noCamera).
+ * 기록만 하고 규칙·점수에 쓰지 않는다. 카메라 미사용은 불이익이 없다(개정 기획서 5장).
+ */
+export type CheckInMethod = "camera" | "noCamera";
+export const CHECK_IN_METHODS: CheckInMethod[] = ["camera", "noCamera"];
+
 export interface WorkDay {
   date: DayKey;
   phase: Phase;
   checkInAt: Instant | null;
+  /** 출근 방식. 옛 저장 상태나 방식을 보내지 않은 출근은 null. */
+  checkInMethod?: CheckInMethod | null;
   /** 아침보고에 쓴 오늘 목표 원문. */
   goal: string;
   tasks: WorkTask[];
@@ -286,7 +387,64 @@ export interface WorkDay {
   review: DayReview;
   events: ActivityEvent[];
   closedAt: Instant | null;
-  weeklySubmitted: boolean;
+
+  // 근태(보통·엄격). 가볍게에서는 비어 있다.
+  /** 이 날 적용하는 강도(오늘만 낮추기를 반영하기 전). 출근할 때 정해진다. */
+  level: EnforcementLevel | null;
+  /** 오늘만 한 단계 낮췄는지. 다음 활동일에는 원래 강도로 돌아간다. */
+  lowered: boolean;
+  /** 쉰 날 다음에 돌아온 날. 이 날은 지각으로 세지 않는다. */
+  returning: boolean;
+  /** 미리 알린 쉬는 날. 결근 후보로 세지 않는다. */
+  dayOff: boolean;
+  isLate: boolean;
+  absentCandidate: boolean;
+  presence: PresenceState;
+  allowances: Allowance[];
+  lunchUsed: boolean;
+  awaySpans: AwaySpan[];
+  /** 퇴근 점검을 마친 시각. */
+  checkoutAt: Instant | null;
+  /** 마감 시각 전에 마감할 때 적은 사유(엄격). */
+  earlyLeaveReason: string;
+  overtimeTaskIds: string[];
+  overtime: OvertimeOutcome | null;
+}
+
+/** 저장된 하루에 없는 근태 칸(이전 형식)을 채울 기본값. */
+export function attendanceDefaults(): Pick<
+  WorkDay,
+  | "level"
+  | "lowered"
+  | "returning"
+  | "dayOff"
+  | "isLate"
+  | "absentCandidate"
+  | "presence"
+  | "allowances"
+  | "lunchUsed"
+  | "awaySpans"
+  | "checkoutAt"
+  | "earlyLeaveReason"
+  | "overtimeTaskIds"
+  | "overtime"
+> {
+  return {
+    level: null,
+    lowered: false,
+    returning: false,
+    dayOff: false,
+    isLate: false,
+    absentCandidate: false,
+    presence: "unknown",
+    allowances: [],
+    lunchUsed: false,
+    awaySpans: [],
+    checkoutAt: null,
+    earlyLeaveReason: "",
+    overtimeTaskIds: [],
+    overtime: null,
+  };
 }
 
 export function newWorkDay(date: DayKey): WorkDay {
@@ -294,6 +452,7 @@ export function newWorkDay(date: DayKey): WorkDay {
     date,
     phase: "beforeCheckIn",
     checkInAt: null,
+    checkInMethod: null,
     goal: "",
     tasks: [],
     confirmedAt: null,
@@ -302,14 +461,17 @@ export function newWorkDay(date: DayKey): WorkDay {
     review: newDayReview(),
     events: [],
     closedAt: null,
-    weeklySubmitted: false,
+    ...attendanceDefaults(),
   };
 }
 
-/** 지난 활동일 기록. 출근하지 않은 날(휴식일)은 남기지 않는다. */
+/**
+ * 지난 활동일 기록. 출근한 날, 그리고 근태 집계에 필요한 날(결근 후보·미리 알린 쉬는 날)을 남긴다.
+ * 가볍게에서 출근하지 않은 날은 남기지 않는다.
+ */
 export interface DayRecord {
   date: DayKey;
-  checkInAt: Instant;
+  checkInAt: Instant | null;
   closedAt: Instant | null;
   goal: string;
   tasks: WorkTask[];
@@ -318,13 +480,32 @@ export interface DayRecord {
   review: Review | null;
   /** 활동 인정 기준 초안: 제출물 또는 공유 설명이 있고 마감을 확정한 날. */
   counted: boolean;
+  /** 이 날 실제로 적용한 강도(오늘만 낮추기 반영). 옛 기록은 없을 수 있다. */
+  level?: EnforcementLevel | null;
+  isLate?: boolean;
+  absentCandidate?: boolean;
+  dayOff?: boolean;
+  overtime?: OvertimeOutcome | null;
+  /** 허용 밖 자리 비움 합계(분). */
+  unauthorizedAwayMinutes?: number;
 }
 
 // MARK: 사내 메일
 
 export type MailParty = "me" | "manager" | "hr";
 
-export type MailKind = "welcome" | "notice" | "tasksConfirmed" | "dayClosed" | "weeklyReport" | "weeklyFeedback";
+export type MailKind =
+  | "welcome"
+  | "notice"
+  | "tasksConfirmed"
+  | "dayClosed"
+  | "attendance"
+  | "lunchRequest"
+  | "lunchApproval"
+  | "overtimeAssigned"
+  | "overtimeResult"
+  | "supplementMissed"
+  | "returnWelcome";
 
 export function mailTag(kind: MailKind): string {
   switch (kind) {
@@ -335,10 +516,15 @@ export function mailTag(kind: MailKind): string {
     case "tasksConfirmed":
     case "dayClosed":
       return "업무";
-    case "weeklyReport":
-      return "주간보고";
-    case "weeklyFeedback":
-      return "주간 피드백";
+    case "attendance":
+    case "lunchRequest":
+    case "lunchApproval":
+    case "overtimeAssigned":
+    case "overtimeResult":
+    case "supplementMissed":
+      return "근태";
+    case "returnWelcome":
+      return "안내";
   }
 }
 
@@ -387,49 +573,18 @@ export function partyName(party: MailParty, myName: string): string {
   }
 }
 
-// MARK: 주간보고
-
-export interface WeeklyReport {
-  id: string;
-  weekOf: DayKey;
-  submittedAt: Instant | null;
-  completed: string;
-  incomplete: string;
-  nextGoals: string;
-  replyMailId: string | null;
-}
-
-export function newWeeklyReport(weekOf: DayKey, fields: Partial<WeeklyReport> = {}): WeeklyReport {
-  return { id: crypto.randomUUID(), weekOf, submittedAt: null, completed: "", incomplete: "", nextGoals: "", replyMailId: null, ...fields };
-}
-
-export function missingSections(r: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): string[] {
-  const missing: string[] = [];
-  if (!r.completed.trim()) missing.push("이번 주 완료한 업무와 결과물");
-  if (!r.incomplete.trim()) missing.push("미완료 업무와 이유");
-  if (!r.nextGoals.trim()) missing.push("다음 주 목표");
-  return missing;
-}
-
-export function weeklyBodyText(r: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): string {
-  return [
-    "1. 이번 주 완료한 업무와 결과물",
-    r.completed.trim(),
-    "",
-    "2. 미완료 업무와 이유",
-    r.incomplete.trim(),
-    "",
-    "3. 다음 주 목표",
-    r.nextGoals.trim(),
-  ].join("\n");
-}
-
 // MARK: 옛 아침 PT 초안(전사문 → 업무 목록)
 // pt-parser와 Solar checklist가 아직 이 모양을 쓴다. 새 흐름의 과제는 위 TaskInput이다.
 
-/** @deprecated 옛 업무 중요도. 새 흐름에서는 쓰지 않는다. */
+/** 과제 중요도(보통·엄격). 3단계가 가장 중요하다. 2·3단계가 마감 시각에 남으면 추가근무 대상이다. */
 export type TaskLevel = 1 | 2 | 3;
+export const TASK_LEVELS: TaskLevel[] = [1, 2, 3];
 export const isTaskLevel = (value: unknown): value is TaskLevel => value === 1 || value === 2 || value === 3;
+export const TASK_LEVEL_LABEL: Record<TaskLevel, string> = {
+  1: "1단계 · 남으면 이월",
+  2: "2단계 · 남으면 추가근무",
+  3: "3단계 · 추가근무 때 먼저",
+};
 
 /** @deprecated 옛 아침 PT 초안 한 줄. */
 export interface TaskDraft {

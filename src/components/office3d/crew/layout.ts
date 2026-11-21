@@ -42,16 +42,15 @@ export const ROOM = {
 } as const;
 
 export const DOOR_X = (ROOM.doorX0 + ROOM.doorX1) / 2;
-/** 기획팀 책상 가운데 x. */
-export const PLANNER_X = 5.2;
+
 
 /** 통로. 사람은 늘 통로를 따라 걷는다. */
 export const AISLE = { front: 2.85, back: -0.85 } as const;
 /** 두 통로를 잇는 세로길(섬 왼쪽, 팀장 자리 오른쪽). */
 export const COLUMNS = [-2.15, 5.3] as const;
 
-/** 자리 주인. planner는 서비스 기획팀(타 부서)의 AI 기획자. */
-export type SeatId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner";
+/** 자리 주인(개발팀). 타 부서 손님(AI 기획자·AI 디자이너)은 자리가 없고 공유할 때만 회의실에 온다(crew/share.ts). */
+export type SeatId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me";
 
 export interface Seat {
   /** 의자(앉은 사람) 위치. */
@@ -99,13 +98,6 @@ export const SEATS: Record<SeatId, Seat> = {
     chair: [1.2, -3.9], facing: [0, 1], deskOffset: 0.72, deskWidth: 2.05, deskDepth: 0.95,
     stand: [2.65, -3.9], aisle: "back", monitorShift: 0,
   },
-  // 서비스 기획팀: 앞 오른쪽 구석. 기획자는 방 쪽(−Z)을 보고 앉고, 나는 앞 통로 쪽에서 책상 너머로 설명한다.
-  planner: {
-    chair: [PLANNER_X, 4.3], facing: [0, -1], deskOffset: 0.6, deskWidth: 1.4, deskDepth: 0.75,
-    // 모니터는 기획자 왼편(창 반대쪽)으로 비켜 둔다. 가운데 두면 설명하는 나와 기획자 사이를 가린다.
-    // 일어서면 책상 왼쪽(방 쪽)으로 나온다. 오른쪽 모서리는 큰 화분 자리.
-    stand: [PLANNER_X - 0.95, 4.3], aisle: "front", monitorShift: -0.45,
-  },
 };
 
 /** 앉은 사람의 오른쪽(단위 벡터). 앞이 (fx, fz)면 오른쪽은 (−fz, fx). */
@@ -136,7 +128,7 @@ export function deskSpots(seat: Seat) {
 }
 
 /** 사람이 가는 곳(자리 말고). */
-export type Spot = "coffee" | "water" | "restroom" | "window" | "outside" | "meeting" | "door" | "fridge" | "microwave" | "snack" | "share";
+export type Spot = "coffee" | "water" | "restroom" | "window" | "outside" | "meeting" | "door" | "fridge" | "microwave" | "snack";
 
 export interface SpotInfo {
   aisle: keyof typeof AISLE;
@@ -161,8 +153,6 @@ export const SPOTS: Record<Spot, SpotInfo> = {
   door: { aisle: "front", x: DOOR_X, points: [[DOOR_X, ROOM.halfDepth - 1.1]], facing: [0, 1] },
   // 드나드는 동료는 문 왼쪽 반을 쓴다(출근 전 나는 문 오른쪽 사원증 단말기 앞에 서 있다).
   outside: { aisle: "front", x: DOOR_X, points: [[DOOR_X, ROOM.halfDepth - 1.1], [DOOR_X - 0.3, ROOM.halfDepth - 0.4], [DOOR_X - 0.3, ROOM.halfDepth + 1.6]], facing: [0, 1] },
-  // 기획팀 책상 앞(통로 쪽). 기획자를 보고 서서 오늘 한 일을 설명한다.
-  share: { aisle: "front", x: PLANNER_X + 0.15, points: [[PLANNER_X + 0.15, 3.0]], facing: [0, 1] },
   meeting: { aisle: "back", x: (ROOM.meetingDoorX0 + ROOM.meetingDoorX1) / 2, points: [[(ROOM.meetingDoorX0 + ROOM.meetingDoorX1) / 2, ROOM.meetingZ1 - 0.5]], facing: [-1, 0] },
 };
 
@@ -177,6 +167,13 @@ export const BADGE_READER_FACE_Z = BADGE_READER[2] + 0.0175;
 export const OUTSIDE_MAT: Vec2 = [BADGE_READER[0] - 0.15, BADGE_READER_FACE_Z + 0.22];
 
 /** 회의실 탁자와 의자. */
+/** 회의실 출입구 바로 안. */
+export const MEETING_DOOR_IN: Vec2 = [(ROOM.meetingDoorX0 + ROOM.meetingDoorX1) / 2, ROOM.meetingZ1 - 0.5];
+/** 회의실 안 탁자 앞 가로길 z(의자 줄보다 문 쪽). 사람은 여기를 따라 옆으로 간 뒤 의자·발표 자리로 들어간다. */
+export const MEETING_LANE_Z = ROOM.meetingZ1 - 0.55;
+/** 발표 자리로 가는 왼벽 쪽 세로길 x(탁자·의자와 떨어진 곳). */
+export const MEETING_SIDE_X = -6.35;
+
 export const MEETING = {
   /** 탁자 가운데와 크기(가로 x, 세로 z). */
   table: [-4.75, -3.3] as Vec2,
@@ -258,7 +255,6 @@ export const headingOf = (f: Vec2) => Math.atan2(-f[0], -f[1]);
 export const BLOCKERS: { name: string; box: [number, number, number, number] }[] = [
   { name: "섬 책상", box: [ix[2] - ROOM.islandDeskWidth / 2, ROOM.islandZ - ROOM.islandDeskDepth, ix[0] + ROOM.islandDeskWidth / 2, ROOM.islandZ + ROOM.islandDeskDepth] },
   { name: "팀장 책상", box: [4.2 - 0.72 - 0.43, ROOM.islandZ - 0.85, 4.2 - 0.72 + 0.43, ROOM.islandZ + 0.85] },
-  { name: "기획팀 책상", box: [PLANNER_X - 0.7, 4.3 - 0.6 - 0.375, PLANNER_X + 0.7, 4.3 - 0.6 + 0.375] },
   { name: "부장 책상", box: [1.2 - 1.03, -3.9 + 0.72 - 0.48, 1.2 + 1.03, -3.9 + 0.72 + 0.48] },
   { name: "회의실 앞 유리벽(왼쪽)", box: [ROOM.meetingX0, ROOM.meetingZ1 - 0.05, ROOM.meetingDoorX0, ROOM.meetingZ1 + 0.05] },
   { name: "회의실 오른 유리벽", box: [ROOM.meetingX1 - 0.05, ROOM.meetingZ0, ROOM.meetingX1 + 0.05, ROOM.meetingZ1] },
@@ -293,7 +289,7 @@ const plant = (name: string, at: Vec2, height: number, scale = 1): Decor => ({ n
 
 /** 바닥 화분·나무. Room이 이 목록대로 놓고, 시험이 벽·가구·자리·걷는 길과 겹치지 않는지 본다. */
 export const DECOR: Decor[] = [
-  plant("앞 오른쪽 모서리 큰 화분", [6.4, 4.38], 1.25, 0.85),
+  plant("앞 오른쪽 모서리 큰 화분(맥 앱 자리)", [6.25, 4.25], 1.25),
   plant("뒷벽 화분(화장실 옆)", [4.3, -4.35], 1.0),
   plant("탕비실 앞 모서리 화분", [-4.25, 4.4], 0.8),
   { name: "탕비실 출입구 옆 둥근 나무", kind: "tree", at: [-2.6, 4.3], height: 1.3, scale: 1, radius: ROUND_TREE_RADIUS },
@@ -303,4 +299,20 @@ export const DECOR: Decor[] = [
 export const INTERIOR: [number, number, number, number] = [
   -ROOM.halfWidth + ROOM.thickness / 2, -ROOM.halfDepth + ROOM.thickness / 2,
   ROOM.halfWidth - ROOM.thickness / 2, ROOM.halfDepth - ROOM.thickness / 2,
+];
+
+/** 회의실 출입구 → 의자(의자 줄 앞 가로길을 따라 옆으로 간 뒤 의자로). */
+export function meetingSeatPath(chair: Vec2): Vec2[] {
+  return [MEETING_DOOR_IN, [chair[0], MEETING_LANE_Z], chair];
+}
+
+/** 회의실 출입구 → 발표 자리(왼벽 쪽으로 돌아 탁자를 피해 화면 옆으로). */
+export function presenterPath(): Vec2[] {
+  return [MEETING_DOOR_IN, [MEETING_SIDE_X, MEETING_LANE_Z], [MEETING_SIDE_X, MEETING.presenter[1]], MEETING.presenter];
+}
+
+/** 회의실 탁자(걷는 길 검사용). */
+export const MEETING_TABLE_BOX: [number, number, number, number] = [
+  MEETING.table[0] - MEETING.tableSize[0] / 2, MEETING.table[1] - MEETING.tableSize[1] / 2,
+  MEETING.table[0] + MEETING.tableSize[0] / 2, MEETING.table[1] + MEETING.tableSize[1] / 2,
 ];

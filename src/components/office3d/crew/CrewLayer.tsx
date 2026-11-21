@@ -4,17 +4,18 @@ import { useFrame } from "@react-three/fiber";
 import { memo, type MutableRefObject, useRef, useState } from "react";
 import type { Group } from "three";
 import { CREW, Person, type PersonId } from "../person";
-import type { SeatId } from "./layout";
+import { SEATS, type SeatId } from "./layout";
 import { deskHands, type Snapshot } from "./schedule";
 
-export type CrewFrame = Record<SeatId, { snapshot: Snapshot }>;
+/** 개발팀 자리 주인 + 타 부서 손님(공유할 때만). */
+export type CrewFrame = Record<string, { snapshot: Snapshot }>;
 
-const IDS: SeatId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "planner", "me"];
+const IDS: string[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "designer"];
 
 const signature = (s: Snapshot) => `${s.visible}|${s.pose}|${s.holding.cup ?? ""}|${s.holding.bag ?? ""}|${s.holding.box ?? ""}`;
 
 /** frame.current는 바깥(Office3D)이 매 프레임 채운다. */
-export function CrewLayer({ frame, onPick }: { frame: MutableRefObject<CrewFrame | null>; onPick?: (id: SeatId) => void }) {
+export function CrewLayer({ frame, onPick }: { frame: MutableRefObject<CrewFrame | null>; onPick?: (id: string) => void }) {
   return (
     <group>
       {IDS.map((id) => <Member key={id} id={id} frame={frame} onPick={onPick} />)}
@@ -22,13 +23,18 @@ export function CrewLayer({ frame, onPick }: { frame: MutableRefObject<CrewFrame
   );
 }
 
-const Member = memo(function Member({ id, frame, onPick }: { id: SeatId; frame: MutableRefObject<CrewFrame | null>; onPick?: (id: SeatId) => void }) {
+const Member = memo(function Member({ id, frame, onPick }: { id: string; frame: MutableRefObject<CrewFrame | null>; onPick?: (id: string) => void }) {
   const group = useRef<Group>(null);
   const [shown, setShown] = useState<Snapshot | null>(null);
   const last = useRef("");
   useFrame(() => {
     const s = frame.current?.[id]?.snapshot;
-    if (!s) return;
+    if (!s) {
+      // 손님은 공유할 때만 frame에 있다. 없으면 감춘다.
+      if (group.current) group.current.visible = false;
+      if (last.current !== "") { last.current = ""; setShown(null); }
+      return;
+    }
     if (group.current) {
       group.current.position.set(s.position[0], s.position[1], s.position[2]);
       group.current.rotation.y = s.heading;
@@ -44,7 +50,7 @@ const Member = memo(function Member({ id, frame, onPick }: { id: SeatId; frame: 
   return (
     <group ref={group} name={`person.${id}`} onClick={onPick ? (e) => { e.stopPropagation(); onPick(id); } : undefined}>
       {shown && shown.visible && (
-        <Person who={(id in CREW ? id : "senior") as PersonId} pose={shown.pose} holding={shown.holding} desk={seated ? deskHands(id) : undefined} />
+        <Person who={(id in CREW ? id : id === "designer" ? "planner" : "senior") as PersonId} pose={shown.pose} holding={shown.holding} desk={seated && id in SEATS ? deskHands(id as SeatId) : undefined} />
       )}
     </group>
   );

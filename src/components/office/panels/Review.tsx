@@ -28,7 +28,7 @@ const FIELDS: { key: TextField | "open_questions"; label: string; hint: string }
   { key: "reported_work", label: "오늘 한 일", hint: "내가 했다고 설명한 활동" },
   { key: "explained_learning", label: "설명한 개념·배운 내용", hint: "공유 대화에서 설명한 것" },
   { key: "artifact_observations", label: "결과물에서 확인한 것", hint: "실제로 읽은 결과물(글·코드)에서 본 것만. 링크는 읽지 않았습니다." },
-  { key: "shared_scope_and_limits", label: "기획팀에 전한 가능 범위와 제약", hint: "지금 되는 것과 아직 안 되는 것" },
+  { key: "shared_scope_and_limits", label: "발표 때 전한 가능 범위와 제약", hint: "지금 되는 것과 아직 안 되는 것" },
   { key: "open_questions", label: "아직 남은 질문", hint: "한 줄에 하나씩" },
   { key: "job_connection", label: "희망 직무와의 연결", hint: "이번 활동이 직무에서 어떤 연습이었는지. 등급·점수는 적지 않습니다." },
   { key: "next_action", label: "다음 행동 하나", hint: "다음 활동일에 가장 먼저 할 일" },
@@ -219,7 +219,7 @@ export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: O
         <div className="small muted">'오늘 한 일'과 '다음 행동 하나'는 적어야 확정할 수 있습니다.</div>
       ) : null}
       <button className="btn plain small" onClick={() => onGo("share")}>
-        기획팀 대화 다시 보기
+        회의실 발표 다시 보기
       </button>
     </div>
   );
@@ -277,16 +277,6 @@ export function DayEnd({ office, view, onGo }: { office: OfficeHandle; view: Off
             </div>
           ))}
         </Card>
-      ) : null}
-      {view.can.submitWeekly ? (
-        <Notice kind="info" title="오늘은 금요일입니다">
-          이번 주를 돌아보는 주간보고를 써 볼 수 있습니다.
-          <div style={{ marginTop: 8 }}>
-            <button className="btn secondary small" onClick={() => onGo("weekly")}>
-              주간보고서 쓰기
-            </button>
-          </div>
-        </Notice>
       ) : null}
       <button
         className="btn"

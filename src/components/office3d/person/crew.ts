@@ -6,7 +6,7 @@
  * 그래서 마실 때 자기 컵이 다른 색 컵으로 바뀌지 않는다. 흰 머그는 쓰지 않는다(종이컵·남의 컵처럼 보인다).
  */
 
-export type PersonId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner" | "courier";
+export type PersonId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner" | "designer" | "courier";
 
 export type HairStyle =
   /** 정수리 똥머리. 김서울. */
@@ -125,6 +125,13 @@ export const CREW: Record<PersonId, CrewLook> = {
     mugColor: "#E07A3F", bagColor: "#6B7F5A", bagKind: "tote", hasBadge: true, badgeY: 0.2, lanyard: "#E07A3F",
     browTilt: 2, browWeight: 1, eyeWidth: 1, rate: 1.01, phase: 3.7,
   },
+  // 타 부서 손님(디자인팀). 기획자와 함께 회의실에 와서 발표를 듣는다. 주황 사원증 줄로 개발팀과 구분한다.
+  designer: {
+    id: "designer", name: "AI 디자이너", skin: SKIN, hair: "#26222A", hairStyle: "lowTail",
+    top: "#2E2E36", pants: "#6B6670", extras: ["glasses", "notepad"],
+    mugColor: "#C9B8E8", bagColor: "#2E2E36", bagKind: "tote", hasBadge: true, badgeY: 0.21, lanyard: "#E07A3F",
+    browTilt: 0, browWeight: 0.9, eyeWidth: 1, rate: 0.99, phase: 1.1,
+  },
   courier: {
     id: "courier", name: "택배 기사", skin: "#EFC2A6", hair: "#2A2522", hairStyle: "cap",
     top: "#3E7C8C", pants: "#4A4A50", extras: ["vest"],
@@ -134,4 +141,4 @@ export const CREW: Record<PersonId, CrewLook> = {
 };
 
 /** 조직도 순서(부장, 팀장, 과장, 대리, 선배, 동기 둘, 나)와 택배 기사. */
-export const LINEUP: PersonId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "courier"];
+export const LINEUP: PersonId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "designer", "courier"];

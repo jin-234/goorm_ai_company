@@ -1,24 +1,23 @@
 /**
- * 요청 하나의 흐름: 상태 읽기 → 가상 시계 맞추기 → 규칙 실행 → 저장.
+ * 요청 하나의 흐름: 상태 읽기 → 회사 시계 맞추기 → 규칙 실행 → 저장.
  *
- * 가상 시계: 실제 시간과 같은 빠르기로 흐른다.
- * 서버는 계속 떠 있지 않으므로, 요청이 올 때 "마지막으로 맞춘 뒤 흐른 실제 시간"만큼 시계를 앞으로 보낸다.
- * 브라우저가 CLOCK_PAUSE_AFTER_MS보다 오래 요청하지 않았으면 앱을 닫아 둔 것으로 보고 그 사이 시간은 흘리지 않는다.
+ * 회사 시계: 한국 표준시(Asia/Seoul, UTC+9). 새 회사는 실제 지금 시각에서 시작하고(사용자 결정 2026-11-21),
+ * 실제 시간과 같은 빠르기로 흐른다. 서버 시간대(Vercel은 UTC)와 무관하다(epoch 밀리초 + KST 표시 함수).
+ * 저장할 때의 "회사 시각 − 실제 시각" 차이를 유지하므로, 시연의 [다음 정각]·[다음 근무일]로 건너뛴 만큼만 앞서 간다.
+ * 하루를 마감하지 않은 채 자정이 지나면 그날 23:59에서 멈추고, 다음 활동일을 시작하면 실제 오늘로 간다.
  */
 import { Office } from "../office/office";
 import { getStore, type OfficeStore } from "./store";
 
-/** 이보다 오래 요청이 없으면 시계가 멈춰 있던 것으로 본다(브라우저를 닫음). */
-export const CLOCK_PAUSE_AFTER_MS = 2 * 60 * 1000;
-
+/** 새 회사는 실제 지금 시각(한국 시각으로 표시)에서 시작한다. */
 export function newOffice(realNow = Date.now()): Office {
-  return new Office(Office.demoStart(realNow));
+  return new Office(realNow);
 }
 
-/** 마지막으로 맞춘 뒤 흐른 실제 시간만큼 가상 시계를 보낸다. */
+/** 마지막으로 저장한 뒤 흐른 실제 시간만큼 회사 시계를 보낸다(건너뛴 차이는 그대로 유지). */
 export function syncClock(office: Office, clockAnchor: number, realNow: number): void {
   const elapsed = realNow - clockAnchor;
-  if (elapsed > 0 && elapsed <= CLOCK_PAUSE_AFTER_MS) office.advance(office.now + elapsed);
+  if (elapsed > 0) office.advance(office.now + elapsed);
 }
 
 /**
@@ -37,6 +36,7 @@ export async function withOffice<T>(
   const stored = loaded && Office.isCurrent(loaded.state) ? loaded : null;
   const office = stored ? Office.fromJSON(stored.state) : newOffice(realNow);
   if (stored) syncClock(office, stored.clockAnchor, realNow);
+  office.realNow = realNow;
   const result = await work(office);
   await store.save(id, { state: office.toJSON(), clockAnchor: realNow });
   return { office, result };

@@ -3,7 +3,15 @@
  * 입력 모양 검증은 여기서 하고(BadRequest), 규칙 위반은 OfficeError로 던진다.
  */
 import {
+  isTaskLevel,
+  COLLECTED_CASES_AVAILABLE,
+  QUESTION_BASES,
+  type QuestionBasis,
+  CHECK_IN_METHODS,
+  type CheckInMethod,
   type PlannerReply,
+  PRESENCE_STATES,
+  type PresenceState,
   REVIEW_LIST_FIELDS,
   REVIEW_TEXT_FIELDS,
   type Review,
@@ -13,8 +21,8 @@ import {
   type TaskOutcome,
 } from "../office/models";
 import type { ConfirmInput, Office, OnboardInput } from "../office/office";
-import { OfficeError, WorkRules } from "../office/rules";
-import { Clock } from "../office/time";
+import { type EnforcementLevel, isEnforcementLevel, OfficeError, WorkRules } from "../office/rules";
+import { Clock, type DayKey } from "../office/time";
 
 export class BadRequest extends Error {
   constructor(message: string) {
@@ -61,7 +69,22 @@ function onboardInput(body: Json): OnboardInput {
     experience: optStr(body, "experience"),
     activityStart: minutes(body, "activityStart"),
     activityEnd: minutes(body, "activityEnd"),
+    enforcement: body.enforcement == null ? undefined : enforcementOf(body.enforcement),
   };
+}
+
+function enforcementOf(value: unknown): EnforcementLevel {
+  if (!isEnforcementLevel(value)) throw new BadRequest("enforcement는 light, standard, strict 중 하나입니다.");
+  return value;
+}
+
+/** "YYYY-MM-DD" → DayKey. 없으면 undefined(오늘). */
+function dayOf(body: Json, key: string): DayKey | undefined {
+  const v = body[key];
+  if (v == null) return undefined;
+  const m = typeof v === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+  if (!m) throw new BadRequest(`${key}는 YYYY-MM-DD 형식이어야 합니다.`);
+  return { year: Number(m[1]), month: Number(m[2]), day: Number(m[3]) };
 }
 
 function confirmInput(body: Json): ConfirmInput {
@@ -74,10 +97,15 @@ function confirmInput(body: Json): ConfirmInput {
         title: str(t, "title", false),
         completionCriteria: str(t, "completionCriteria", false),
         shareForm: str(t, "shareForm", false),
+        level: t.level == null ? null : isTaskLevel(t.level) ? t.level : badLevel(),
         ...(t.carryId != null ? { carryId: str(t, "carryId") } : {}),
       };
     }),
   };
+}
+
+function badLevel(): never {
+  throw new BadRequest("level은 1, 2, 3 중 하나입니다.");
 }
 
 /** 마감 요약 8개 필드. 없는 칸은 빈 값으로 채우고, 모양이 틀리면 BadRequest. */
@@ -101,10 +129,18 @@ export function plannerReplyOf(value: unknown): PlannerReply {
     if (typeof v !== "string") throw new BadRequest(`reply.${key}는 문자열이어야 합니다.`);
     return v.slice(0, WorkRules.maxFieldLength);
   };
+  const question = text("question");
+  let basis = (typeof r.question_basis === "string" ? r.question_basis : "") as QuestionBasis | "";
+  if (basis !== "" && !QUESTION_BASES.includes(basis)) basis = "role_need";
+  // 수집한 사례 데이터가 없으면 AI가 '실제 사례'라고 해도 공개 가이드 기반 시나리오로 낮춘다.
+  if (basis === "collected_case" && !COLLECTED_CASES_AVAILABLE) basis = "ux_guide";
+  if (question.trim() && basis === "") basis = "role_need";
   return {
     acknowledgement: text("acknowledgement"),
-    question: text("question"),
+    question,
     question_reason: text("question_reason"),
+    question_basis: question.trim() ? basis : "",
+    basis_ref: question.trim() ? text("basis_ref").slice(0, 120) : "",
     known_facts: strList(r.known_facts, "reply.known_facts"),
     open_questions: strList(r.open_questions, "reply.open_questions"),
     evidence_refs: strList(r.evidence_refs, "reply.evidence_refs"),
@@ -145,11 +181,17 @@ export const ACTION_TYPES = [
   "saveReviewDraft",
   "confirmReview",
   "skipHour",
-  "saveWeeklyDraft",
-  "submitWeeklyReport",
   "markMailRead",
   "startNextWorkday",
-  "jumpToFriday",
+  "setEnforcement",
+  "lowerToday",
+  "setDayOff",
+  "observePresence",
+  "requestLunch",
+  "registerAway",
+  "returnFromAllowance",
+  "submitCheckout",
+  "endOvertime",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -161,8 +203,13 @@ export function applyAction(office: Office, body: Json): unknown {
     case "onboard":
       office.completeOnboarding(onboardInput(body));
       return null;
-    case "checkIn":
-      return office.checkIn();
+    case "checkIn": {
+      const method = body.method ?? null;
+      if (method !== null && !CHECK_IN_METHODS.includes(method as CheckInMethod)) {
+        throw new BadRequest("method는 camera 또는 noCamera입니다.");
+      }
+      return office.checkIn(method as CheckInMethod | null);
+    }
     case "saveGoal":
       office.saveGoal(str(body, "goal"));
       return null;
@@ -182,7 +229,7 @@ export function applyAction(office: Office, body: Json): unknown {
       return { submission: office.submitWork(str(body, "taskId"), kind, str(body, "content")) };
     }
     case "startSharing":
-      office.startSharing();
+      office.startSharing(str(body, "earlyReason", false));
       return null;
     case "recordShareTurn": {
       // 화면은 사용자 턴만 보낸다. 기획자 턴은 /api/office/share(서버)가 AI 응답을 받아 남긴다.
@@ -193,7 +240,7 @@ export function applyAction(office: Office, body: Json): unknown {
     case "endSharing": {
       const reason = body.reason ?? "done";
       if (reason !== "done" && reason !== "userStopped") throw new BadRequest("reason은 done 또는 userStopped입니다.");
-      office.endSharing(reason);
+      office.endSharing(reason, str(body, "earlyReason", false));
       return null;
     }
     case "saveReviewDraft":
@@ -206,32 +253,38 @@ export function applyAction(office: Office, body: Json): unknown {
       if (!result) throw OfficeError.notAllowedNow("지금은 시간을 넘길 수 없습니다.");
       return { skip: result };
     }
-    case "saveWeeklyDraft":
-      office.saveWeeklyDraft({
-        ...("completed" in body ? { completed: str(body, "completed") } : {}),
-        ...("incomplete" in body ? { incomplete: str(body, "incomplete") } : {}),
-        ...("nextGoals" in body ? { nextGoals: str(body, "nextGoals") } : {}),
-      });
-      return null;
-    case "submitWeeklyReport": {
-      const draft = office.weeklyDraft;
-      const report = {
-        completed: "completed" in body ? str(body, "completed") : draft.completed,
-        incomplete: "incomplete" in body ? str(body, "incomplete") : draft.incomplete,
-        nextGoals: "nextGoals" in body ? str(body, "nextGoals") : draft.nextGoals,
-      };
-      office.saveWeeklyDraft(report);
-      return { report: office.submitWeeklyReport(report) };
-    }
     case "markMailRead":
       office.markRead(str(body, "id"));
       return null;
     case "startNextWorkday":
       office.startNextWorkday();
       return null;
-    case "jumpToFriday":
-      office.jumpToFriday();
+    case "setEnforcement":
+      office.setEnforcement(enforcementOf(body.level));
       return null;
+    case "lowerToday":
+      office.lowerToday();
+      return null;
+    case "setDayOff":
+      office.setDayOff(body.off !== false, dayOf(body, "date"));
+      return null;
+    case "observePresence": {
+      const state = body.state as PresenceState;
+      if (!PRESENCE_STATES.includes(state)) throw new BadRequest("state는 present, absent, cameraOff, unknown 중 하나입니다.");
+      office.observePresence(state);
+      return null;
+    }
+    case "requestLunch":
+      return { allowance: office.requestLunch() };
+    case "registerAway":
+      return { allowance: office.registerAway(str(body, "reason")) };
+    case "returnFromAllowance":
+      office.returnFromAllowance();
+      return null;
+    case "submitCheckout":
+      return { checkout: office.submitCheckout() };
+    case "endOvertime":
+      return { overtime: office.endOvertime() };
     default:
       throw new BadRequest(`알 수 없는 행동입니다: ${String(type)}`);
   }

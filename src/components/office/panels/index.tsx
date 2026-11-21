@@ -11,13 +11,12 @@ import { CheckIn } from "./CheckIn";
 import { Desk } from "./Desk";
 import { MailBox } from "./Mail";
 import { MorningPT } from "./MorningPT";
+import { OvertimePanel } from "./Enforcement";
 import { DayClose, DayEnd } from "./Review";
 import { Settings } from "./Settings";
 import { Share } from "./Share";
-import { Weekly } from "./Weekly";
 
 export { Onboarding } from "./Onboarding";
-export { applySavedTextScale } from "./Settings";
 
 /** 단계가 바뀌면 자동으로 열 장소. */
 export function placeForPhase(view: OfficeView): PlaceId {
@@ -43,13 +42,12 @@ export function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeVi
       return <Share office={office} view={view} onGo={go} />;
     case "manager":
       return <MailBox office={office} view={view} onGo={go} />;
-    case "weekly":
-      return <Weekly office={office} view={view} onGo={go} />;
     case "settings":
-      return <Settings office={office} />;
+      return <Settings office={office} view={view} />;
     case "desk":
       if (view.phase.value === "checkoutReview") return <DayClose office={office} view={view} onGo={go} />;
       if (view.phase.value === "off") return <DayEnd office={office} view={view} onGo={go} />;
+      if (["checkout", "dinner", "overtime", "overtimeReview"].includes(view.phase.value)) return <OvertimePanel office={office} view={view} />;
       return <Desk office={office} view={view} onGo={go} />;
   }
 }

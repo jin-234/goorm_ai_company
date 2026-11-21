@@ -4,15 +4,19 @@
  * 가상 역할이라는 점과 AI 동료에게 무엇이 전송되는지 안내한다.
  */
 import { useState } from "react";
+import { ENFORCEMENT, ENFORCEMENT_LEVELS, type EnforcementLevel } from "@/lib/office/rules";
 import { minutesOf } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice } from "../ui";
+import { EnforcementPicker } from "./Enforcement";
+
+const LEVEL_OPTIONS = ENFORCEMENT_LEVELS.map((id) => ({ id, ...ENFORCEMENT[id] }));
 
 const STEPS = [
   ["출근", "문 옆 단말기에 사원증을 찍고 들어갑니다."],
   ["아침보고", "AI 팀장과 오늘 끝낼 작은 범위를 정합니다."],
   ["결과물 제출", "한 일을 글·링크·코드로 남깁니다."],
-  ["기획팀 공유", "AI 기획자에게 오늘 한 일을 설명합니다."],
+  ["회의실 발표", "타 부서 AI 동료들에게 오늘 한 일을 설명합니다."],
   ["하루 마감", "요약을 고쳐 확정하고 다음 행동을 고릅니다."],
 ] as const;
 
@@ -24,6 +28,7 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
   const [experience, setExperience] = useState("");
   const [start, setStart] = useState("10:00");
   const [end, setEnd] = useState("17:00");
+  const [level, setLevel] = useState<EnforcementLevel>("standard");
 
   const startMin = minutesOf(start);
   const endMin = minutesOf(end);
@@ -43,6 +48,7 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
       experience: experience.trim(),
       activityStart: startMin,
       activityEnd: endMin,
+      enforcement: level,
     });
     if (res != null) office.notify("입사를 환영합니다.\n출입문에서 활동을 시작해 주세요.");
   };
@@ -113,8 +119,18 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
           </label>
         </div>
         {timeError ? <div className="small" style={{ color: "var(--warn)" }}>! {timeError}</div> : null}
+        <div className="stack">
+          <div style={{ fontWeight: 600 }}>관리 강도</div>
+          <p className="small muted pre" style={{ margin: 0 }}>
+            {"자리를 지키게 하는 장치를 얼마나 쓸지 고릅니다.\n설정에서 언제든 바꿀 수 있고, 힘든 날에는 그날만 한 단계 낮출 수 있습니다."}
+          </p>
+          <EnforcementPicker options={LEVEL_OPTIONS} value={level} onChange={setLevel} start={startMin ?? 600} end={endMin ?? 1020} disabled={office.busy} />
+        </div>
         <p className="small muted pre" style={{ margin: 0 }}>
-          {"정한 시간은 안내에만 씁니다. 늦게 시작하거나 일찍 마쳐도 불이익이 없습니다.\nAI 동료가 답하려면 아침보고·공유 대화와 제출한 글이 서버와 AI 제공사(Upstage)로 전송됩니다.\n비밀키·고객 정보·비공개 회사 코드는 적지 마세요."}
+          {(level === "light"
+            ? "정한 시간은 안내에만 씁니다. 늦게 시작하거나 일찍 마쳐도 불이익이 없습니다."
+            : "정한 시작 시각보다 늦으면 지각, 마감 시각에는 퇴근 점검을 합니다. 지각비는 예상액만 보여 주고 청구하지 않습니다.\n근무 중 착석 확인은 지금은 버튼으로 알리고, 카메라 영상은 이 기기 안에서만 씁니다.") +
+            "\nAI 동료가 답하려면 아침보고·공유 대화와 제출한 글이 서버와 AI 제공사(Upstage)로 전송됩니다.\n비밀키·고객 정보·비공개 회사 코드는 적지 마세요."}
         </p>
         <button className="btn" type="submit" disabled={office.busy || !ready}>
           확인했습니다 · 입사하기

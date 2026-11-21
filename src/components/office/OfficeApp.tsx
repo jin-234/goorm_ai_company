@@ -2,14 +2,13 @@
 /**
  * 웹 화면의 큰 틀.
  * - 넓은 화면 + WebGL: 맥 앱처럼 3D 사무실이 화면 전체를 채우고 위 막대만 그 위에 뜬다.
- *   지금 할 일 버튼과 메일·주간보고·설정은 위 막대에 있다. 3D 장소 이름표를 누르면 오른쪽에서 패널이 나온다(닫기·Esc).
+ *   지금 할 일 버튼과 메일·설정은 위 막대에 있다. 3D 장소 이름표를 누르면 오른쪽에서 패널이 나온다(닫기·Esc).
  * - 3D를 숨겼거나 못 그리거나 좁은 화면: 위 막대 + 왼쪽 장소 이름표 + 패널의 2D 배치(웹 기획서 7장).
  * 어느 쪽이든 단계가 바뀌면 그 단계의 패널을 자동으로 연다(맥 앱과 같은 규칙).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { Onboarding } from "./panels/Onboarding";
-import { applySavedTextScale } from "./panels/Settings";
 import { placeForPhase, renderPanel } from "./panels";
 import { NowPanel } from "./NowPanel";
 import { OfficeBackdrop, OfficeStage, type StageMode, useStageMode } from "./OfficeStage";
@@ -35,14 +34,12 @@ const PLACES: PlaceInfo[] = [
       return tasks.length > 0 ? `과제 · 제출 ${done}/${tasks.length}` : "과제 · 결과물 제출";
     },
   },
-  { id: "share", name: "기획팀", sub: () => "AI 기획자에게 공유" },
+  // 타 부서 공유는 회의실에서 하는 발표다(부서별 담당자 1명씩 — 기획팀·디자인팀 — 출입문으로 들어와 회의실에 앉아 듣는다).
+  { id: "share", name: "회의실 · 타 부서 공유", sub: (v) => (v.phase.value === "sharing" ? "지금 발표" : "오늘 한 일 발표") },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
-  { id: "weekly", name: "주간보고", sub: (v) => (v.clock.isFriday ? "오늘 제출" : "금요일에 제출") },
   { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
 ];
 
-/** 3D 화면에서 이름표가 없는 곳(메일함은 팀장 자리 이름표에도 있다). */
-const EXTRA_PLACES: PlaceInfo[] = PLACES.filter((p) => p.id === "manager" || p.id === "weekly" || p.id === "settings");
 
 export function OfficeApp() {
   const office = useOffice();
@@ -62,13 +59,10 @@ export function OfficeApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [stage.full, place]);
 
-  useEffect(() => {
-    applySavedTextScale();
-  }, []);
 
   // 출근·퇴근 연출(3D) 동안은 패널을 닫아 둔다. 그동안 열려던 패널은 연출이 끝나면 연다(맥 앱 입장·퇴근 장면).
   // 3D가 끝났다고 알리지 못하는 경우를 대비해 정해진 시간 뒤에는 연다.
-  const [cutscene, setCutscene] = useState<"entrance" | "leave" | null>(null);
+  const [cutscene, setCutscene] = useState<"entrance" | "share" | "leave" | null>(null);
   const pending = useRef<PlaceId | null>(null);
   const fallback = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endCutscene = useCallback(() => {
@@ -79,13 +73,13 @@ export function OfficeApp() {
     pending.current = null;
   }, []);
   const startCutscene = useCallback(
-    (kind: "entrance" | "leave", then: PlaceId) => {
+    (kind: "entrance" | "share" | "leave", then: PlaceId) => {
       if (fallback.current) clearTimeout(fallback.current);
       pending.current = then;
       setPlace(null);
       setCutscene(kind);
-      // 실측: 입장 약 5.4초, 퇴근 약 8.6초.
-      fallback.current = setTimeout(endCutscene, kind === "entrance" ? 8000 : 11000);
+      // 실측: 입장 약 5.4초, 퇴근 약 8.6초. 공유는 손님 입장 → 내가 회의실로 이동까지(3D가 onShareReady로 알림).
+      fallback.current = setTimeout(endCutscene, kind === "entrance" ? 8000 : kind === "share" ? 12000 : 11000);
     },
     [endCutscene],
   );
@@ -112,6 +106,7 @@ export function OfficeApp() {
     prevPhase.current = view.phase.value;
     const target = placeForPhase(view);
     if (stage.full && before === "beforeCheckIn" && view.phase.value !== "beforeCheckIn") startCutscene("entrance", target);
+    else if (stage.full && before != null && before !== "sharing" && view.phase.value === "sharing") startCutscene("share", target);
     else if (stage.full && before != null && before !== "off" && view.phase.value === "off") startCutscene("leave", target);
     else setPlace(target);
   }, [view, stage.full, startCutscene]);
@@ -134,6 +129,7 @@ export function OfficeApp() {
     if (stage.full) {
       // 맥 앱처럼 사무실을 뒤에 두고 입사 안내를 그 위에 띄운다.
       return (
+        <FixedStage>
         <div className="o3">
           <div className="o3-canvas" aria-hidden>
             <OfficeBackdrop view={view} onGo={() => undefined} />
@@ -145,6 +141,7 @@ export function OfficeApp() {
           </div>
           <Toast text={office.toast} />
         </div>
+        </FixedStage>
       );
     }
     return (
@@ -212,9 +209,10 @@ function FullOffice({
 }) {
   const title = PLACES.find((p) => p.id === place)?.name ?? "";
   return (
+    <FixedStage>
     <div className={`o3 ${place ? "with-panel" : ""}`}>
       <div className="o3-canvas">
-        <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
+        <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onShareReady={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
       </div>
 
       <div className="o3-top">
@@ -237,6 +235,28 @@ function FullOffice({
         </aside>
       ) : null}
       <Toast text={office.toast} />
+    </div>
+    </FixedStage>
+  );
+}
+
+/** 맥 앱 기본 창(1440×900, 16:10)을 기준으로 화면 전체를 고정한다. 창 크기와 상관없이 같은 구도로 보이고, 창에 맞춰 통째로 확대·축소한다. */
+const STAGE_W = 1440;
+const STAGE_H = 900;
+
+function FixedStage({ children }: { children: ReactNode }) {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const fit = () => setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  return (
+    <div className="o3-frame">
+      <div className="o3-scaler" style={{ width: STAGE_W, height: STAGE_H, transform: `translate(-50%, -50%) scale(${scale})` }}>
+        {children}
+      </div>
     </div>
   );
 }

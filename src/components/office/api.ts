@@ -100,11 +100,6 @@ export const api = {
       "/api/office/review-draft",
       post({}),
     ),
-  weeklyFeedback: (fallback: boolean) =>
-    call<{ result: { source?: string; solarError: SolarErrorInfo | null }; office: OfficeView }>(
-      "/api/office/weekly-feedback",
-      post({ fallback }),
-    ),
   solarStatus: () => call<{ hasKey: boolean; key: string; model: string; baseURL: string }>("/api/solar"),
   solarPing: () => call<{ ok: boolean; model?: string; error?: SolarErrorInfo }>("/api/solar", { method: "POST" }),
 };
