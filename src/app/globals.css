@@ -765,13 +765,15 @@ label.stack {
   z-index: 20;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: rgba(36, 43, 39, 0.28);
+  padding: 56px 64px;
+  background: rgba(36, 43, 39, 0.38);
+  backdrop-filter: blur(3px);
 }
 
+/* 입사 안내: 두 칸(왼쪽 소개·하루 흐름, 오른쪽 입력)으로 펼쳐 세로로 꽉 차지 않게 한다. 무대(900) 안에서 위아래 여백이 남는다. */
 .o3-modal-card {
-  width: min(640px, 100%);
-  max-height: calc(100vh - 48px);
+  width: min(1040px, 100%);
+  max-height: 100%;
   overflow-y: auto;
   border-radius: 18px;
   background: var(--paper);
@@ -781,8 +783,28 @@ label.stack {
 .o3-modal-card .panel {
   margin: 0 auto !important;
   /* 글이 창 가장자리에 붙지 않게 안쪽 여백을 넉넉히 */
-  padding: 32px 36px 36px !important;
+  padding: 40px 44px 40px !important;
   max-width: none !important;
+}
+
+.o3-modal-card .onboarding {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* 남는 높이는 마지막 줄이 가져가 왼쪽 세 덩어리가 위로 모인다. */
+  grid-template-rows: auto auto 1fr;
+  column-gap: 32px;
+  row-gap: 18px;
+  align-items: start;
+}
+
+.o3-modal-card .onboarding > :nth-child(-n + 3) {
+  grid-column: 1;
+}
+
+.o3-modal-card .onboarding > :nth-child(4) {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  margin: 0;
 }
 
 /* 이 배치에는 왼쪽 카드가 없으니(맥 앱처럼) 위 막대의 '지금 할 일' 버튼을 보인다. */

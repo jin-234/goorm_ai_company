@@ -1,8 +1,8 @@
 "use client";
 /**
  * 3D 사무실을 화면에 붙이는 곳.
- * - 넓은 화면(861px 이상)이고 WebGL이 되면 맥 앱처럼 3D 사무실이 화면 전체를 채운다(OfficeBackdrop).
- * - 3D를 숨겼거나, WebGL이 안 되거나, 좁은 화면이면 2D 배치로 돌아간다. 좁은 화면에서는 2D 위에 3D 띠를 둔다(OfficeStage).
+ * - WebGL이 되면 창 크기와 상관없이 맥 앱처럼 3D 사무실이 화면 전체를 채운다(OfficeBackdrop, 16:10 고정 무대).
+ * - WebGL이 안 될 때만 2D 배치로 돌아간다(OfficeStage).
  *   웹 기획서 8장: 3D가 없어도 2D만으로 하루 흐름이 끝까지 이어진다.
  */
 import dynamic from "next/dynamic";
@@ -68,7 +68,9 @@ export function useStageMode(): StageMode {
     }
   }, []);
 
-  return { full: canDraw && wide && !hidden, canDraw, hidden, setHidden };
+  // 사용자 지시: 창 크기와 상관없이 늘 맥 앱 배치(3D 전체 화면, 16:10 고정)로 띄운다. 2D 배치는 WebGL이 안 될 때만.
+  void wide;
+  return { full: canDraw, canDraw, hidden, setHidden };
 }
 
 /** 화면 전체를 채우는 3D 사무실(맥 앱 배치). 장소 이름표를 누르면 그 장소의 패널을 연다. */
