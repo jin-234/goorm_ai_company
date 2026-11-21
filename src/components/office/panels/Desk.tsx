@@ -86,7 +86,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
       ) : null}
 
       {phase === "working" ? (
-        <Card title="다 했으면 회의실에서 발표하기">
+        <Card title="다 했으면 타 부서에 공유하기">
           <p className="muted pre" style={{ margin: 0 }}>
             {handled === tasks.length
               ? "모든 과제를 제출했거나 못 끝낸 것으로 정했습니다.\n회의실에서 기획·디자인·운영 담당자에게 오늘 한 일을 설명해 주세요."
@@ -125,7 +125,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
           ) : null}
           <div className="row">
             <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing || blockedBy.length > 0}>
-              회의실에서 발표하기
+              공유 시작 · 팀장 사전 보고부터
             </button>
             <button
               className="btn plain"
@@ -138,7 +138,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
           </div>
         </Card>
       ) : phase === "sharing" ? (
-        <Notice kind="info" title="회의실에서 발표하는 중입니다">
+        <Notice kind="info" title="공유하는 중입니다(팀장 사전 보고 → 부서 회의)">
           <button className="btn secondary small" onClick={() => onGo("share")}>
             회의실로 가기
           </button>
