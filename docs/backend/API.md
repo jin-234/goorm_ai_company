@@ -43,7 +43,7 @@
 | `confirmTasks` | `goal?`, `tasks: [{ title, completionCriteria, shareForm, level?(1·2·3, 보통·엄격은 필수), carryId? }]` — 이월 과제는 자동으로 앞에 붙고, `carryId`로 칸을 고친다 | `{ tasks }` |
 | `setTaskStatus` | `taskId`, `status`: `in_progress` \| `submitted` \| `incomplete` (submitted는 제출물이 있어야 함) | — |
 | `submitWork` | `taskId`, `kind`: `text` \| `code` \| `link`, `content` — 링크는 `readScope: "notRead"` | `{ submission }` |
-| `observePresence` | `state`: `present` \| `absent` \| `cameraOff` \| `unknown` (보통·엄격 근무 중, 지금은 버튼이 보냄) | — |
+| `observePresence` | `state`: `present` \| `absent` \| `cameraOff` \| `unknown` (보통·엄격 근무 중, 화면의 착석 확인 카메라가 판정이 바뀔 때 보냄) | — |
 | `requestLunch` | — (보통·엄격, 하루 한 번 1시간) | `{ allowance }` |
 | `registerAway` | `reason` (보통·엄격, 건당 15분) | `{ allowance }` |
 | `returnFromAllowance` | — | — |

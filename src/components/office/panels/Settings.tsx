@@ -99,7 +99,7 @@ export function Settings({ office, view }: { office: OfficeHandle; view: OfficeV
           출근 때 카메라 사용
         </label>
         <p className="small muted pre" style={{ margin: 0 }}>
-          {"켜면 자리에 앉은 것을 카메라로 확인한 뒤 출근합니다.\n영상은 이 기기 안에서만 쓰고 저장·전송하지 않습니다.\n꺼도 출근 방식에 따른 불이익은 없습니다(지각·결근은 관리 강도가 정합니다)."}
+          {"켜면 자리에 앉은 것을 카메라로 확인한 뒤 출근합니다.\n영상은 이 기기 안에서만 쓰고 저장·전송하지 않습니다.\n꺼도 출근 방식에 따른 불이익은 없습니다(지각·결근은 관리 강도가 정합니다).\n보통·엄격의 근무 중 착석 확인 카메라는 근무 중 오른쪽 아래 창에서 끄고 켭니다."}
         </p>
       </Card>
       <Card title="시연">

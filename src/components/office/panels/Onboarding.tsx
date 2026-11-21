@@ -129,7 +129,7 @@ export function Onboarding({ office }: { office: OfficeHandle }) {
         <p className="small muted pre" style={{ margin: 0 }}>
           {(level === "light"
             ? "정한 시간은 안내에만 씁니다. 늦게 시작하거나 일찍 마쳐도 불이익이 없습니다."
-            : "정한 시작 시각보다 늦으면 지각, 마감 시각에는 퇴근 점검을 합니다.\n근무 중 착석 확인은 지금은 버튼으로 알리고, 카메라 영상은 이 기기 안에서만 씁니다.") +
+            : "정한 시작 시각보다 늦으면 지각, 마감 시각에는 퇴근 점검을 합니다.\n근무 중에는 카메라로 자리에 있는지 확인합니다. 영상은 이 기기 안에서만 쓰고, 카메라를 꺼도 자리 비움으로 세지 않습니다.") +
             "\nAI 동료가 답하려면 아침보고·공유 대화와 제출한 글이 서버와 AI 제공사(Upstage)로 전송됩니다.\n비밀키·고객 정보·비공개 회사 코드는 적지 마세요."}
         </p>
         <button className="btn" type="submit" disabled={office.busy || !ready}>

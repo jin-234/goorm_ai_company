@@ -85,7 +85,7 @@ export interface Allowance {
   endedAt: Instant | null;
 }
 
-/** 자리 상태. 지금은 버튼으로 알리고, 카메라 판정은 브라우저 안에서 같은 값을 보낸다. 영상은 서버로 오지 않는다. */
+/** 자리 상태. 근무 중 카메라 판정(브라우저 안)이 바뀔 때만 이 값을 보낸다. 영상은 서버로 오지 않는다. */
 export type PresenceState = "present" | "absent" | "cameraOff" | "unknown";
 export const PRESENCE_STATES: PresenceState[] = ["present", "absent", "cameraOff", "unknown"];
 

@@ -68,7 +68,7 @@ npm run dev       # http://localhost:3000, DATABASE_URL 없으면 메모리 저�
 | 1 | **Supabase 연결** | Vercel 대시보드 → Storage → Supabase 추가하면 `POSTGRES_URL`이 자동으로 들어간다. Supabase를 직접 만들었다면 Connect → Transaction pooler 주소(포트 6543)를 `DATABASE_URL`로 넣는다. `UPSTAGE_API_KEY`도 환경변수에 추가. 테이블은 첫 요청 때 자동으로 만든다(`db/schema.sql`과 같음). |
 | 2 | 화면(프론트) | `docs/backend/API.md`대로 붙인다. 출근 → 아침 PT → 체크리스트 → 퇴근 점검 흐름을 일반 화면으로 먼저 완성하고 3D는 나중에. |
 | 3 | 음성 전사 | 기본은 **글 입력**. 클라우드 STT를 붙이면 결과 글을 `setTranscript` 또는 `/api/office/draft`의 `transcript`로 넣는다. 실패하거나 권한이 없으면 글 입력 화면으로. |
-| 4 | 착석 판정 | 브라우저(예: MediaPipe)에서 판정해 상태가 바뀔 때만 `observePresence`로 보낸다. 영상은 서버로 보내지 않는다. 카메라 없이 시연할 때는 버튼으로 같은 값을 보낸다. |
+| 4 | 착석 판정 | 브라우저(예: MediaPipe)에서 판정해 상태가 바뀔 때만 `observePresence`로 보낸다. 영상은 서버로 보내지 않는다. 구현: `camera/SeatMonitor.tsx`(1초마다 얼굴 검출, 20초 넘게 안 보이면 absent, 카메라를 끄거나 못 쓰면 cameraOff). |
 | 5 | 피드백 반영 | 관리 강도 선택, 희망 직무 연결, AI/운영자 역할 정리 등은 규칙 엔진에 기능을 더하는 방식으로(아래). |
 
 ### 현직자 피드백 대응

@@ -10,14 +10,15 @@
  *   noFaceSeconds: 얼굴이 안 보인 채 이어진 초
  *   retry(): 권한을 다시 요청 / stop(): 카메라를 끈다(출근 버튼을 누를 때)
  * enabled가 false면 카메라를 켜지 않고 idle을 유지한다. 언마운트하면 스트림을 정리한다.
+ * intervalMs: 검출 간격(근무 중 착석 확인은 MONITOR_INTERVAL_MS).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { browserDeps, IDLE, SeatCameraController, type SeatCameraDeps, type SeatCameraSnapshot } from "./seatCamera";
+import { browserDeps, DETECT_INTERVAL_MS, IDLE, SeatCameraController, type SeatCameraDeps, type SeatCameraSnapshot } from "./seatCamera";
 import type { SeatCameraState } from "./seatJudge";
 
 export type { SeatCameraState };
 
-export function useSeatCamera(enabled: boolean, deps?: SeatCameraDeps) {
+export function useSeatCamera(enabled: boolean, deps?: SeatCameraDeps, intervalMs: number = DETECT_INTERVAL_MS) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controller = useRef<SeatCameraController | null>(null);
   const [snapshot, setSnapshot] = useState<SeatCameraSnapshot>(IDLE);
@@ -28,7 +29,7 @@ export function useSeatCamera(enabled: boolean, deps?: SeatCameraDeps) {
       setSnapshot(IDLE);
       return;
     }
-    const c = new SeatCameraController(deps ?? browserDeps(), () => videoRef.current, setSnapshot);
+    const c = new SeatCameraController(deps ?? browserDeps(), () => videoRef.current, setSnapshot, intervalMs);
     controller.current = c;
     void c.start();
     return () => {

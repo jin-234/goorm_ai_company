@@ -11,6 +11,7 @@ import type { OfficeView } from "./api";
 import { Onboarding } from "./panels/Onboarding";
 import { placeForPhase, renderPanel } from "./panels";
 import { NowPanel } from "./NowPanel";
+import { SeatMonitor } from "./camera/SeatMonitor";
 import { OfficeBackdrop, OfficeStage, type StageMode, useStageMode } from "./OfficeStage";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
@@ -199,6 +200,7 @@ export function OfficeApp() {
           {renderPanel(shown, office, view, setPlace)}
         </main>
       </div>
+      <SeatMonitor office={office} view={view} />
       <Toast text={office.toast} />
     </div>
   );
@@ -245,6 +247,7 @@ function FullOffice({
           <div className="o3-panel-body">{renderPanel(place, office, view, setPlace)}</div>
         </aside>
       ) : null}
+      <SeatMonitor office={office} view={view} />
       <Toast text={office.toast} />
     </div>
     </FixedStage>
