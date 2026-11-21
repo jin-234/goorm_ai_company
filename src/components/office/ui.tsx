@@ -1,7 +1,9 @@
 /** 화면 공통 부품. 경고는 색만으로 구분하지 않고 기호와 제목을 함께 쓴다. */
 import type { ReactNode } from "react";
+import type { CloseChoice, TaskStatus } from "./api";
 
-export type PlaceId = "door" | "meeting" | "desk" | "manager" | "weekly" | "settings";
+/** 장소(분담표 3.1). share = 기획팀(AI 기획자에게 공유). */
+export type PlaceId = "door" | "meeting" | "desk" | "share" | "manager" | "weekly" | "settings";
 
 export function PanelHeader({ place, title, detail }: { place: string; title: string; detail?: string }) {
   return (
@@ -37,20 +39,30 @@ export function Notice({
   );
 }
 
-/** 업무 중요도. 숫자만 보이지 않게 행동이 떠오르는 이름을 함께 쓴다(현직자 피드백). */
-export const LEVEL_NAME: Record<1 | 2 | 3, string> = {
-  3: "오늘 꼭 끝낼 일",
-  2: "오늘 안에 할 일",
-  1: "미뤄도 되는 일",
+/** 업무 상태 이름. 제출과 완료를 같은 것으로 보이지 않게 따로 부른다. */
+export const STATUS_NAME: Record<TaskStatus, string> = {
+  confirmed: "시작 전",
+  in_progress: "하는 중",
+  submitted: "제출함",
+  incomplete: "미완료",
+  reviewed: "마감 확인",
 };
 
-export function LevelBadge({ level }: { level: 1 | 2 | 3 | null }) {
-  if (level == null) return <span className="badge none">단계 확인 필요</span>;
-  return (
-    <span className={`badge l${level}`} title={LEVEL_NAME[level]}>
-      {level}단계 · {LEVEL_NAME[level]}
-    </span>
-  );
+export function StatusBadge({ status }: { status: TaskStatus }) {
+  const tone = status === "submitted" || status === "reviewed" ? "l3" : status === "in_progress" ? "l2" : status === "incomplete" ? "none" : "l1";
+  return <span className={`badge ${tone}`}>{STATUS_NAME[status]}</span>;
+}
+
+/** 미완료 처리(개정 기획서 3.1). 고를 때 떠오르는 행동으로 부른다. */
+export const CHOICE_NAME: Record<CloseChoice, { label: string; detail: string }> = {
+  adjust: { label: "범위 줄여 마치기", detail: "오늘 한 데까지를 오늘의 결과로 봅니다." },
+  carryOver: { label: "다음 활동일로 넘기기", detail: "다음 아침보고 목록에 그대로 올라갑니다." },
+  endToday: { label: "오늘은 여기서 종료", detail: "넘기지 않고 오늘 기록만 남깁니다." },
+};
+
+/** AI가 아닌 수동 양식임을 알리는 표시. AI가 답한 것처럼 보이지 않게 한다. */
+export function ManualMark({ text = "AI 미연결 · 직접 입력 양식" }: { text?: string }) {
+  return <span className="badge tag">{text}</span>;
 }
 
 export function Card({ title, children, aside }: { title?: string; children: ReactNode; aside?: ReactNode }) {
