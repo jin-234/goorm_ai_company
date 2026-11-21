@@ -4,10 +4,9 @@
  * 왼쪽: 팀·이름 / 날짜, 큰 시계, 지금 단계 + 상태 칩
  * 가운데: 지금 할 일(지금 열린 패널과 같은 곳이면 숨김)
  * 오른쪽: 메일함 · 안 읽음 N, 점선 '시연' 묶음, 설정 톱니
- * 관리 강도: 지금 강도 칩과 '오늘만 한 단계 낮추기'. 지각·착석은 보통·엄격에서만 칩에 보인다.
+ * 관리 강도: 지금 강도 칩. 지각·착석은 보통·엄격에서만 칩에 보인다.
  */
 import { hhmm, type OfficeView } from "./api";
-import { LowerTodayButton } from "./panels/Enforcement";
 import type { OfficeHandle } from "./useOffice";
 import type { PlaceId } from "./ui";
 
@@ -130,7 +129,6 @@ export function TopBar({
             <span className={`chip ${chip.warn ? "warn" : ""}`}>{chip.text}</span>{" "}
             <span className="chip" title={view.enforcement.rules.summary}>
               강도 {view.enforcement.rules.label}
-              {view.enforcement.lowered ? " (오늘만)" : ""}
             </span>
           </div>
         </div>
@@ -143,8 +141,6 @@ export function TopBar({
       ) : null}
 
       <div className="spacer" />
-
-      <LowerTodayButton office={office} view={view} small />
 
       {step && step.place !== place ? (
         <button className="btn topbar-now" onClick={() => onGo(step.place)} title="지금 할 일">

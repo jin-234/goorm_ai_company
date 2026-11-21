@@ -34,11 +34,10 @@ export function officeView(office: Office) {
     },
     phase: { value: day.phase, label: PHASE_LABEL[day.phase], headline: phaseHeadline(office) },
     pastActivityEnd: office.pastActivityEnd,
-    /** 관리 강도. level은 오늘 실제로 적용하는 값(오늘만 낮추기 반영), chosen은 입사·설정에서 고른 값. */
+    /** 관리 강도. level은 오늘 실제로 적용하는 값, chosen은 입사·설정에서 고른 값. */
     enforcement: {
       chosen: office.profile.enforcement,
       level: office.level,
-      lowered: office.day.lowered,
       rules: ENFORCEMENT[office.level],
       options: ENFORCEMENT_LEVELS.map((id) => ({ id, ...ENFORCEMENT[id] })),
     },
@@ -99,7 +98,6 @@ export function officeView(office: Office) {
       confirmReview: day.phase === "checkoutReview",
       startNextWorkday: office.canStartNextWorkday,
       skipHour: office.canSkipHour,
-      lowerToday: office.canLowerToday,
       setDayOff: day.phase === "beforeCheckIn" && !day.absentCandidate,
       observePresence: office.rules.seatCheck && office.canEditTasks,
       requestLunch: office.canRequestLunch,

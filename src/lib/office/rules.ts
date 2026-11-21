@@ -102,11 +102,6 @@ export const ENFORCEMENT: Record<EnforcementLevel, EnforcementInfo> = {
 
 export const isEnforcementLevel = (v: unknown): v is EnforcementLevel => v === "light" || v === "standard" || v === "strict";
 
-/** 한 단계 낮춘 강도. 가볍게는 그대로. */
-export function lowerLevel(level: EnforcementLevel): EnforcementLevel {
-  return level === "strict" ? "standard" : "light";
-}
-
 /** 지각비. 시연에서는 예상액으로만 보여 주고 실제로 청구하지 않는다. */
 export const LateFee = {
   pointsPerLate: 1,

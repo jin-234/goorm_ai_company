@@ -6,7 +6,7 @@ import { api, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
 import { loadCameraPref, saveCameraPref } from "./cameraPref";
-import { EnforcementPicker, LowerTodayButton, MonthLine } from "./Enforcement";
+import { EnforcementPicker, MonthLine } from "./Enforcement";
 
 export function Settings({ office, view }: { office: OfficeHandle; view: OfficeView }) {
   const [solar, setSolar] = useState<{ hasKey: boolean; key: string; model: string; baseURL: string } | null>(null);
@@ -46,10 +46,7 @@ export function Settings({ office, view }: { office: OfficeHandle; view: OfficeV
   return (
     <div className="panel">
       <PanelHeader place="설정" title="설정" />
-      <Card
-        title="관리 강도"
-        aside={view.enforcement.lowered ? <span className="badge tag">{`오늘만 ${view.enforcement.rules.label}`}</span> : undefined}
-      >
+      <Card title="관리 강도">
         <EnforcementPicker
           options={view.enforcement.options}
           value={view.enforcement.chosen}
@@ -59,9 +56,6 @@ export function Settings({ office, view }: { office: OfficeHandle; view: OfficeV
           disabled={office.busy}
         />
         <MonthLine view={view} />
-        <div className="row">
-          <LowerTodayButton office={office} view={view} />
-        </div>
       </Card>
       <Card title="Upstage Solar">
         {solar ? (
