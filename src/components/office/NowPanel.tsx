@@ -33,7 +33,8 @@ function whyNow(view: OfficeView): string {
   }
 }
 
-export function NowPanel({ view, onGo, place }: { view: OfficeView; onGo: (place: PlaceId) => void; place: PlaceId }) {
+/** place: 지금 열린 패널. 3D 화면에서 패널을 닫았으면 null. */
+export function NowPanel({ view, onGo, place }: { view: OfficeView; onGo: (place: PlaceId) => void; place: PlaceId | null }) {
   const step = nextStepOf(view);
   const tasks = view.state.day.tasks;
   const done = tasks.filter((t) => t.status === "done").length;

@@ -1,21 +1,18 @@
 "use client";
 /**
- * 웹 화면의 큰 틀: 위 막대 + 왼쪽 장소 이름표 + 오른쪽 패널.
- * 3D 없이도 하루 흐름이 끝까지 이어지는 2D 화면(웹 기획서 7장).
- * 단계가 바뀌면 그 단계의 패널로 자동으로 옮긴다(맥 앱과 같은 규칙).
+ * 웹 화면의 큰 틀.
+ * - 넓은 화면 + WebGL: 맥 앱처럼 3D 사무실이 화면 전체를 채우고, 위 막대·'지금 할 일' 카드가 그 위에 뜬다.
+ *   3D 장소 이름표나 [바로 하기]를 누르면 오른쪽에서 패널이 나온다(닫기·Esc).
+ * - 3D를 숨겼거나 못 그리거나 좁은 화면: 위 막대 + 왼쪽 장소 이름표 + 패널의 2D 배치(웹 기획서 7장).
+ * 어느 쪽이든 단계가 바뀌면 그 단계의 패널을 자동으로 연다(맥 앱과 같은 규칙).
  */
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
-import { CheckIn } from "./panels/CheckIn";
-import { Desk } from "./panels/Desk";
-import { MailBox } from "./panels/Mail";
-import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
-import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
-import { applySavedTextScale, Settings } from "./panels/Settings";
-import { Weekly } from "./panels/Weekly";
+import { applySavedTextScale } from "./panels/Settings";
+import { placeForPhase, renderPanel } from "./panels";
 import { NowPanel } from "./NowPanel";
-import { OfficeStage } from "./OfficeStage";
+import { OfficeBackdrop, OfficeStage, type StageMode, useStageMode } from "./OfficeStage";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
 import { type OfficeHandle, useOffice } from "./useOffice";
@@ -30,28 +27,32 @@ const PLACES: PlaceInfo[] = [
   { id: "door", name: "출입문", sub: (v) => (v.state.day.checkInAt != null ? "출근 완료" : "출근") },
   { id: "meeting", name: "회의실", sub: (v) => (v.phase.value === "morningPT" ? "지금 아침 PT" : "아침 PT") },
   { id: "desk", name: "내 책상", sub: (v) => `체크리스트 · ${v.seat.title}` },
+  { id: "share" as PlaceId, name: "기획팀", sub: () => "AI 기획자에게 공유" },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
   { id: "weekly", name: "주간보고", sub: (v) => (v.clock.isFriday ? "오늘 제출" : "금요일에 제출") },
   { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
 ];
 
-/** 단계가 바뀔 때 자동으로 열 패널. */
-function placeForPhase(view: OfficeView): PlaceId {
-  switch (view.phase.value) {
-    case "beforeCheckIn":
-      return "door";
-    case "morningPT":
-      return "meeting";
-    default:
-      return "desk";
-  }
-}
+/** 3D 화면에서 이름표가 없는 곳(메일함은 팀장 자리 이름표에도 있다). */
+const EXTRA_PLACES: PlaceInfo[] = PLACES.filter((p) => p.id === "manager" || p.id === "weekly" || p.id === "settings");
 
 export function OfficeApp() {
   const office = useOffice();
   const { view } = office;
-  const [place, setPlace] = useState<PlaceId>("door");
+  const stage = useStageMode();
+  // 3D 화면에서는 패널을 닫을 수 있어 null(닫힘)이 된다. 2D 화면은 늘 한 패널을 보여 준다.
+  const [place, setPlace] = useState<PlaceId | null>("door");
   const lastPhase = useRef<string | null>(null);
+
+  // 3D 화면: Esc로 패널을 닫는다. 입력칸에서 한글을 조합하는 중의 Esc는 조합 취소이니 무시한다.
+  useEffect(() => {
+    if (!stage.full || place == null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.isComposing) setPlace(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [stage.full, place]);
 
   useEffect(() => {
     applySavedTextScale();
@@ -82,6 +83,22 @@ export function OfficeApp() {
   }
 
   if (!view.state.onboarded) {
+    if (stage.full) {
+      // 맥 앱처럼 사무실을 뒤에 두고 입사 안내를 그 위에 띄운다.
+      return (
+        <div className="o3">
+          <div className="o3-canvas" aria-hidden>
+            <OfficeBackdrop view={view} onGo={() => undefined} />
+          </div>
+          <div className="o3-modal" role="dialog" aria-modal="true" aria-label="가상회사 입사 안내">
+            <div className="o3-modal-card">
+              <Onboarding office={office} />
+            </div>
+          </div>
+          <Toast text={office.toast} />
+        </div>
+      );
+    }
     return (
       <>
         <Onboarding office={office} />
@@ -90,6 +107,9 @@ export function OfficeApp() {
     );
   }
 
+  if (stage.full) return <FullOffice office={office} view={view} place={place} setPlace={setPlace} stage={stage} />;
+
+  const shown: PlaceId = place ?? placeForPhase(view);
   const now = nextStepOf(view)?.place;
   return (
     <div className="app">
@@ -103,14 +123,14 @@ export function OfficeApp() {
       ) : null}
       <div className="layout">
         <div className="sidebar">
-          <NowPanel view={view} onGo={setPlace} place={place} />
+          <NowPanel view={view} onGo={setPlace} place={shown} />
           <nav className="places" aria-label="사무실 장소">
             {PLACES.map((p) => (
               <button
                 key={p.id}
-                className={`place ${place === p.id ? "active" : ""} ${now === p.id && place !== p.id ? "now" : ""}`}
+                className={`place ${shown === p.id ? "active" : ""} ${now === p.id && shown !== p.id ? "now" : ""}`}
                 onClick={() => setPlace(p.id)}
-                aria-current={place === p.id ? "page" : undefined}
+                aria-current={shown === p.id ? "page" : undefined}
               >
                 <div className="name">{p.name}</div>
                 <div className="sub">{p.sub(view)}</div>
@@ -119,8 +139,8 @@ export function OfficeApp() {
           </nav>
         </div>
         <main className="panel-area">
-          <OfficeStage view={view} onGo={setPlace} />
-          {renderPanel(place, office, view, setPlace)}
+          <OfficeStage view={view} onGo={setPlace} mode={stage} />
+          {renderPanel(shown, office, view, setPlace)}
         </main>
       </div>
       <Toast text={office.toast} />
@@ -128,40 +148,70 @@ export function OfficeApp() {
   );
 }
 
-function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go: (p: PlaceId) => void): ReactNode {
-  switch (place) {
-    case "door":
-      return <CheckIn office={office} view={view} onDone={() => go("meeting")} />;
-    case "meeting":
-      return <MorningPT office={office} view={view} />;
-    case "weekly":
-      return <Weekly office={office} view={view} onGo={go} />;
-    case "settings":
-      return <Settings office={office} />;
-    case "manager":
-      return <MailBox office={office} view={view} onGo={go} />;
-    case "desk":
-      if (view.seat.kind === "absentCandidate") return <DayEnd office={office} view={view} onGo={go} />;
-      switch (view.phase.value) {
-        case "checkoutReview":
-          return <Checkout office={office} view={view} />;
-        case "dinner":
-        case "overtime":
-          return <Overtime office={office} view={view} />;
-        case "overtimeReview":
-          return <OvertimeEnd office={office} view={view} />;
-        case "off":
-          return <DayEnd office={office} view={view} onGo={go} />;
-        default:
-          return <Desk office={office} view={view} onGo={go} />;
-      }
-    default:
-      return (
-        <Notice kind="info" title="준비 중인 화면입니다">
-          이 장소의 화면은 다음 작업에서 붙입니다.
-        </Notice>
-      );
-  }
+/** 맥 앱 배치: 3D 사무실 전체 화면 + 위 막대 + 왼쪽 '지금 할 일' 카드 + 오른쪽에서 나오는 패널. */
+function FullOffice({
+  office,
+  view,
+  place,
+  setPlace,
+  stage,
+}: {
+  office: OfficeHandle;
+  view: OfficeView;
+  place: PlaceId | null;
+  setPlace: (p: PlaceId | null) => void;
+  stage: StageMode;
+}) {
+  const now = nextStepOf(view)?.place;
+  const title = PLACES.find((p) => p.id === place)?.name ?? "";
+  return (
+    <div className={`o3 ${place ? "with-panel" : ""}`}>
+      <div className="o3-canvas">
+        <OfficeBackdrop view={view} onGo={setPlace} />
+      </div>
+
+      <div className="o3-top">
+        <TopBar office={office} view={view} onGo={setPlace} />
+        {office.loadError ? (
+          <div style={{ padding: "8px 20px" }}>
+            <Notice kind="warning" title="서버와 연결이 잠시 끊겼습니다">
+              {office.loadError}
+            </Notice>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="o3-left">
+        <NowPanel view={view} onGo={setPlace} place={place} />
+        <nav className="o3-places" aria-label="더 보기">
+          {EXTRA_PLACES.map((p) => (
+            <button
+              key={p.id}
+              className={`o3-place ${place === p.id ? "active" : ""} ${now === p.id && place !== p.id ? "now" : ""}`}
+              onClick={() => setPlace(p.id)}
+              aria-current={place === p.id ? "page" : undefined}
+            >
+              <span className="name">{p.name}</span>
+              <span className="sub">{p.sub(view)}</span>
+            </button>
+          ))}
+          <button className="o3-place plain" onClick={() => stage.setHidden(true)} title="3D 없이 2D 화면으로 봅니다.">
+            <span className="name">2D 화면으로 보기</span>
+          </button>
+        </nav>
+      </div>
+
+      {place ? (
+        <aside className="o3-panel" aria-label={`${title} 패널`} key={place}>
+          <button className="o3-close" onClick={() => setPlace(null)} aria-label="패널 닫기" title="닫기 (Esc)">
+            ×
+          </button>
+          <div className="o3-panel-body">{renderPanel(place, office, view, setPlace)}</div>
+        </aside>
+      ) : null}
+      <Toast text={office.toast} />
+    </div>
+  );
 }
 
 function Toast({ text }: { text: string | null }) {

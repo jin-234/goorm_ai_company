@@ -575,3 +575,195 @@ label.stack {
     height: 260px;
   }
 }
+
+/* MARK: 맥 앱 배치(넓은 화면 + 3D) */
+/* 3D 사무실이 화면 전체를 채우고, 위 막대·'지금 할 일' 카드가 그 위에 뜬다.
+   장소를 누르면 오른쪽에서 패널이 나온다. 패널이 열리면 사무실을 그만큼 왼쪽으로 비켜 그린다. */
+.o3 {
+  --o3-panel: 460px;
+  --o3-gap: 14px;
+  --o3-top: 96px;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #efe7d6;
+}
+
+.o3-canvas {
+  position: absolute;
+  inset: 0;
+  transition: right 0.28s ease;
+  /* 3D 이름표(drei Html)는 화면 층 번호가 아주 높다. 이 상자 안에 가둬야 카드·패널 위로 비치지 않는다. */
+  isolation: isolate;
+  z-index: 0;
+}
+
+.o3.with-panel .o3-canvas {
+  right: calc(var(--o3-panel) + var(--o3-gap) * 2);
+}
+
+.o3-canvas .stage-loading {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.o3-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+}
+
+.o3-top .topbar {
+  position: static;
+  background: rgba(251, 248, 240, 0.88);
+}
+
+.o3-left {
+  position: absolute;
+  z-index: 5;
+  top: calc(var(--o3-top) + var(--o3-gap));
+  left: var(--o3-gap);
+  width: 268px;
+  max-height: calc(100% - var(--o3-top) - var(--o3-gap) * 2);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.o3-places {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.o3-place {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 90, 69, 0.18);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  text-align: left;
+}
+
+.o3-place .name {
+  font-weight: 700;
+}
+
+.o3-place .sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.o3-place:hover,
+.o3-place.active {
+  border-color: var(--green);
+}
+
+.o3-place.now {
+  border: 2.5px solid var(--green);
+}
+
+.o3-place.plain {
+  background: var(--paper);
+  box-shadow: none;
+}
+
+.o3-place.plain .name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.o3-panel {
+  position: absolute;
+  z-index: 8;
+  top: calc(var(--o3-top) + var(--o3-gap));
+  right: var(--o3-gap);
+  bottom: var(--o3-gap);
+  width: var(--o3-panel);
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+  animation: o3-slide 0.28s ease;
+}
+
+@keyframes o3-slide {
+  from {
+    transform: translateX(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.o3-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 18px 24px;
+}
+
+.o3-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.o3-close:hover {
+  background: var(--line);
+}
+
+/* 입사 안내: 사무실을 뒤에 두고 가운데 창으로 */
+.o3-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(36, 43, 39, 0.28);
+}
+
+.o3-modal-card {
+  width: min(600px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  border-radius: 18px;
+  background: var(--paper);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
+}
+
+.o3-modal-card .panel {
+  margin: 0 auto !important;
+  padding: 20px 4px !important;
+}
+
+/* 이 배치에서는 위 막대의 '지금 할 일' 버튼 대신 왼쪽 카드가 있다. */
+.o3 .topbar-now {
+  display: none !important;
+}
