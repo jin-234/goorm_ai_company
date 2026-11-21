@@ -11,7 +11,7 @@ import type { OfficeView } from "./api";
 import { Onboarding } from "./panels/Onboarding";
 import { placeForPhase, renderPanel } from "./panels";
 import { NowPanel } from "./NowPanel";
-import { SeatMonitor } from "./camera/SeatMonitor";
+import { SeatMonitorProvider } from "./camera/SeatMonitor";
 import { OfficeBackdrop, OfficeStage, type StageMode, useStageMode } from "./OfficeStage";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
@@ -44,6 +44,15 @@ const PLACES: PlaceInfo[] = [
 
 export function OfficeApp() {
   const office = useOffice();
+  // 근무 중 착석 확인 카메라는 어느 화면에 있든 이어서 판정한다(카드 안 미리보기는 같은 스트림).
+  return (
+    <SeatMonitorProvider office={office} view={office.view}>
+      <OfficeScreen office={office} />
+    </SeatMonitorProvider>
+  );
+}
+
+function OfficeScreen({ office }: { office: OfficeHandle }) {
   const { view } = office;
   const stage = useStageMode();
   // 3D 화면에서는 패널을 닫을 수 있어 null(닫힘)이 된다. 2D 화면은 늘 한 패널을 보여 준다.
@@ -200,7 +209,6 @@ export function OfficeApp() {
           {renderPanel(shown, office, view, setPlace)}
         </main>
       </div>
-      <SeatMonitor office={office} view={view} />
       <Toast text={office.toast} />
     </div>
   );
@@ -247,7 +255,6 @@ function FullOffice({
           <div className="o3-panel-body">{renderPanel(place, office, view, setPlace)}</div>
         </aside>
       ) : null}
-      <SeatMonitor office={office} view={view} />
       <Toast text={office.toast} />
     </div>
     </FixedStage>
