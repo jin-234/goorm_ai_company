@@ -68,11 +68,17 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ type, ...payload }),
     }),
-  draft: (transcript: string) =>
+  /** 아침보고 목표 글 → 과제 초안. 초안은 저장하지 않고 돌려준다(확정은 confirmTasks). */
+  draft: (goal: string) =>
     call<{
-      result: { source: "solar" | "localRules"; seconds: number; solarError: SolarErrorInfo | null };
+      result: {
+        source: "solar" | "localRules";
+        seconds: number;
+        tasks: { title: string; completionCriteria: string; shareForm: string }[];
+        solarError: SolarErrorInfo | null;
+      };
       office: OfficeView;
-    }>("/api/office/draft", { method: "POST", body: JSON.stringify({ transcript }) }),
+    }>("/api/office/draft", { method: "POST", body: JSON.stringify({ goal }) }),
   weeklyFeedback: (fallback: boolean) =>
     call<{ result: { source?: string; solarError: SolarErrorInfo | null }; office: OfficeView }>(
       "/api/office/weekly-feedback",

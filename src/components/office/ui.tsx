@@ -37,20 +37,17 @@ export function Notice({
   );
 }
 
-/** 업무 중요도. 숫자만 보이지 않게 행동이 떠오르는 이름을 함께 쓴다(현직자 피드백). */
-export const LEVEL_NAME: Record<1 | 2 | 3, string> = {
-  3: "오늘 꼭 끝낼 일",
-  2: "오늘 안에 할 일",
-  1: "미뤄도 되는 일",
+/** 과제 상태. 색만으로 구분하지 않게 이름을 함께 쓴다. */
+const STATUS_CLASS: Record<string, string> = {
+  confirmed: "l1",
+  in_progress: "l2",
+  submitted: "l3",
+  reviewed: "l3",
+  incomplete: "none",
 };
 
-export function LevelBadge({ level }: { level: 1 | 2 | 3 | null }) {
-  if (level == null) return <span className="badge none">단계 확인 필요</span>;
-  return (
-    <span className={`badge l${level}`} title={LEVEL_NAME[level]}>
-      {level}단계 · {LEVEL_NAME[level]}
-    </span>
-  );
+export function StatusBadge({ status, label }: { status: string; label: string }) {
+  return <span className={`badge ${STATUS_CLASS[status] ?? "tag"}`}>{label}</span>;
 }
 
 export function Card({ title, children, aside }: { title?: string; children: ReactNode; aside?: ReactNode }) {
