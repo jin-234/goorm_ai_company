@@ -713,6 +713,8 @@ function Decor({ minute }: { minute: number }) {
         <Box size={[1.9, 1.15, 0.04]} at={[0, 0, 0]} color={PALETTE.oakDeep} />
         <group position={[0, 0, 0.022]}><Panel w={1.8} h={1.05} texture={board} /></group>
       </group>
+      {/* 책장 위 뒷벽의 회사 간판(시계 왼쪽) */}
+      <CompanySign />
       {/* 책장 */}
       <group position={[-0.75, 0, -HD + T / 2 + 0.2]}>
         {/* 앞이 트인 책장: 뒷판·옆판·위아래 판 */}
@@ -809,6 +811,39 @@ function RoundTree({ at }: { at: [number, number, number] }) {
           <meshStandardMaterial color={i ? PALETTE.leafDeep : PALETTE.leaf} roughness={0.85} />
         </mesh>
       ))}
+    </group>
+  );
+}
+
+/**
+ * 뒷벽 회사 간판: 책장(가운데 x −0.75, 높이 1.9) 위, 벽시계(x 1.42) 왼쪽. 출근 장면의 건물 정면 간판과 같은 모양.
+ * 회의실 유리벽(x ≤ −2.3)·시계(x ≥ 1.08)와 겹치지 않게 x −1.55 ~ 0.05 사이에 둔다.
+ */
+function CompanySign() {
+  const tex = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = PALETTE.green;
+    roundRect(ctx, 0, 0, w, h, 16);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.brass;
+    ctx.lineWidth = 6;
+    roundRect(ctx, 12, 12, w - 24, h - 24, 9);
+    ctx.stroke();
+    ctx.fillStyle = "#F4ECDB";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `800 ${Math.round(h * 0.4)}px ${FONT}`;
+    ctx.fillText("VISION COMPANY", w / 2, h * 0.46);
+    ctx.fillStyle = "#CFE3D8";
+    ctx.font = `600 ${Math.round(h * 0.15)}px ${FONT}`;
+    ctx.fillText("개발팀", w / 2, h * 0.8);
+  }, 720, 200, []);
+  const z = -HD + T / 2 + 0.02;
+  return (
+    <group position={[-0.75, 2.42, z]}>
+      <Box size={[1.6, 0.46, 0.05]} at={[0, 0, 0.01]} color={PALETTE.greenDark} round={0.02} />
+      <group position={[0, 0, 0.037]}>
+        <Panel w={1.52} h={0.4} texture={tex} emissive={0.12} />
+      </group>
     </group>
   );
 }
