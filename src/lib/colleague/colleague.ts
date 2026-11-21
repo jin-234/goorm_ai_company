@@ -1,11 +1,12 @@
 /**
- * AI 동료(팀장 제안·기획자 대화·마감 요약). 개정 기획서 4.3~4.4.
+ * AI 동료(팀장 제안·회의실 타 부서 대화·마감 요약). 개정 기획서 4.3~4.4.
+ * 회의실에서는 기획자 → 디자이너 → 운영 담당자가 차례로 질문 하나씩, 마지막에 기획자가 마무리한다(Office.shareSpeaker).
  * - 맥락(D)은 지금 대화에 필요한 범위만 골라 보낸다.
  * - Solar 응답은 서버에서 다시 지킨다: 질문 하나, 반복 금지, 상한, 건너뛰기, 읽지 않은 자료는 근거로 쓰지 않음.
  * - Solar가 없거나 실패하면 정해진 양식(manual)을 돌려준다. 화면은 이것을 AI가 말한 것처럼 보이지 않게 한다.
  */
 import type { Office } from "@/lib/office/office";
-import type { PlannerReply, Review, ShareTurn, Submission } from "@/lib/office/models";
+import { type PlannerReply, type Review, type ShareTurn, speakerOf, type Submission } from "@/lib/office/models";
 import { parse as parsePT } from "@/lib/office/pt-parser";
 import { plannerReplyOf, reviewOf } from "@/lib/server/actions";
 import { SolarClient, SolarError } from "@/lib/solar/client";
@@ -63,7 +64,7 @@ export function materialsOf(submissions: Submission[]) {
 export function historyOf(turns: ShareTurn[]) {
   return turns.map((t, i) => ({
     turn: `턴 ${i + 1}`,
-    role: t.role === "user" ? "사용자" : "기획자",
+    role: t.role === "user" ? "사용자" : ROLES[speakerOf(t)].title,
     text: t.role === "user" ? clip(t.text ?? "", TEXT_LIMIT) : [t.reply?.acknowledgement, t.reply?.question].filter(Boolean).join(" "),
   }));
 }
@@ -79,15 +80,17 @@ export function activityTypeOf(submissions: Submission[]): ActivityType {
   return submissions.length > 0 ? "explain" : "learning_only";
 }
 
-function plannerContext(office: Office, roleId: ColleagueRoleId = "planner") {
+function plannerContext(office: Office, roleId: ColleagueRoleId = office.shareSpeaker.role) {
   const day = office.day;
   return {
     activity_type: activityTypeOf(day.submissions),
     meeting: {
       place: MEETING.place,
-      format: "개발팀 직원의 발표를 듣고 질문한다",
-      attendees: [...MEETING.askers, ...MEETING.listeners].map((id) => ROLES[id].department),
+      format: "개발팀 직원의 발표를 듣고 부서마다 차례로 질문 하나씩 한다",
+      attendees: MEETING.askers.map((id) => ROLES[id].department),
+      host: ROLES[MEETING.host].department,
       asking_role: ROLES[roleId].department,
+      questions_by_others: askedBy(day.share.turns).filter((q) => q.role !== roleId).map((q) => ({ department: ROLES[q.role].department, question: q.question })),
     },
     user_profile: { target_role: office.profile.targetRole, experience: clip(office.profile.experience ?? "", 300) },
     daily_goal: day.goal,
@@ -147,24 +150,32 @@ export function firstQuestion(q: string): string {
   return at >= 0 ? text.slice(0, at + 1).trim() : text;
 }
 
-/** 이전에 한 질문들. */
+/** 이전에 한 질문들(부서와 함께). */
+function askedBy(turns: ShareTurn[]): { role: ColleagueRoleId; question: string }[] {
+  return turns.filter((t) => t.role === "planner" && t.reply?.question).map((t) => ({ role: speakerOf(t), question: t.reply!.question }));
+}
+
+/** 이전에 한 질문들. 다른 부서가 물은 것도 다시 묻지 않는다. */
 function askedQuestions(turns: ShareTurn[]): string[] {
-  return turns.filter((t) => t.role === "planner" && t.reply?.question).map((t) => t.reply!.question);
+  return askedBy(turns).map((q) => q.question);
 }
 
 /**
  * 모델 응답을 규칙에 맞게 다듬는다.
- * - 질문 하나, 이미 한 질문 반복 금지, 상한 도달 시 질문 없이 마무리
+ * - 질문 하나, 이미 한 질문(다른 부서 것 포함) 반복 금지, 차례가 아니거나 상한 도달 시 질문 없이 마무리
  * - 사용자가 건너뛴 질문은 남은 질문으로 남김
  * - 근거는 실제 대화 턴과 읽은 제출물만
  */
-export function guardPlannerReply(raw: PlannerReply, ctx: { turns: ShareTurn[]; questionCount: number; maxQuestions: number; submissions: Submission[] }): PlannerReply {
+export function guardPlannerReply(
+  raw: PlannerReply,
+  ctx: { turns: ShareTurn[]; questionCount: number; maxQuestions: number; submissions: Submission[]; canAsk?: boolean },
+): PlannerReply {
   const reply: PlannerReply = { ...raw, known_facts: [...raw.known_facts], open_questions: [...raw.open_questions], evidence_refs: [...raw.evidence_refs] };
   const asked = askedQuestions(ctx.turns);
   let question = firstQuestion(reply.question);
   if (question && isRepeatQuestion(question, asked)) question = "";
   if (question && JUDGEMENT.test(question)) question = "";
-  if (ctx.questionCount >= ctx.maxQuestions) question = "";
+  if (ctx.questionCount >= ctx.maxQuestions || ctx.canAsk === false) question = "";
   reply.question = question;
   reply.acknowledgement = stripJudgement(reply.acknowledgement) || "설명 고맙습니다.";
   reply.known_facts = reply.known_facts.map(stripJudgement).filter(Boolean);
@@ -211,21 +222,22 @@ export function guardReview(raw: Review, ctx: { turns: ShareTurn[]; submissions:
 
 // MARK: - 수동 양식(AI 미연결)
 
-/** AI가 없을 때 차례로 보여 줄 정해진 질문(기획자 역할 지침의 '파악할 정보'). */
+/** AI가 없을 때 기획자가 보여 줄 정해진 질문(기획자 역할 지침의 '파악할 정보'). */
 export const MANUAL_QUESTIONS = ROLES.planner.manualQuestions;
 
+/** AI 미연결 때 그 부서의 정해진 질문 중 아직 안 나온 첫 질문 하나. 차례가 아니거나 상한이면 질문 없이 끝낸다. */
 export function manualPlannerReply(
-  ctx: { questionCount: number; maxQuestions: number; openQuestions: string[]; knownFacts: string[] },
+  ctx: { questionCount: number; maxQuestions: number; openQuestions: string[]; knownFacts: string[]; asked?: string[]; canAsk?: boolean },
   roleId: ColleagueRoleId = "planner",
 ): PlannerReply {
-  const questions = ROLES[roleId].manualQuestions;
-  const index = ctx.questionCount;
-  const next = index < Math.min(ctx.maxQuestions, questions.length) ? questions[index] : "";
-  const basis = next ? ROLES[roleId].manualBasis[index] : null;
+  const role = ROLES[roleId];
+  const index = ctx.questionCount < ctx.maxQuestions && ctx.canAsk !== false ? role.manualQuestions.findIndex((q) => !isRepeatQuestion(q, ctx.asked ?? [])) : -1;
+  const next = index >= 0 ? role.manualQuestions[index] : "";
+  const basis = next ? role.manualBasis[index] : null;
   return {
     acknowledgement: "",
     question: next,
-    question_reason: next ? "사용자 안내 초안에 들어갈 항목입니다(정해진 양식)." : "",
+    question_reason: next ? `${role.department} 업무에 필요한 항목입니다(정해진 양식).` : "",
     question_basis: basis?.basis ?? "",
     basis_ref: basis?.ref ?? "",
     known_facts: ctx.knownFacts,
@@ -298,11 +310,8 @@ export function sampleProposal(goal: string): LeaderProposal {
   return { tasks, question: "오늘 쓸 수 있는 시간 안에 이 범위면 될까요?" };
 }
 
-/** 예시 기획자가 이번 공유에서 묻는 질문 수(기본 1~2개). */
-const SAMPLE_QUESTIONS = 2;
-
-/** 예시 기획자: 받은 말을 짚고, 역할의 '파악할 정보'를 아직 안 물은 순서대로 하나씩, 두 개 묻고 마무리한다. */
-export function samplePlannerReply(office: Office, roleId: ColleagueRoleId = "planner"): PlannerReply {
+/** 예시 동료: 받은 말을 짚고, 자기 차례면 역할의 '파악할 정보' 중 아직 안 나온 질문 하나를 묻는다. 차례가 끝났으면 마무리한다. */
+export function samplePlannerReply(office: Office, roleId: ColleagueRoleId = office.shareSpeaker.role, canAsk = office.shareSpeaker.canAsk): PlannerReply {
   const share = office.day.share;
   const turns = share.turns;
   const asked = askedQuestions(turns);
@@ -313,27 +322,25 @@ export function samplePlannerReply(office: Office, roleId: ColleagueRoleId = "pl
 
   const role = ROLES[roleId];
   const pool = role.manualQuestions.map((q, i) => ({ q, ...role.manualBasis[i] })).filter(({ q }) => !isRepeatQuestion(q, asked));
-  const limit = Math.min(SAMPLE_QUESTIONS, share.maxQuestions);
-  const pick = asked.length < limit ? pool[0] : undefined;
+  const pick = canAsk && asked.length < share.maxQuestions ? pool[0] : undefined;
   const question = pick?.q ?? "";
   const learningOnly = activityTypeOf(office.day.submissions) === "learning_only";
 
   return {
-    acknowledgement: skipped
-      ? "알겠습니다. 그 부분은 남은 질문으로 적어 둘게요."
-      : last
-        ? `"${snippet(last)}" 말씀 잘 받았습니다.`
-        : "공유해 주셔서 고맙습니다.",
+    acknowledgement: [
+      skipped ? "알겠습니다. 그 부분은 남은 질문으로 적어 둘게요." : last ? `"${snippet(last)}" 말씀 잘 받았습니다.` : "공유해 주셔서 고맙습니다.",
+      canAsk ? "" : "모두 설명 고맙습니다. 들은 내용으로 부서마다 업무를 이어 가겠습니다.",
+    ].filter(Boolean).join(" "),
     question,
     question_reason: question
       ? learningOnly
-        ? "안내 초안에 필요해서요. 직접 만든 기능이 아니면 가상으로 적용한다고 생각하고 답해 주셔도 됩니다."
-        : "사용자 안내 초안에 이 내용이 들어가야 해서요."
+        ? `${role.need} 직접 만든 기능이 아니면 가상으로 적용한다고 생각하고 답해 주셔도 됩니다.`
+        : role.need
       : "",
     question_basis: pick?.basis ?? "",
     basis_ref: pick?.ref ?? "",
     known_facts: said.map(({ t }) => snippet(t.text ?? "", 60)),
-    open_questions: [...share.openQuestions, ...(question ? [] : pool.slice(0, 1).map((p) => p.q))].filter((q, i, a) => a.indexOf(q) === i),
+    open_questions: [...share.openQuestions].filter((q, i, a) => a.indexOf(q) === i),
     evidence_refs: said.map(({ ref }) => ref),
     can_finish: !question,
   };
@@ -420,17 +427,23 @@ export async function proposeScope(
   }
 }
 
-/** AI 기획자: 사용자의 마지막 말까지 기록된 상태에서 다음 응답 하나. */
-export async function plannerReply(client: SolarClient, office: Office, roleId: ColleagueRoleId = "planner"): Promise<Outcome<PlannerReply>> {
+/**
+ * 회의실 동료 응답 하나. 사용자의 마지막 말까지 기록된 상태에서, 지금 차례인 부서(기본은 office.shareSpeaker)가 답한다.
+ * 차례가 지난 부서(마무리하는 진행자)는 질문하지 않는다.
+ */
+export async function plannerReply(client: SolarClient, office: Office, roleId?: ColleagueRoleId): Promise<Outcome<PlannerReply>> {
   const share = office.day.share;
-  const guardCtx = { turns: share.turns, questionCount: share.questionCount, maxQuestions: share.maxQuestions, submissions: office.day.submissions };
+  const turn = office.shareSpeaker;
+  const role = roleId ?? turn.role;
+  const canAsk = roleId == null || roleId === turn.role ? turn.canAsk : true;
+  const guardCtx = { turns: share.turns, questionCount: share.questionCount, maxQuestions: share.maxQuestions, submissions: office.day.submissions, canAsk };
   if (aiModeOf(client) === "sample") {
-    return { source: "sample", value: guardPlannerReply(samplePlannerReply(office, roleId), guardCtx), solarError: null };
+    return { source: "sample", value: guardPlannerReply(samplePlannerReply(office, role, canAsk), guardCtx), solarError: null };
   }
   try {
     const content = await client.completeJSON({
-      system: plannerSystem(share.maxQuestions, share.questionCount, roleId),
-      messages: [{ role: "user", content: JSON.stringify(plannerContext(office, roleId)) }],
+      system: plannerSystem(share.maxQuestions, share.questionCount, role, canAsk),
+      messages: [{ role: "user", content: JSON.stringify(plannerContext(office, role)) }],
       schemaName: PLANNER_SCHEMA_NAME,
       schema: PLANNER_SCHEMA,
       temperature: 0.4,
@@ -440,7 +453,10 @@ export async function plannerReply(client: SolarClient, office: Office, roleId: 
     return { source: "solar", value, solarError: null };
   } catch (error) {
     if (!(error instanceof SolarError)) throw error;
-    const value = manualPlannerReply({ questionCount: share.questionCount, maxQuestions: share.maxQuestions, openQuestions: share.openQuestions, knownFacts: share.knownFacts }, roleId);
+    const value = manualPlannerReply(
+      { questionCount: share.questionCount, maxQuestions: share.maxQuestions, openQuestions: share.openQuestions, knownFacts: share.knownFacts, asked: askedQuestions(share.turns), canAsk },
+      role,
+    );
     return { source: "manual", value, solarError: error.toJSON() };
   }
 }

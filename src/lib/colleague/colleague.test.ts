@@ -97,6 +97,7 @@ describe("Solar 호출 실패(키는 있음)", () => {
     const office = {
       profile: { targetRole: "프런트엔드", experience: "" },
       day: { goal: "g", tasks: [], submissions: [], share: { turns: [userTurn("만들었습니다")], questionCount: 0, maxQuestions: 3, knownFacts: [], openQuestions: [] } },
+      shareSpeaker: { role: "planner", canAsk: true },
     } as unknown as Parameters<typeof plannerReply>[1];
     const out = await plannerReply(client, office);
     expect(out.source).toBe("manual");

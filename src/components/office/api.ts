@@ -91,7 +91,7 @@ export const api = {
       "/api/office/draft",
       post({ goal, availableMinutes }),
     ),
-  /** AI 기획자: 내 설명 한 마디 → 응답(질문은 한 번에 하나). */
+  /** 회의실: 내 설명 한 마디 → 차례인 타 부서 동료의 응답(부서마다 질문 하나씩). */
   share: (message: string) =>
     call<{ source: AiSource; reply?: PlannerReply; error?: unknown; office?: OfficeView }>("/api/office/share", post({ message })),
   /** 마감 요약 초안. */

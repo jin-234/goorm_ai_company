@@ -85,7 +85,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
         <Card title="다 했으면 회의실에서 발표하기">
           <p className="muted pre" style={{ margin: 0 }}>
             {handled === tasks.length
-              ? "모든 과제를 제출했거나 못 끝낸 것으로 정했습니다.\nAI 기획자에게 오늘 한 일을 설명해 주세요."
+              ? "모든 과제를 제출했거나 못 끝낸 것으로 정했습니다.\n회의실에서 기획·디자인·운영 담당자에게 오늘 한 일을 설명해 주세요."
               : `아직 진행 중인 과제가 ${tasks.length - handled}건 있습니다.\n그래도 지금 공유를 시작할 수 있습니다.`}
           </p>
           {blockedBy.length > 0 ? (

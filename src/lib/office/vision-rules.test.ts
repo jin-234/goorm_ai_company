@@ -108,28 +108,40 @@ describe("수행과 제출", () => {
 });
 
 describe("회의실 발표", () => {
-  test("질문을 세고, 상한에 닿으면 더 묻지 않고 요약 준비 상태가 된다", () => {
+  test("기획자 → 디자이너 → 운영 담당자가 차례로 하나씩 묻고, 마지막 답을 들은 뒤 기획자가 마무리한다", () => {
     const office = workingOffice();
     expect(() => office.recordShareTurn({ role: "user", text: "x" })).toThrow(OfficeError);
     office.startSharing();
     expect(office.day.share.state).toBe("awaiting_explanation");
-    office.recordShareTurn({ role: "user", text: "날씨 화면을 만들었습니다." });
-    expect(office.day.share.state).toBe("clarifying");
-    for (let i = 0; i < 3; i++) office.recordShareTurn({ role: "planner", reply: reply(), source: "solar" });
+    expect(office.shareSpeaker).toEqual({ role: "planner", canAsk: true });
+    for (const role of ["planner", "designer", "operations"] as const) {
+      office.recordShareTurn({ role: "user", text: "설명" });
+      expect(office.shareSpeaker).toEqual({ role, canAsk: true });
+      office.recordShareTurn({ role: "planner", reply: reply(), source: "solar" });
+      expect(office.day.share.turns.at(-1)?.speaker).toBe(role);
+      expect(office.day.share.state).toBe("clarifying");
+    }
     expect(office.day.share.questionCount).toBe(3);
-    expect(office.day.share.state).toBe("ready_to_summarize");
     expect(office.day.share.knownFacts).toEqual(["도시를 입력하면 날씨가 보인다"]);
+    office.recordShareTurn({ role: "user", text: "마지막 답" });
+    expect(office.shareSpeaker).toEqual({ role: "planner", canAsk: false });
+    // 차례가 끝난 뒤에는 질문을 받지 않는다.
     expect(() => office.recordShareTurn({ role: "planner", reply: reply(), source: "solar" })).toThrow(
       expect.objectContaining({ code: "shareQuestionLimit" }),
     );
-    // 질문 없이 마무리하는 응답은 상한과 무관하게 받는다.
     office.recordShareTurn({ role: "planner", reply: reply({ question: "", can_finish: true }), source: "solar" });
+    expect(office.day.share.turns.at(-1)?.speaker).toBe("planner");
+    expect(office.day.share.state).toBe("ready_to_summarize");
   });
 
-  test("충분히 설명되면 질문 없이 마무리하고, 사용자가 언제든 끝낼 수 있다", () => {
+  test("물을 것이 없는 부서는 넘어가고, 마지막 부서까지 질문이 없으면 정리하며, 사용자가 언제든 끝낼 수 있다", () => {
     const office = workingOffice();
     office.startSharing();
     office.recordShareTurn({ role: "user", text: "설명" });
+    office.recordShareTurn({ role: "planner", reply: reply({ question: "", can_finish: true }), source: "manual" });
+    expect(office.day.share.state).toBe("clarifying");
+    expect(office.shareSpeaker.role).toBe("designer");
+    office.recordShareTurn({ role: "planner", reply: reply({ question: "", can_finish: true }), source: "manual" });
     office.recordShareTurn({ role: "planner", reply: reply({ question: "", can_finish: true }), source: "manual" });
     expect(office.day.share.questionCount).toBe(0);
     expect(office.day.share.state).toBe("ready_to_summarize");

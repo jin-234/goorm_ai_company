@@ -190,7 +190,23 @@ export interface Submission {
 
 export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
 
-// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀·운영팀 담당자 1명씩이 듣고, 기획자가 질문한다
+// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀·운영팀 담당자 1명씩이 듣고, 차례로 하나씩 질문한다
+
+/** 회의실에 오는 타 부서 AI 동료. */
+export type MeetingRoleId = "planner" | "designer" | "operations";
+/**
+ * 질문하는 차례(사용자 결정 2026-11-21: 분야별로 한 번씩 모두 대화한다).
+ * 각 부서가 자기 후속 업무에 필요한 질문을 하나씩 하고, 마지막 답을 들으면 진행자(기획자)가 마무리한다.
+ */
+export const MEETING_ORDER: MeetingRoleId[] = ["planner", "designer", "operations"];
+/** 회의 진행자. 모든 부서가 물은 뒤 마무리 인사를 한다. */
+export const MEETING_HOST: MeetingRoleId = "planner";
+/** 화면과 프롬프트가 같이 쓰는 이름. */
+export const MEETING_ROLE_NAME: Record<MeetingRoleId, { title: string; department: string; short: string }> = {
+  planner: { title: "AI 기획자", department: "서비스 기획팀", short: "기획자" },
+  designer: { title: "AI 디자이너", department: "디자인팀", short: "디자이너" },
+  operations: { title: "AI 운영 담당자", department: "운영팀", short: "운영 담당자" },
+};
 
 export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
 
@@ -206,7 +222,7 @@ export const QUESTION_BASES: QuestionBasis[] = ["role_need", "ux_guide", "collec
 /** 수집한 인터뷰 사례 데이터가 아직 없다. 생기기 전까지 collected_case는 ux_guide로 낮춘다(실제 사례인 척 방지). */
 export const COLLECTED_CASES_AVAILABLE = false;
 
-/** AI 기획자 응답(개정 기획서 4.3 E). */
+/** 타 부서 AI 동료 응답(개정 기획서 4.3 E). */
 export interface PlannerReply {
   acknowledgement: string;
   /** 질문이 필요 없거나 끝낼 때는 빈 문자열. */
@@ -231,24 +247,30 @@ export type ColleagueSource = "solar" | "sample" | "manual";
 
 export interface ShareTurn {
   id: string;
+  /** planner = 타 부서 AI 동료의 말(이름은 옛 기록과 맞추려고 그대로 둔다). 누가 말했는지는 speaker. */
   role: "user" | "planner";
+  /** 말한 부서. 없으면(옛 기록) 기획자. */
+  speaker?: MeetingRoleId;
   at: Instant;
   /** 사용자가 쓴 글. */
   text?: string;
-  /** 기획자 응답. */
+  /** 동료 응답. */
   reply?: PlannerReply;
   source?: ColleagueSource;
 }
 
-/** AI 기획자 질문 상한(기본은 1~2개). 프롬프트와 규칙이 같이 쓴다. */
-export const MAX_SHARE_QUESTIONS = WorkRules.maxShareQuestions;
+/** 회의 전체 질문 상한: 부서마다 하나씩. */
+export const MAX_SHARE_QUESTIONS = MEETING_ORDER.length;
+
+/** 동료 턴을 말한 부서. */
+export const speakerOf = (t: ShareTurn): MeetingRoleId => t.speaker ?? "planner";
 
 export interface ShareSession {
   state: ShareState | null;
   questionCount: number;
   maxQuestions: number;
   turns: ShareTurn[];
-  /** 기획자가 지금까지 알게 된 사실(마지막 응답의 known_facts). 반복 질문을 줄이는 데 쓴다. */
+  /** 동료들이 지금까지 알게 된 사실(마지막 응답의 known_facts). 반복 질문을 줄이는 데 쓴다. */
   knownFacts: string[];
   /** 아직 남은 질문(마지막 응답의 open_questions). */
   openQuestions: string[];
