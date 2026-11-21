@@ -95,7 +95,7 @@ export function Office3D({ view, onPlace, speed = 1, focus: initialFocus = "over
   };
   return (
     <div ref={host} className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }} data-office3d-focus={focus}>
-      <Canvas shadows dpr={[1, 2]} camera={{ fov: 20, near: 2, far: 160, position: shotPosition(SHOTS.overview).toArray() }} gl={{ preserveDrawingBuffer: true, toneMapping: NeutralToneMapping, toneMappingExposure: 1.6 }}>
+      <Canvas shadows dpr={[1, 2]} resize={{ offsetSize: true }} camera={{ fov: 20, near: 2, far: 160, position: shotPosition(SHOTS.overview).toArray() }} gl={{ preserveDrawingBuffer: true, toneMapping: NeutralToneMapping, toneMappingExposure: 1.6 }}>
         <Scene view={view} speed={speed} focus={focus} onClick={handle} onEntranceStart={() => setFocus("overview")} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} labelHost={host} />
       </Canvas>
       {focus !== "overview" && (

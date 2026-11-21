@@ -579,11 +579,27 @@ label.stack {
 /* MARK: 맥 앱 배치(넓은 화면 + 3D) */
 /* 3D 사무실이 화면 전체를 채우고, 위 막대·'지금 할 일' 카드가 그 위에 뜬다.
    장소를 누르면 오른쪽에서 패널이 나온다. 패널이 열리면 사무실을 그만큼 왼쪽으로 비켜 그린다. */
+/* 16:10 고정 무대. 남는 가장자리는 사무실 바탕색으로 채운다. */
+/* 창이 기준 폭보다 좁아도 가운데에 오도록 절대 위치로 놓고 가운데 기준으로 줄인다. */
+.o3-frame {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #e6dcc8;
+}
+
+.o3-scaler {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform-origin: center center;
+}
+
 .o3 {
   --o3-panel: 460px;
   --o3-gap: 14px;
   --o3-top: 66px;
-  position: fixed;
+  position: absolute;
   inset: 0;
   overflow: hidden;
   background: #efe7d6;
@@ -770,4 +786,9 @@ label.stack {
 /* 이 배치에는 왼쪽 카드가 없으니(맥 앱처럼) 위 막대의 '지금 할 일' 버튼을 보인다. */
 .o3 .topbar-now {
   display: inline-flex !important;
+}
+
+/* 무대 안 토스트는 무대 기준으로 놓는다. */
+.o3 .toast {
+  position: absolute;
 }

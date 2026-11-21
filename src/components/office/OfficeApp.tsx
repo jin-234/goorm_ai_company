@@ -6,7 +6,7 @@
  * - 3D를 숨겼거나 못 그리거나 좁은 화면: 위 막대 + 왼쪽 장소 이름표 + 패널의 2D 배치(웹 기획서 7장).
  * 어느 쪽이든 단계가 바뀌면 그 단계의 패널을 자동으로 연다(맥 앱과 같은 규칙).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { Onboarding } from "./panels/Onboarding";
 import { applySavedTextScale } from "./panels/Settings";
@@ -134,6 +134,7 @@ export function OfficeApp() {
     if (stage.full) {
       // 맥 앱처럼 사무실을 뒤에 두고 입사 안내를 그 위에 띄운다.
       return (
+        <FixedStage>
         <div className="o3">
           <div className="o3-canvas" aria-hidden>
             <OfficeBackdrop view={view} onGo={() => undefined} />
@@ -145,6 +146,7 @@ export function OfficeApp() {
           </div>
           <Toast text={office.toast} />
         </div>
+        </FixedStage>
       );
     }
     return (
@@ -212,6 +214,7 @@ function FullOffice({
 }) {
   const title = PLACES.find((p) => p.id === place)?.name ?? "";
   return (
+    <FixedStage>
     <div className={`o3 ${place ? "with-panel" : ""}`}>
       <div className="o3-canvas">
         <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
@@ -237,6 +240,28 @@ function FullOffice({
         </aside>
       ) : null}
       <Toast text={office.toast} />
+    </div>
+    </FixedStage>
+  );
+}
+
+/** 맥 앱 기본 창(1440×900, 16:10)을 기준으로 화면 전체를 고정한다. 창 크기와 상관없이 같은 구도로 보이고, 창에 맞춰 통째로 확대·축소한다. */
+const STAGE_W = 1440;
+const STAGE_H = 900;
+
+function FixedStage({ children }: { children: ReactNode }) {
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const fit = () => setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H));
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, []);
+  return (
+    <div className="o3-frame">
+      <div className="o3-scaler" style={{ width: STAGE_W, height: STAGE_H, transform: `translate(-50%, -50%) scale(${scale})` }}>
+        {children}
+      </div>
     </div>
   );
 }
