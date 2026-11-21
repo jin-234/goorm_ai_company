@@ -71,7 +71,11 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => endRef.current?.scrollIntoView({ block: "nearest" }), [turns.length]);
+  // 중괄호로 감싸 아무것도 돌려주지 않는다. 최근 브라우저의 scrollIntoView는 Promise를 돌려주는데,
+  // 그대로 돌려주면 React가 정리 함수로 부르다 'destroy is not a function'으로 멈춘다.
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "nearest" });
+  }, [turns.length]);
 
   const header = (
     <PanelHeader
