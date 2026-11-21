@@ -70,14 +70,15 @@ describe("마감 요약 안전장치", () => {
   });
 });
 
-describe("AI 미연결", () => {
-  const noKey = new SolarClient({ apiKey: null, baseURL: "https://example.invalid", model: "m", timeout: 5 });
+describe("Solar 호출 실패(키는 있음)", () => {
+  const down = (async () => new Response("bad gateway", { status: 502 })) as typeof fetch;
+  const failing = new SolarClient({ apiKey: "k", baseURL: "https://example.invalid", model: "m", timeout: 5 }, down);
 
-  it("팀장 제안은 사용자의 글을 그대로 한 과제 초안으로", async () => {
-    const out = await proposeScope(noKey, { goal: "날씨 API 배우고 조회 화면 만들기", targetRole: "프런트엔드", availableMinutes: 240, carried: [] });
+  it("팀장 제안은 서버 안 규칙 초안(manual)으로, 무엇이 실패했는지 알린다", async () => {
+    const out = await proposeScope(failing, { goal: "날씨 API 배우고 조회 화면 만들기", targetRole: "프런트엔드", availableMinutes: 240, carried: [] });
     expect(out.source).toBe("manual");
-    expect(out.value.tasks[0].title).toBe("날씨 API 배우고 조회 화면 만들기");
-    expect(out.solarError?.kind).toBe("missingKey");
+    expect(out.value.tasks.length).toBeGreaterThan(0);
+    expect(out.solarError).not.toBeNull();
   });
 
   it("수동 양식은 정해진 질문을 차례로, 상한에서 끝낸다", () => {

@@ -390,7 +390,7 @@ export class Office implements OfficeState {
     } else {
       r.draft = structuredClone(review);
       r.draftSource = origin;
-      r.aiDraft = origin === "solar" ? structuredClone(review) : null;
+      r.aiDraft = origin === "manual" ? null : structuredClone(review);
       r.editedByUser = false;
     }
     this.log("reviewDraft", origin === "user" ? "마감 요약 수정 저장" : origin === "solar" ? "AI 마감 요약 초안" : "수동 마감 양식");
