@@ -1,0 +1,577 @@
+/* 맥 앱 공통 스타일(UI)을 웹으로 옮긴 값. 밝은 종이 바탕 하나만 쓴다. */
+:root {
+  --paper: #fbf8f0;
+  --paper-deep: #f2ecde;
+  --card: #ffffff;
+  --green: #1f5a45;
+  --green-soft: #ddebe4;
+  --ink: #242b27;
+  --ink-soft: #5a635e;
+  --line: #e2dac8;
+  --warn: #b44a1e;
+  --warn-bg: #fbe8d8;
+  --alert: #8a6610;
+  --alert-bg: #fbf0cc;
+  --info: #1f5a45;
+  --info-bg: #e6f1eb;
+  --radius: 12px;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* 여러 문장은 서버 문구의 줄바꿈(\n)을 그대로 보여 준다. */
+.pre {
+  white-space: pre-line;
+}
+
+.muted {
+  color: var(--ink-soft);
+}
+
+.small {
+  font-size: 13px;
+}
+
+/* MARK: 큰 틀 */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 20px;
+  padding: 10px 20px;
+  background: rgba(251, 248, 240, 0.94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar .clock {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+
+.topbar .phase {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.topbar .spacer {
+  flex: 1;
+}
+
+.demo-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1.5px dashed var(--line);
+  border-radius: 10px;
+  background: var(--paper-deep);
+}
+
+.demo-group .label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px;
+  max-width: 1280px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+  .topbar {
+    padding: 8px 12px;
+  }
+  .topbar .clock {
+    font-size: 24px;
+  }
+}
+
+/* MARK: 장소 이름표(왼쪽) */
+
+.places {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@media (max-width: 860px) {
+  .places {
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .places .place {
+    min-width: 150px;
+  }
+}
+
+.place {
+  text-align: left;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  border: 1.5px solid var(--line);
+  background: var(--card);
+  cursor: pointer;
+  min-height: 56px;
+}
+
+.place:hover {
+  border-color: var(--green);
+}
+
+.place.active {
+  background: var(--green-soft);
+  border-color: var(--green);
+}
+
+.place.now {
+  border-width: 3px;
+  border-color: var(--green);
+}
+
+.place .name {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.place .sub {
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* MARK: 카드·버튼 */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.panel-head .place-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.panel-head h1 {
+  font-size: 24px;
+}
+
+.panel-head p {
+  margin: 6px 0 0;
+  color: var(--ink-soft);
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.card h2 {
+  font-size: 18px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 10px;
+  border: none;
+  background: var(--green);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.btn.secondary {
+  min-height: 36px;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.btn.plain {
+  min-height: 36px;
+  background: transparent;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+}
+
+.btn.danger {
+  background: var(--warn);
+}
+
+.btn.small {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+.field {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  min-height: 40px;
+}
+
+.field:focus {
+  outline: 2px solid var(--green);
+  outline-offset: -1px;
+}
+
+textarea.field {
+  resize: vertical;
+  min-height: 96px;
+}
+
+label.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+/* MARK: 안내 상자(색 + 기호 + 글자로 구분) */
+
+.notice {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  align-items: flex-start;
+}
+
+.notice .icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: #fff;
+}
+
+.notice .title {
+  font-weight: 700;
+}
+
+.notice.info {
+  background: var(--info-bg);
+}
+.notice.info .icon {
+  background: var(--info);
+}
+.notice.ok {
+  background: var(--green-soft);
+}
+.notice.ok .icon {
+  background: var(--green);
+}
+.notice.warning {
+  background: var(--alert-bg);
+}
+.notice.warning .icon {
+  background: var(--alert);
+}
+.notice.error {
+  background: var(--warn-bg);
+}
+.notice.error .icon {
+  background: var(--warn);
+}
+
+/* MARK: 칩·배지 */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chip.warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.badge.l3 {
+  background: var(--green);
+}
+.badge.l2 {
+  background: rgba(31, 90, 69, 0.7);
+}
+.badge.l1 {
+  background: rgba(31, 90, 69, 0.4);
+  color: var(--ink);
+}
+.badge.none {
+  background: var(--alert-bg);
+  color: var(--alert);
+}
+.badge.tag {
+  background: var(--paper-deep);
+  color: var(--ink-soft);
+}
+
+/* MARK: 알림(토스트) */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 20;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: rgba(30, 34, 32, 0.9);
+  color: #fff;
+  white-space: pre-line;
+}
+
+/* MARK: 지금 할 일 패널 */
+/* 화면 한쪽에 고정하는 '지금 할 일' 카드(디자인 멘토 피드백). 왼쪽 줄 맨 위에 붙어 스크롤해도 남는다. */
+.now-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(31, 90, 69, 0.18);
+}
+
+.now-panel .now-label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.now-panel .now-title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.now-panel .now-why {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.92;
+}
+
+.now-panel .now-go {
+  background: #fff;
+  color: var(--green);
+  min-height: 44px;
+}
+
+.now-panel .now-here {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.now-panel .now-progress .bar {
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.now-panel .now-progress .bar span {
+  display: block;
+  height: 100%;
+  background: #fff;
+  border-radius: inherit;
+}
+
+.now-panel .now-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.now-panel .now-quick .muted {
+  color: rgba(255, 255, 255, 0.8);
+  width: 100%;
+}
+
+.now-panel .now-quick .btn.secondary {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.now-panel .now-quick .btn.secondary:disabled {
+  opacity: 0.45;
+}
+
+/* 왼쪽 줄: 지금 할 일 카드 + 장소 목록.
+   카드만 고정하면 스크롤할 때 아래 장소 이름표를 덮으므로 줄 전체를 함께 고정한다. */
+.sidebar {
+  position: sticky;
+  /* 위 막대 높이(약 93px) + 여백 */
+  top: 104px;
+  align-self: start;
+  /* 카드 + 장소 목록이 화면보다 길면 맨 아래에서 함께 밀려 올라가므로 화면 안에 가둔다. */
+  max-height: calc(100vh - 124px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  /* 좁은 화면에서는 위 막대와 왼쪽 줄을 고정하지 않는다(고정하면 내용을 가린다). */
+  .sidebar,
+  .topbar {
+    position: static;
+  }
+  .sidebar {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* 넓은 화면에서는 왼쪽 '지금 할 일' 카드가 있으니 위 막대의 같은 버튼은 숨긴다. */
+@media (min-width: 861px) {
+  .topbar-now {
+    display: none !important;
+  }
+}
+
+/* MARK: 3D 사무실 띠 */
+
+.panel-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage-canvas,
+.stage-loading {
+  height: 320px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: #f4ecdb;
+}
+
+.stage-loading {
+  display: grid;
+  place-items: center;
+}
+
+@media (max-width: 860px) {
+  .stage-canvas,
+  .stage-loading {
+    height: 260px;
+  }
+}
