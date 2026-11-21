@@ -25,7 +25,7 @@
 ## 엔드포인트
 
 ### `GET /api/office`
-지금 상태. 처음이면 이번 주 월요일, 활동 시작 5분 전에서 새로 시작한다. 옛 근태 형식으로 저장된 상태는 버리고 새로 시작한다.
+지금 상태. 처음이면 실제 지금 시각(한국 표준시, Asia/Seoul)에서 새로 시작한다. 회사 시계는 실제 시간과 같은 빠르기로 흐르고, 시연의 [다음 정각]·[다음 활동일]로 건너뛴 만큼만 앞서 간다. 옛 근태 형식으로 저장된 상태는 버리고 새로 시작한다.
 
 ### `DELETE /api/office`
 처음부터 다시(기록 전부 삭제).
@@ -48,7 +48,7 @@
 | `confirmReview` | `review`, `choices: { [taskId]: "adjust" \| "carryOver" \| "endToday" }`(제출하지 않은 과제마다), `reasons?` | `{ close: { submitted, adjusted, carried, ended } }` |
 | `skipHour` | — (시연: 다음 정각, 단계는 안 바뀜) | `{ skip }` |
 | `markMailRead` | `id` | — |
-| `startNextWorkday` | — (마감 뒤, 또는 출근 전이면 휴식일로 넘김) | — |
+| `startNextWorkday` | — (마감 뒤, 또는 출근 전이면 휴식일로 넘김). 실제 날짜가 바뀌었으면 실제 오늘·지금 시각으로, 같은 날이면 다음 근무일 활동 시작 5분 전으로 | — |
 
 ### AI 동료 (`src/lib/colleague`)
 

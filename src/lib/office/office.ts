@@ -84,6 +84,9 @@ export interface CloseOutcome {
   ended: number;
 }
 
+/** a가 b보다 뒤 날짜인지. */
+const dayAfter = (a: DayKey, b: DayKey) => at(a, 0) > at(b, 0);
+
 /** 진행 중으로 보는 과제 상태(아직 마감 처리를 하지 않음). */
 const OPEN_STATUSES: TaskStatus[] = ["confirmed", "in_progress", "submitted", "incomplete"];
 
@@ -116,6 +119,7 @@ export class Office implements OfficeState {
   static fromJSON(state: OfficeState): Office {
     const office = Object.create(Office.prototype) as Office;
     Object.assign(office, structuredClone(state));
+    office.realNow = null;
     return office;
   }
 
@@ -132,10 +136,11 @@ export class Office implements OfficeState {
     };
   }
 
-  /** 시연을 시작하는 시각. 실제 오늘이 속한 주의 월요일, 기본 활동 시작 5분 전. */
-  static demoStart(realNow: Instant = Date.now()): Instant {
-    return at(mondayOfWeek(dayKeyOf(realNow)), WorkRules.defaultActivityStart - WorkRules.minutesBeforeStart);
-  }
+  /**
+   * 이번 요청의 실제 시각(저장하지 않음). 세션이 요청마다 넣어 준다.
+   * 다음 활동일로 넘어갈 때 실제 날짜가 이미 바뀌었는지 보는 데 쓴다.
+   */
+  realNow: Instant | null = null;
 
   // MARK: 시각
 
@@ -169,11 +174,6 @@ export class Office implements OfficeState {
     this.profile = next;
     if (this.onboarded) return;
     this.onboarded = true;
-    // 처음 시작한 날이면 시계를 사용자가 정한 시작 시각 5분 전으로 맞춘다(출근 전일 때만).
-    if (this.day.phase === "beforeCheckIn") {
-      const start = at(this.day.date, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart));
-      if (start > this.now) this.now = start;
-    }
     this.post(MailTemplates.welcome(this.profile, addMinutes(this.now, -1)));
     this.post(MailTemplates.morningNotice(this.day.date, this.profile, this.pendingCarry, this.now));
   }
@@ -478,7 +478,15 @@ export class Office implements OfficeState {
   startNextWorkday(): void {
     if (!this.canStartNextWorkday) throw OfficeError.notAllowedNow("하루 마감을 확정한 뒤에 다음 활동일로 넘어갈 수 있습니다.");
     this.archiveDay();
-    this.beginDay(nextWorkday(this.day.date));
+    // 실제 날짜(한국 시각)가 이미 지났으면 실제 오늘·지금 시각으로 시작한다.
+    // 같은 날 시연으로 누르면 다음 근무일 활동 시작 5분 전으로 건너뛴다(그만큼 실제보다 앞서 간다).
+    const real = this.realNow;
+    if (real != null && dayAfter(dayKeyOf(real), this.day.date)) {
+      this.beginDay(dayKeyOf(real), Math.max(real, this.now));
+    } else {
+      const next = nextWorkday(this.day.date);
+      this.beginDay(next, at(next, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart)));
+    }
   }
 
   private archiveDay(): void {
@@ -499,9 +507,9 @@ export class Office implements OfficeState {
     this.history.push(record);
   }
 
-  private beginDay(date: DayKey): void {
+  private beginDay(date: DayKey, now: Instant): void {
     this.day = newWorkDay(date);
-    this.now = at(date, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart));
+    this.now = now;
     this.post(MailTemplates.morningNotice(date, this.profile, this.pendingCarry, this.now));
   }
 
