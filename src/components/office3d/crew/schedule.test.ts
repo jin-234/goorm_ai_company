@@ -311,8 +311,8 @@ describe("타 부서 공유(회의실 발표)", () => {
     }
   };
 
-  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀·마케팅팀, 문서 2장)", () => {
-    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀", "마케팅팀"]);
+  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀·운영팀)", () => {
+    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀", "운영팀"]);
     expect(new Set(GUEST_SEATS.map((g) => g.dept)).size).toBe(GUEST_SEATS.length);
     expect(GUEST_SEATS.map((g) => g.guest)).toEqual([...GUESTS]);
   });
