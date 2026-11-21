@@ -822,30 +822,67 @@ label.stack {
   position: absolute;
 }
 
-/* 근무 중 착석 확인 카메라(SeatMonitor). 화면 오른쪽 아래 작은 창. */
-.seat-monitor {
+/* 근무 중 착석 확인 카메라(SeatMonitor). 판정용 영상은 보이지 않게, 카드 안에는 작은 미리보기. */
+.seat-detect-video {
   position: fixed;
-  right: 16px;
-  bottom: 16px;
-  z-index: 30;
-  width: 200px;
-  max-width: calc(100vw - 32px);
-  border-radius: 12px;
-  overflow: hidden;
-  background: var(--paper);
-  border: 1px solid var(--line, #ddd);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  left: 0;
+  top: 0;
+  width: 2px;
+  height: 2px;
+  opacity: 0;
+  pointer-events: none;
 }
-.seat-monitor video {
-  display: block;
-  width: 100%;
+.seat-preview {
+  display: grid;
+  grid-template-columns: 148px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+.seat-preview-frame {
+  position: relative;
   aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #1f2421;
+  color: #cfd8d3;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  outline: 3px solid var(--line);
+}
+.seat-preview-frame.ok {
+  outline-color: var(--green);
+}
+.seat-preview-frame video {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   transform: scaleX(-1); /* 거울처럼 */
-  background: #1f2421;
 }
-.seat-monitor-body {
-  display: grid;
-  gap: 6px;
-  padding: 8px 10px;
+/* 인식 중 표시(빨간 점). */
+.seat-preview-rec {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8);
+  animation: seat-rec 1.4s ease-in-out infinite;
+}
+@keyframes seat-rec {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seat-preview-rec {
+    animation: none;
+  }
+}
+@media (max-width: 420px) {
+  .seat-preview {
+    grid-template-columns: 1fr;
+  }
 }

@@ -52,6 +52,11 @@ export class SeatCameraController {
     return this.snapshot;
   }
 
+  /** 지금 켜진 카메라 스트림. 미리보기 화면이 같은 스트림을 하나 더 보여 줄 때 쓴다. */
+  get mediaStream(): MediaStream | null {
+    return this.stream;
+  }
+
   async start(): Promise<void> {
     this.stop();
     const gen = ++this.generation;
