@@ -54,7 +54,7 @@ export function Settings({ office }: { office: OfficeHandle }) {
   };
 
   const reset = async () => {
-    if (!window.confirm("모두 지우고 다시 시작할까요?\n근태 기록·메일·주간보고가 모두 지워집니다.")) return;
+    if (!window.confirm("모두 지우고 다시 시작할까요?\n활동 기록·메일·대화가 모두 지워집니다.")) return;
     if (await office.run(async () => ({ office: await api.reset() }))) office.notify("처음부터 다시 시작합니다.");
   };
 

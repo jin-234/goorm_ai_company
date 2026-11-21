@@ -273,7 +273,7 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
                 />
               </label>
               <label className="stack">
-                {r.shareForm.trim() ? "기획팀에 공유할 형태" : "확인 필요 · 기획팀에 공유할 형태"}
+                {r.shareForm.trim() ? "회의실에서 발표할 형태" : "확인 필요 · 회의실에서 발표할 형태"}
                 <input className="field" value={r.shareForm} onChange={(e) => update(r.key, { shareForm: e.target.value })} />
               </label>
               <div className="row">

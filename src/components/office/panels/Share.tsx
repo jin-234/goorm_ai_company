@@ -1,6 +1,6 @@
 "use client";
 /**
- * 기획팀 · AI 기획자에게 오늘 한 일 공유(개정 기획서 3.1, 4.2, 4.3 B·E).
+ * 회의실 · 타 부서 공유(발표). 타 부서 AI 동료들이 회의실에 와 있고, 내가 오늘 한 일을 발표한다(개정 기획서 3.1, 4.2, 4.3 B·E).
  * AI 기획자는 자신의 후속 업무(사용자 안내 초안)에 필요한 것을 한 번에 하나씩 묻는다.
  * 사용자는 건너뛰거나 언제든 마칠 수 있다. AI 미연결이면 정해진 안내를 'AI가 말한 것'처럼 보이지 않게 따로 표시한다.
  */
@@ -107,9 +107,9 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
 
   const header = (
     <PanelHeader
-      place="기획팀"
-      title="오늘 한 일 공유"
-      detail={"서비스 기획팀의 AI 기획자가 사용자 안내를 쓰려고 합니다.\n오늘 한 일로 누가 무엇을 할 수 있게 됐는지 설명해 주세요."}
+      place="회의실 · 타 부서 공유"
+      title="오늘 한 일 발표"
+      detail={"기획팀이 회의실에 와 있습니다. 오늘 한 일을 발표해 주세요.\nAI 기획자는 사용자 안내를 쓰려고, 누가 무엇을 할 수 있게 됐는지 묻습니다."}
     />
   );
 
@@ -153,8 +153,8 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
     return (
       <div className="panel">
         {header}
-        <Notice kind="info" title="결과물을 남긴 뒤 공유합니다">
-          {"내 책상에서 과제를 제출하거나 못 끝낸 것으로 정한 다음\n'기획팀에 공유하러 가기'를 눌러 주세요."}
+        <Notice kind="info" title="결과물을 남긴 뒤 발표합니다">
+          {"내 책상에서 과제를 제출하거나 못 끝낸 것으로 정한 다음\n'회의실에서 발표하기'를 눌러 주세요."}
           <div style={{ marginTop: 8 }}>
             <button className="btn secondary small" onClick={() => onGo("desk")}>
               내 책상으로
