@@ -1,164 +1,75 @@
 "use client";
 /**
- * 내 책상: 착석 상태, 오늘의 체크리스트, 근태 요청(점심·자리 비움), 오늘 기록.
- * 카메라 판정은 AI 담당 작업이라, 지금은 시연용으로 자리 상태를 직접 바꾼다.
+ * 내 책상 · 수행과 결과물 제출(개정 기획서 3.1).
+ * 확정한 과제마다 시작 → 결과물 남기기 → 제출 완료(또는 오늘은 못 끝냄). 다 되면 기획팀 공유로 넘어간다.
  */
-import { useState } from "react";
 import { hm } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, Notice, PanelHeader } from "../ui";
-import { TaskList } from "./TaskList";
+import { Card, Notice, PanelHeader, type PlaceId } from "../ui";
+import { TaskWork } from "./TaskList";
 
-const AWAY_EXAMPLES = ["물 가지러 자리 비웁니다", "화장실 다녀오겠습니다", "택배 받으러 나갑니다"];
-
-const WARNING_EVENTS = new Set(["late", "absentCandidate", "unauthorizedAwayStart", "cameraOff", "supplementMissed"]);
-
-export function SeatCard({ office, view }: { office: OfficeHandle; view: OfficeView }) {
-  const allowance = view.activeAllowance;
-  const presence = view.state.presence;
-  const canObserve = ["working", "overtime"].includes(view.phase.value) && !allowance;
-  return (
-    <Card title="자리 상태">
-      <Notice kind={view.seat.isWarning ? "warning" : "info"} title={view.seat.title}>
-        {view.seat.detail}
-      </Notice>
-      {allowance && allowance.kind !== "dinner" ? (
-        <button className="btn secondary" onClick={() => office.act("returnFromAllowance")} disabled={office.busy}>
-          {allowance.kind === "lunch" ? "점심 마치고 복귀" : "자리로 복귀"}
-        </button>
-      ) : null}
-      {canObserve ? (
-        <>
-          <div className="small muted">카메라 없이 시연 중 · 자리 상태를 직접 바꿉니다</div>
-          <div className="row" role="group" aria-label="자리 상태 바꾸기">
-            {(
-              [
-                ["present", "자리에 있음"],
-                ["absent", "자리 비움"],
-                ["cameraOff", "카메라 꺼짐"],
-              ] as const
-            ).map(([state, label]) => (
-              <button
-                key={state}
-                className={`btn small ${presence === state ? "" : "secondary"}`}
-                aria-pressed={presence === state}
-                onClick={() => office.act("observePresence", { state })}
-                disabled={office.busy}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </>
-      ) : null}
-    </Card>
-  );
-}
-
-export function AttendanceRequests({ office, view }: { office: OfficeHandle; view: OfficeView }) {
-  const [reason, setReason] = useState("");
-  const lunch = async () => {
-    if ((await office.act("requestLunch")) != null) office.notify("점심 요청을 보냈습니다.\n1시간 동안 착석 확인을 쉽니다.");
-  };
-  const away = async () => {
-    if ((await office.act("registerAway", { reason })) != null) {
-      setReason("");
-      office.notify("자리 비움을 등록했습니다.\n15분 동안 착석 확인을 쉽니다.");
-    }
-  };
-  if (!view.can.requestLunch && !view.can.registerAway && view.phase.value !== "working") return null;
-  return (
-    <Card title="근태 요청">
-      {view.phase.value === "working" ? (
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <span className="muted">
-            {view.state.day.lunchUsed ? "오늘 점심은 사용했습니다." : "사내 메일로 요청하면 1시간을 받습니다."}
-          </span>
-          <button className="btn secondary" onClick={lunch} disabled={office.busy || !view.can.requestLunch}>
-            점심 요청 메일
-          </button>
-        </div>
-      ) : null}
-      <label className="stack">
-        자리 비움 사유
-        <input
-          className="field"
-          value={reason}
-          placeholder="사유 예: 물 가지러 자리 비웁니다"
-          onChange={(e) => setReason(e.target.value)}
-        />
-      </label>
-      <div className="row">
-        {AWAY_EXAMPLES.map((ex) => (
-          <button key={ex} className="btn plain small" onClick={() => setReason(ex)}>
-            {ex}
-          </button>
-        ))}
-      </div>
-      <button className="btn secondary" onClick={away} disabled={office.busy || !view.can.registerAway || !reason.trim()}>
-        15분 자리 비움 등록
-      </button>
-      <p className="small muted pre" style={{ margin: 0 }}>
-        {"허용 시간 안에는 착석 확인을 쉬고,\n끝난 뒤에도 자리가 비면 근무 중 자리 비움으로 기록합니다."}
-      </p>
-    </Card>
-  );
-}
-
-export function TodayLog({ view }: { view: OfficeView }) {
-  const events = view.state.day.events.slice(-8).reverse();
-  if (events.length === 0) return null;
-  return (
-    <Card title="오늘 기록">
-      <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "grid", gap: 4 }}>
-        {events.map((e) => {
-          const warn = WARNING_EVENTS.has(e.kind);
-          return (
-            <li key={e.id} className="row" style={{ flexWrap: "nowrap", color: warn ? "var(--warn)" : undefined }}>
-              <span className="small muted" style={{ fontVariantNumeric: "tabular-nums", width: 44, flex: "none" }}>
-                {hm(e.at)}
-              </span>
-              <span>
-                {warn ? "! " : ""}
-                {e.text}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </Card>
-  );
-}
-
-export function Desk({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: "meeting") => void }) {
-  const tasks = view.state.day.tasks;
-  const done = tasks.filter((t) => t.status === "done").length;
+export function Desk({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: PlaceId) => void }) {
+  const { tasks } = view.day;
   const phase = view.phase.value;
+  const submitted = tasks.filter((t) => t.status === "submitted").length;
+  const handled = tasks.filter((t) => t.status === "submitted" || t.status === "incomplete").length;
+
+  const startSharing = async () => {
+    if ((await office.act("startSharing")) != null) onGo("share");
+  };
+
   return (
     <div className="panel">
-      <PanelHeader place="내 책상" title="오늘의 체크리스트" detail={view.phase.headline} />
-      {phase !== "beforeCheckIn" ? <SeatCard office={office} view={view} /> : null}
-      <Card title="체크리스트" aside={tasks.length ? <span className="chip">{`${done} / ${tasks.length} 완료`}</span> : undefined}>
-        {tasks.length === 0 ? (
-          <>
-            <p className="muted pre" style={{ margin: 0 }}>
-              {phase === "beforeCheckIn"
-                ? "출근한 뒤 아침 PT에서 오늘 업무를 정합니다."
-                : "아직 확정한 업무가 없습니다.\n회의실에서 아침 PT를 진행해 주세요."}
-            </p>
-            {phase === "morningPT" ? (
-              <button className="btn secondary" onClick={() => onGo("meeting")}>
-                회의실로 가기
-              </button>
-            ) : null}
-          </>
-        ) : (
-          <TaskList office={office} tasks={tasks} editable={view.can.editTasks} />
-        )}
-      </Card>
-      <AttendanceRequests office={office} view={view} />
-      <TodayLog view={view} />
+      <PanelHeader place="내 책상" title="오늘 할 일" detail={view.phase.headline} />
+
+      {phase === "beforeCheckIn" ? (
+        <Notice kind="info" title="활동을 시작하면 여기서 과제를 합니다">
+          출입문에서 '활동 시작'을 눌러 주세요.
+        </Notice>
+      ) : phase === "morningPT" ? (
+        <Notice kind="info" title="아직 오늘 범위를 정하지 않았습니다">
+          회의실에서 AI 팀장과 오늘 끝낼 범위를 정해 주세요.
+          <div style={{ marginTop: 8 }}>
+            <button className="btn secondary small" onClick={() => onGo("meeting")}>
+              회의실로 가기
+            </button>
+          </div>
+        </Notice>
+      ) : null}
+
+      {tasks.length > 0 ? (
+        <Card title="과제" aside={<span className="chip">{`제출 ${submitted} / ${tasks.length}`}</span>}>
+          {view.day.checkInAt != null ? <div className="small muted">활동 시작 {hm(view.day.checkInAt)}</div> : null}
+          <p className="small muted pre" style={{ margin: 0 }}>
+            {"비밀키·고객 정보·비공개 회사 코드는 남기지 마세요.\n남긴 결과물은 기획팀 공유 때 AI 기획자에게 전송될 수 있습니다."}
+          </p>
+          <div style={{ display: "grid", gap: 10 }}>
+            {tasks.map((t) => (
+              <TaskWork key={t.id} task={t} view={view} office={office} />
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {phase === "working" ? (
+        <Card title="다 했으면 기획팀에 공유하기">
+          <p className="muted pre" style={{ margin: 0 }}>
+            {handled === tasks.length
+              ? "모든 과제를 제출했거나 못 끝낸 것으로 정했습니다.\nAI 기획자에게 오늘 한 일을 설명해 주세요."
+              : `아직 진행 중인 과제가 ${tasks.length - handled}건 있습니다.\n그래도 지금 공유를 시작할 수 있습니다.`}
+          </p>
+          <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing}>
+            기획팀에 공유하러 가기
+          </button>
+        </Card>
+      ) : phase === "sharing" ? (
+        <Notice kind="info" title="기획팀과 공유하는 중입니다">
+          <button className="btn secondary small" onClick={() => onGo("share")}>
+            기획팀으로 가기
+          </button>
+        </Notice>
+      ) : null}
     </div>
   );
 }

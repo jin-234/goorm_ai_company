@@ -1,45 +1,23 @@
 "use client";
-/**
- * 출입문 · 출근. 카메라 착석 판정(MediaPipe)은 AI 담당 작업이라,
- * 여기서는 카메라 없이 출근을 기록하는 경로를 먼저 둔다(웹 기획서 5장: 권한 거부·미지원 대체 경로).
- */
-import type { OfficeView } from "../api";
+/** 출입문 · 출근(개정판): 버튼으로 활동을 시작한다. 카메라·지각 판정은 하지 않는다. */
+import { hhmm, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
 
 export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: OfficeView; onDone: () => void }) {
-  const day = view.state.day;
-  const stats = view.monthStats;
-  const workStart = view.state.profile.workStart;
-  const nowMinute = Number(view.clock.hm.slice(0, 2)) * 60 + Number(view.clock.hm.slice(3));
-  const willBeLate = nowMinute > workStart;
-
-  const checkIn = async () => {
-    const res = await office.act<{ attendance: "onTime" | "late" }>("checkIn");
-    if (!res) return;
-    office.notify(
-      res.attendance === "late"
-        ? "지각으로 기록했습니다.\n회의실에서 아침 PT를 시작하세요."
-        : "출근했습니다.\n회의실에서 아침 PT를 시작하세요.",
-    );
+  const { day, profile } = view;
+  const start = async () => {
+    if ((await office.act("checkIn")) == null) return;
+    office.notify("오늘 활동을 시작했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.");
     onDone();
   };
 
   return (
     <div className="panel">
-      <PanelHeader
-        place="출입문"
-        title="출근"
-        detail={"카메라 앞에 앉으면 출근 버튼이 켜집니다.\n영상은 이 기기 안에서만 쓰고 저장하지 않습니다."}
-      />
-
+      <PanelHeader place="출입문" title="출근" detail="버튼을 누르면 오늘 활동이 시작됩니다." />
       {day.checkInAt != null ? (
-        <Notice kind="ok" title={`오늘 ${day.isLate ? "지각" : "정시"} 출근을 기록했습니다`}>
-          회의실에서 아침 PT를 진행해 주세요.
-        </Notice>
-      ) : day.absentCandidate ? (
-        <Notice kind="error" title="오늘은 출근할 수 없습니다">
-          {"18:00까지 출근 기록이 없어 결근 후보로 기록했습니다.\n위 막대의 '다음 근무일'로 넘어가 주세요."}
+        <Notice kind="ok" title={`${view.clock.dateShort} 활동을 시작했습니다`}>
+          회의실에서 아침보고를 진행해 주세요.
         </Notice>
       ) : (
         <>
@@ -50,23 +28,23 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
                 <div style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{view.clock.hm}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div className="small muted">출근 기준</div>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>09:00</div>
+                <div className="small muted">정해 둔 활동 시간</div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>
+                  {hhmm(profile.activityStart)}~{hhmm(profile.activityEnd)}
+                </div>
               </div>
             </div>
-            <Notice kind="info" title="카메라 없이 시연 중">
-              {"카메라 확인 없이 출근을 기록합니다.\n카메라 착석 확인은 준비 중입니다."}
-            </Notice>
+            <p className="small muted" style={{ margin: 0 }}>
+              늦게 시작해도 괜찮습니다. 시작 시각은 기록에만 남습니다.
+            </p>
           </Card>
-
-          {willBeLate ? (
-            <Notice kind="warning" title="지금 출근하면 지각으로 기록됩니다">
-              {`이번 달 지각 ${stats.late}회 → ${stats.late + 1}회\n지각비 예상액은 시연용이며 실제로 청구하지 않습니다.`}
+          {view.pendingCarry.length > 0 ? (
+            <Notice kind="info" title={`지난 활동일에서 넘어온 일 ${view.pendingCarry.length}건`}>
+              {view.pendingCarry.map((t) => `· ${t.title}`).join("\n")}
             </Notice>
           ) : null}
-
-          <button className="btn" onClick={checkIn} disabled={office.busy || !view.can.checkIn}>
-            {willBeLate ? "지각 출근하기" : "출근하기"}
+          <button className="btn" onClick={start} disabled={office.busy || !view.can.checkIn}>
+            활동 시작
           </button>
         </>
       )}

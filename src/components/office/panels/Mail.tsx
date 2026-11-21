@@ -28,22 +28,11 @@ export function MailBox({ office, view, onGo }: { office: OfficeHandle; view: Of
 
   return (
     <div className="panel">
-      <PanelHeader place="팀장 자리" title="사내 메일함" detail="한정민 팀장 자리" />
+      <PanelHeader place="팀장 자리" title="사내 메일함" detail="AI 팀장 자리 · 공지와 주간 피드백이 옵니다." />
       <div className="row">
         {view.can.submitWeekly ? (
           <button className="btn" onClick={() => onGo("weekly")}>
             금요일 주간보고서 쓰기
-          </button>
-        ) : null}
-        {view.can.requestLunch ? (
-          <button
-            className="btn secondary"
-            onClick={async () => {
-              if ((await office.act("requestLunch")) != null) office.notify("점심 요청을 보냈습니다.\n1시간 동안 착석 확인을 쉽니다.");
-            }}
-            disabled={office.busy}
-          >
-            점심 요청 메일 보내기
           </button>
         ) : null}
       </div>
