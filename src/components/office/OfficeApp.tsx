@@ -14,6 +14,7 @@ import { Onboarding } from "./panels/Onboarding";
 import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
 import { applySavedTextScale, Settings } from "./panels/Settings";
 import { Weekly } from "./panels/Weekly";
+import { NowPanel } from "./NowPanel";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
 import { type OfficeHandle, useOffice } from "./useOffice";
@@ -100,19 +101,22 @@ export function OfficeApp() {
         </div>
       ) : null}
       <div className="layout">
-        <nav className="places" aria-label="사무실 장소">
-          {PLACES.map((p) => (
-            <button
-              key={p.id}
-              className={`place ${place === p.id ? "active" : ""} ${now === p.id && place !== p.id ? "now" : ""}`}
-              onClick={() => setPlace(p.id)}
-              aria-current={place === p.id ? "page" : undefined}
-            >
-              <div className="name">{p.name}</div>
-              <div className="sub">{p.sub(view)}</div>
-            </button>
-          ))}
-        </nav>
+        <div className="sidebar">
+          <NowPanel view={view} onGo={setPlace} place={place} />
+          <nav className="places" aria-label="사무실 장소">
+            {PLACES.map((p) => (
+              <button
+                key={p.id}
+                className={`place ${place === p.id ? "active" : ""} ${now === p.id && place !== p.id ? "now" : ""}`}
+                onClick={() => setPlace(p.id)}
+                aria-current={place === p.id ? "page" : undefined}
+              >
+                <div className="name">{p.name}</div>
+                <div className="sub">{p.sub(view)}</div>
+              </button>
+            ))}
+          </nav>
+        </div>
         <main>{renderPanel(place, office, view, setPlace)}</main>
       </div>
       <Toast text={office.toast} />

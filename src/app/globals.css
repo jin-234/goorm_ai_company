@@ -414,3 +414,106 @@ label.stack {
   color: #fff;
   white-space: pre-line;
 }
+
+/* MARK: 지금 할 일 패널 */
+/* 화면 한쪽에 고정하는 '지금 할 일' 카드(디자인 멘토 피드백). 왼쪽 줄 맨 위에 붙어 스크롤해도 남는다. */
+.now-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: var(--radius);
+  background: var(--green);
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(31, 90, 69, 0.18);
+}
+
+.now-panel .now-label {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.now-panel .now-title {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.now-panel .now-why {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.92;
+}
+
+.now-panel .now-go {
+  background: #fff;
+  color: var(--green);
+  min-height: 44px;
+}
+
+.now-panel .now-here {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.now-panel .now-progress .bar {
+  height: 6px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+
+.now-panel .now-progress .bar span {
+  display: block;
+  height: 100%;
+  background: #fff;
+  border-radius: inherit;
+}
+
+.now-panel .now-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.now-panel .now-quick .muted {
+  color: rgba(255, 255, 255, 0.8);
+  width: 100%;
+}
+
+.now-panel .now-quick .btn.secondary {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.now-panel .now-quick .btn.secondary:disabled {
+  opacity: 0.45;
+}
+
+/* 왼쪽 줄: 지금 할 일 카드 + 장소 목록.
+   카드만 고정하면 스크롤할 때 아래 장소 이름표를 덮으므로 줄 전체를 함께 고정한다. */
+.sidebar {
+  position: sticky;
+  top: 84px;
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+@media (max-width: 860px) {
+  /* 좁은 화면에서는 위 막대와 왼쪽 줄을 고정하지 않는다(고정하면 내용을 가린다). */
+  .sidebar,
+  .topbar {
+    position: static;
+  }
+}
