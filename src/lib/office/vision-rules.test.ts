@@ -241,18 +241,6 @@ describe("새로고침 후 복원", () => {
 });
 
 describe("시연 도구", () => {
-  test("금요일로 가면 마감하지 못한 과제는 이월되고, 제출한 과제는 이월하지 않는다", () => {
-    const office = workingOffice();
-    const [a] = office.day.tasks;
-    office.submitWork(a.id, "text", "결과");
-    office.setTaskStatus(a.id, "submitted");
-    office.jumpToFriday();
-    expect(office.pendingCarry.map((t) => t.title)).toEqual([sampleTasks()[1].title]);
-    expect(office.canSubmitWeekly).toBe(false);
-    office.checkIn();
-    expect(office.canSubmitWeekly).toBe(true);
-  });
-
   test("다음 정각은 단계를 바꾸지 않는다", () => {
     const office = workingOffice();
     const r = office.skipHour();

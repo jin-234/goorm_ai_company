@@ -275,7 +275,6 @@ export type ActivityEventKind =
   | "endToday"
   | "adjust"
   | "timeSkip"
-  | "weeklyReport"
   | "note";
 
 export interface ActivityEvent {
@@ -311,7 +310,6 @@ export interface WorkDay {
   review: DayReview;
   events: ActivityEvent[];
   closedAt: Instant | null;
-  weeklySubmitted: boolean;
 }
 
 export function newWorkDay(date: DayKey): WorkDay {
@@ -328,7 +326,6 @@ export function newWorkDay(date: DayKey): WorkDay {
     review: newDayReview(),
     events: [],
     closedAt: null,
-    weeklySubmitted: false,
   };
 }
 
@@ -350,7 +347,7 @@ export interface DayRecord {
 
 export type MailParty = "me" | "manager" | "hr";
 
-export type MailKind = "welcome" | "notice" | "tasksConfirmed" | "dayClosed" | "weeklyReport" | "weeklyFeedback";
+export type MailKind = "welcome" | "notice" | "tasksConfirmed" | "dayClosed";
 
 export function mailTag(kind: MailKind): string {
   switch (kind) {
@@ -361,10 +358,6 @@ export function mailTag(kind: MailKind): string {
     case "tasksConfirmed":
     case "dayClosed":
       return "업무";
-    case "weeklyReport":
-      return "주간보고";
-    case "weeklyFeedback":
-      return "주간 피드백";
   }
 }
 
@@ -411,43 +404,6 @@ export function partyName(party: MailParty, myName: string): string {
     case "hr":
       return "인사팀";
   }
-}
-
-// MARK: 주간보고
-
-export interface WeeklyReport {
-  id: string;
-  weekOf: DayKey;
-  submittedAt: Instant | null;
-  completed: string;
-  incomplete: string;
-  nextGoals: string;
-  replyMailId: string | null;
-}
-
-export function newWeeklyReport(weekOf: DayKey, fields: Partial<WeeklyReport> = {}): WeeklyReport {
-  return { id: crypto.randomUUID(), weekOf, submittedAt: null, completed: "", incomplete: "", nextGoals: "", replyMailId: null, ...fields };
-}
-
-export function missingSections(r: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): string[] {
-  const missing: string[] = [];
-  if (!r.completed.trim()) missing.push("이번 주 완료한 업무와 결과물");
-  if (!r.incomplete.trim()) missing.push("미완료 업무와 이유");
-  if (!r.nextGoals.trim()) missing.push("다음 주 목표");
-  return missing;
-}
-
-export function weeklyBodyText(r: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): string {
-  return [
-    "1. 이번 주 완료한 업무와 결과물",
-    r.completed.trim(),
-    "",
-    "2. 미완료 업무와 이유",
-    r.incomplete.trim(),
-    "",
-    "3. 다음 주 목표",
-    r.nextGoals.trim(),
-  ].join("\n");
 }
 
 // MARK: 옛 아침 PT 초안(전사문 → 업무 목록)

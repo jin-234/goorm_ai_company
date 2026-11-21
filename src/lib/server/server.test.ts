@@ -128,8 +128,8 @@ describe("행동 API로 하루 보내기", () => {
     expect(view.seat.kind).toBe("beforeCheckIn");
     expect(view.can).toMatchObject({ checkIn: true, confirmTasks: false, startNextWorkday: true });
     expect(view.mail.unreadCount).toBe(2);
-    expect(view.weekly.lastSubmitted).toBeNull();
+    expect("weekly" in view).toBe(false);
     expect(JSON.parse(JSON.stringify(view)).profile.name).toBe("김서울");
-    expect(JSON.stringify(view)).not.toMatch(/monthStats|lateFee|presence|overtime/);
+    expect(JSON.stringify(view)).not.toMatch(/monthStats|lateFee|presence|overtime|submitWeekly|jumpToFriday/);
   });
 });

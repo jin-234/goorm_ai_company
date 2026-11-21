@@ -11,7 +11,7 @@ import { plannerReplyOf, reviewOf } from "@/lib/server/actions";
 import { SolarClient, SolarError } from "@/lib/solar/client";
 import {
   type ColleagueRoleId, leaderSystem, PLANNER_SCHEMA, PLANNER_SCHEMA_NAME, plannerSystem, PROPOSAL_SCHEMA, PROPOSAL_SCHEMA_NAME,
-  REVIEW_SCHEMA, REVIEW_SCHEMA_NAME, ROLES, reviewSystem, SKIP_MESSAGE,
+  MEETING, REVIEW_SCHEMA, REVIEW_SCHEMA_NAME, ROLES, reviewSystem, SKIP_MESSAGE,
 } from "./prompts";
 
 export type Source = "solar" | "sample" | "manual";
@@ -83,6 +83,12 @@ function plannerContext(office: Office, roleId: ColleagueRoleId = "planner") {
   const day = office.day;
   return {
     activity_type: activityTypeOf(day.submissions),
+    meeting: {
+      place: MEETING.place,
+      format: "개발팀 직원의 발표를 듣고 질문한다",
+      attendees: [...MEETING.askers, ...MEETING.listeners].map((id) => ROLES[id].department),
+      asking_role: ROLES[roleId].department,
+    },
     user_profile: { target_role: office.profile.targetRole, experience: clip(office.profile.experience ?? "", 300) },
     daily_goal: day.goal,
     tasks: day.tasks.map((t) => ({ title: t.title, completion_criteria: t.completionCriteria, share_form: t.shareForm, status: t.status })),

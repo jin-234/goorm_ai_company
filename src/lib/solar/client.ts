@@ -2,10 +2,9 @@
  * Upstage Solar(Chat Completions) 호출.
  * 키는 서버(Vercel 함수) 환경변수에서만 읽고, 브라우저나 기록에 남기지 않는다.
  */
-import { Cast, isTaskLevel, newDraft, type TaskDraft, type WeeklyReport, weeklyBodyText } from "../office/models";
+import { isTaskLevel, newDraft, type TaskDraft } from "../office/models";
 import { WorkRules } from "../office/rules";
 import { Clock } from "../office/time";
-import type { WeeklyReply } from "./weekly-fallback";
 
 // MARK: 설정
 
@@ -210,36 +209,6 @@ export const SolarPrompts = {
     required: ["tasks"],
     additionalProperties: false,
   },
-
-  weeklySystem(name: string): string {
-    return `당신은 가상회사의 ${Cast.managerName} 팀장입니다.
-${name} 사원이 직접 쓴 주간보고서를 읽고 사내 메일 답장을 씁니다.
-
-규칙
-1. 보고서의 "이번 주 완료한 업무와 결과물"에서 가장 구체적인 성취 한 가지를 골라, 무엇을 해냈는지 짚습니다. 고른 성취는 achievement에 보고서 표현을 살려 짧게 적습니다.
-2. 보고서에 없는 사실, 숫자, 평가를 지어내지 않습니다.
-3. 따뜻하고 차분한 존댓말로 씁니다. 과장된 칭찬, 느낌표, 이모지를 쓰지 않습니다.
-4. 미완료 업무는 탓하지 않습니다. 사원이 적은 이유를 받아들이고, 다음 주 목표 중 하나를 골라 첫걸음을 한 문장으로 제안합니다.
-5. body는 4~6문장입니다. 문장마다 줄을 바꾸고, 한 줄이 25자를 넘으면 쉼표나 의미가 끊기는 곳에서 줄을 나눕니다. 마지막 줄은 빈 줄 하나 뒤에 "${Cast.managerName} 드림"입니다.
-6. subject는 "[주간 피드백] "으로 시작하는 한 줄 제목입니다.`;
-  },
-
-  weeklyUser(report: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">, name: string): string {
-    return `${name} 사원의 주간보고서:\n\n${weeklyBodyText(report)}`;
-  },
-
-  weeklySchemaName: "weekly_report_reply",
-
-  weeklySchema: {
-    type: "object",
-    properties: {
-      subject: { type: "string", description: "[주간 피드백] 으로 시작하는 메일 제목" },
-      body: { type: "string", description: "메일 본문. 문장마다 줄바꿈" },
-      achievement: { type: "string", description: "답장에서 짚은 성취 한 가지" },
-    },
-    required: ["subject", "body", "achievement"],
-    additionalProperties: false,
-  },
 };
 
 // MARK: 응답 읽기
@@ -270,20 +239,6 @@ export function decodeChecklist(content: string): TaskDraft[] {
   });
 }
 
-export function decodeWeeklyReply(content: string): WeeklyReply {
-  let reply: WeeklyReply;
-  try {
-    reply = JSON.parse(content);
-  } catch {
-    throw new SolarError("malformed", { message: "답장 형식이 예상과 다릅니다" });
-  }
-  if (typeof reply?.subject !== "string" || typeof reply?.body !== "string" || typeof reply?.achievement !== "string") {
-    throw new SolarError("malformed", { message: "답장 형식이 예상과 다릅니다" });
-  }
-  if (!reply.body.trim()) throw new SolarError("malformed", { message: "답장 본문이 비어 있습니다" });
-  return reply;
-}
-
 // MARK: 클라이언트
 
 export class SolarClient {
@@ -307,19 +262,6 @@ export class SolarClient {
       maxTokens: 1500,
     });
     return decodeChecklist(content);
-  }
-
-  /** 직접 작성한 주간보고서에 대한 팀장 답장을 받는다. */
-  async weeklyReply(report: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">, name: string): Promise<WeeklyReply> {
-    const content = await this.complete({
-      system: SolarPrompts.weeklySystem(name),
-      user: SolarPrompts.weeklyUser(report, name),
-      schemaName: SolarPrompts.weeklySchemaName,
-      schema: SolarPrompts.weeklySchema,
-      temperature: 0.6,
-      maxTokens: 900,
-    });
-    return decodeWeeklyReply(content);
   }
 
   /** 키와 모델이 실제로 응답하는지 확인한다. 응답한 모델 이름을 돌려준다. */

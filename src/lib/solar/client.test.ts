@@ -115,23 +115,6 @@ describe("Upstage Solar", () => {
     expect(await kindOf(client(stub(200, "not json")).checklist(transcript))).toBe("malformed");
   });
 
-  test("주간보고서를 보내고 답장을 받는다", async () => {
-    const content = JSON.stringify({
-      subject: "[주간 피드백] 지원서 제출본 저장",
-      body: "주간보고서 잘 읽었습니다.\n지원서 최종 검토를 끝낸 점이 좋았습니다.\n\n한정민 드림",
-      achievement: "지원서 최종 검토",
-    });
-    const reply = await client(stub(200, completion(content))).weeklyReply(
-      { completed: "지원서 최종 검토", incomplete: "없음", nextGoals: "포트폴리오" },
-      "김서울",
-    );
-    expect(reply.achievement).toBe("지원서 최종 검토");
-    expect(await kindOf(client(stub(200, completion(JSON.stringify({ subject: "s", body: " ", achievement: "a" })))).weeklyReply(
-      { completed: "a", incomplete: "b", nextGoals: "c" },
-      "김서울",
-    ))).toBe("malformed");
-  });
-
   test("연결 확인은 응답한 모델 이름을 돌려준다", async () => {
     expect(await client(stub(200, completion("확인"))).ping()).toBe("solar-pro4-250101");
   });

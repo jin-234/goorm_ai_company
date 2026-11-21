@@ -18,14 +18,10 @@ import {
   type EmployeeProfile,
   isIncoming,
   type Mail,
-  missingSections,
-  newMail,
   newTask,
-  newWeeklyReport,
   newWorkDay,
   type PlannerReply,
   readScopeOf,
-  type ReplySource,
   type Review,
   STATE_VERSION,
   type Submission,
@@ -34,12 +30,11 @@ import {
   type TaskInput,
   type TaskOutcome,
   type TaskStatus,
-  type WeeklyReport,
   type WorkDay,
   type WorkTask,
 } from "./models";
 import { OfficeError, WorkRules } from "./rules";
-import { type DayKey, type Instant, addDays, addMinutes, at, dayKeyOf, hm, isFriday, minuteOfDay, mondayOfWeek, nextWorkday, sameDay } from "./time";
+import { type DayKey, type Instant, addMinutes, at, dayKeyOf, hm, minuteOfDay, mondayOfWeek, nextWorkday, sameDay } from "./time";
 
 /** 저장하는 회사 상태 전체. */
 export interface OfficeState {
@@ -53,8 +48,6 @@ export interface OfficeState {
   mails: Mail[];
   /** 마감에서 이월을 고른 과제. 다음 활동일 아침보고 확정 때 목록 앞에 붙는다. */
   pendingCarry: WorkTask[];
-  weeklyReports: WeeklyReport[];
-  weeklyDraft: WeeklyReport;
 }
 
 export interface SkipResult {
@@ -103,8 +96,6 @@ export class Office implements OfficeState {
   history: DayRecord[];
   mails: Mail[];
   pendingCarry: WorkTask[];
-  weeklyReports: WeeklyReport[];
-  weeklyDraft: WeeklyReport;
 
   constructor(startingAt: Instant, profile: EmployeeProfile = defaultProfile()) {
     this.version = STATE_VERSION;
@@ -115,8 +106,6 @@ export class Office implements OfficeState {
     this.history = [];
     this.mails = [];
     this.pendingCarry = [];
-    this.weeklyReports = [];
-    this.weeklyDraft = newWeeklyReport(mondayOfWeek(dayKeyOf(startingAt)));
   }
 
   /** 저장된 상태가 지금 형식인지. 옛 근태 형식이면 false(새로 시작한다). */
@@ -140,8 +129,6 @@ export class Office implements OfficeState {
       history: this.history,
       mails: this.mails,
       pendingCarry: this.pendingCarry,
-      weeklyReports: this.weeklyReports,
-      weeklyDraft: this.weeklyDraft,
     };
   }
 
@@ -481,58 +468,6 @@ export class Office implements OfficeState {
     return { from, to: this.now, stoppedFor: null };
   }
 
-  // MARK: 주간보고
-
-  get canSubmitWeekly(): boolean {
-    return isFriday(this.day.date) && this.day.checkInAt != null && !this.day.weeklySubmitted;
-  }
-
-  saveWeeklyDraft(fields: Partial<Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">>): void {
-    if (this.weeklyDraft.submittedAt != null) return;
-    Object.assign(this.weeklyDraft, fields);
-  }
-
-  submitWeeklyReport(report: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): WeeklyReport {
-    if (!isFriday(this.day.date)) throw new OfficeError("weeklyNotFriday");
-    if (this.day.checkInAt == null) throw OfficeError.notAllowedNow("주간보고서는 출근한 뒤에 제출할 수 있습니다.");
-    if (this.day.weeklySubmitted) throw new OfficeError("weeklyAlreadySubmitted");
-    const missing = missingSections(report);
-    if (missing.length > 0) throw new OfficeError("weeklyIncomplete", missing);
-    const submitted: WeeklyReport = { ...this.weeklyDraft, ...report, submittedAt: this.now, weekOf: mondayOfWeek(this.day.date) };
-    this.weeklyReports.push(submitted);
-    this.weeklyDraft = structuredClone(submitted);
-    this.day.weeklySubmitted = true;
-    this.post(MailTemplates.weeklyReport(this.profile.name, submitted, this.day.date, this.now));
-    this.log("weeklyReport", `주간보고서 제출 ${hm(this.now)}`);
-    return submitted;
-  }
-
-  /** 이번 주에 제출한 주간보고서. 없으면 null. */
-  get weeklyThisWeek(): WeeklyReport | null {
-    const monday = mondayOfWeek(this.day.date);
-    for (let i = this.weeklyReports.length - 1; i >= 0; i--) {
-      const r = this.weeklyReports[i];
-      if (r.submittedAt != null && sameDay(r.weekOf, monday)) return r;
-    }
-    return null;
-  }
-
-  get weeklyAwaitingReply(): WeeklyReport | null {
-    for (let i = this.weeklyReports.length - 1; i >= 0; i--) {
-      const r = this.weeklyReports[i];
-      if (r.submittedAt != null && r.replyMailId == null) return r;
-    }
-    return null;
-  }
-
-  receiveWeeklyFeedback(reportId: string, subject: string, body: string, source: ReplySource): void {
-    const report = this.weeklyReports.find((r) => r.id === reportId);
-    if (!report || report.replyMailId != null) return;
-    const mail = newMail({ sentAt: this.now, from: "manager", to: "me", kind: "weeklyFeedback", subject, body, isWarm: true, replySource: source });
-    report.replyMailId = mail.id;
-    this.post(mail);
-  }
-
   // MARK: 다음 활동일
 
   /** 마감했거나, 오늘 활동을 시작하지 않았으면(휴식일) 다음 활동일로 넘어갈 수 있다. */
@@ -544,35 +479,6 @@ export class Office implements OfficeState {
     if (!this.canStartNextWorkday) throw OfficeError.notAllowedNow("하루 마감을 확정한 뒤에 다음 활동일로 넘어갈 수 있습니다.");
     this.archiveDay();
     this.beginDay(nextWorkday(this.day.date));
-  }
-
-  get canJumpToFriday(): boolean {
-    return this.onboarded && !isFriday(this.day.date);
-  }
-
-  /** 시연용. 진행 중인 하루를 불이익 없이 닫고 이번 주 금요일로 간다. 마감하지 못한 과제는 이월한다. */
-  jumpToFriday(): void {
-    if (!this.canJumpToFriday) throw OfficeError.notAllowedNow("이미 금요일입니다.");
-    if (this.day.phase !== "off") {
-      for (const task of this.day.tasks) {
-        if (!OPEN_STATUSES.includes(task.status) || task.status === "submitted") continue;
-        task.status = "incomplete";
-        task.outcome = "carryOver";
-        this.pendingCarry.push({
-          ...task,
-          id: crypto.randomUUID(),
-          status: "confirmed",
-          outcome: null,
-          carriedFrom: task.carriedFrom ?? this.day.date,
-          carriedFromTaskId: task.carriedFromTaskId ?? task.id,
-          carryCount: task.carryCount + 1,
-        });
-      }
-    }
-    this.archiveDay();
-    let friday = addDays(this.day.date, 1);
-    while (!isFriday(friday)) friday = addDays(friday, 1);
-    this.beginDay(friday);
   }
 
   private archiveDay(): void {
@@ -596,9 +502,6 @@ export class Office implements OfficeState {
   private beginDay(date: DayKey): void {
     this.day = newWorkDay(date);
     this.now = at(date, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart));
-    if (this.weeklyDraft.submittedAt != null || !sameDay(this.weeklyDraft.weekOf, mondayOfWeek(date))) {
-      this.weeklyDraft = newWeeklyReport(mondayOfWeek(date));
-    }
     this.post(MailTemplates.morningNotice(date, this.profile, this.pendingCarry, this.now));
   }
 

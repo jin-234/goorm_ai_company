@@ -158,11 +158,8 @@ export const ACTION_TYPES = [
   "saveReviewDraft",
   "confirmReview",
   "skipHour",
-  "saveWeeklyDraft",
-  "submitWeeklyReport",
   "markMailRead",
   "startNextWorkday",
-  "jumpToFriday",
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];
@@ -224,31 +221,11 @@ export function applyAction(office: Office, body: Json): unknown {
       if (!result) throw OfficeError.notAllowedNow("지금은 시간을 넘길 수 없습니다.");
       return { skip: result };
     }
-    case "saveWeeklyDraft":
-      office.saveWeeklyDraft({
-        ...("completed" in body ? { completed: str(body, "completed") } : {}),
-        ...("incomplete" in body ? { incomplete: str(body, "incomplete") } : {}),
-        ...("nextGoals" in body ? { nextGoals: str(body, "nextGoals") } : {}),
-      });
-      return null;
-    case "submitWeeklyReport": {
-      const draft = office.weeklyDraft;
-      const report = {
-        completed: "completed" in body ? str(body, "completed") : draft.completed,
-        incomplete: "incomplete" in body ? str(body, "incomplete") : draft.incomplete,
-        nextGoals: "nextGoals" in body ? str(body, "nextGoals") : draft.nextGoals,
-      };
-      office.saveWeeklyDraft(report);
-      return { report: office.submitWeeklyReport(report) };
-    }
     case "markMailRead":
       office.markRead(str(body, "id"));
       return null;
     case "startNextWorkday":
       office.startNextWorkday();
-      return null;
-    case "jumpToFriday":
-      office.jumpToFriday();
       return null;
     default:
       throw new BadRequest(`알 수 없는 행동입니다: ${String(type)}`);
