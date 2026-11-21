@@ -58,6 +58,11 @@ export function TaskWork({ task, view, office }: { task: Task; view: OfficeView;
     <div className="card" style={{ background: done ? "var(--green-soft)" : "var(--paper)", gap: 10, padding: 12 }}>
       <div className="row">
         <StatusBadge status={task.status} />
+        {view.enforcement.rules.taskLevels ? (
+          <span className={`badge ${task.level === 1 ? "tag" : `l${task.level}`}`} title={task.levelLabel}>
+            {task.level}단계
+          </span>
+        ) : null}
         {task.carryCount > 0 ? <span className="badge tag">넘어온 {task.carryCount}회</span> : null}
       </div>
       <div style={{ fontSize: 16, fontWeight: 600 }}>{task.title}</div>

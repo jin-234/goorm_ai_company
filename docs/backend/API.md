@@ -35,20 +35,31 @@
 
 | type | 값 | result |
 | --- | --- | --- |
-| `onboard` | `name`, `targetRole?`, `experience?`, `activityStart?`, `activityEnd?`(분 또는 `"HH:MM"`) | — |
-| `checkIn` | `method?`: `"camera"` \| `"noCamera"`(기록만, 규칙에 쓰지 않음) | `{ checkInAt, method }` |
+| `onboard` | `name`, `targetRole?`, `experience?`, `activityStart?`, `activityEnd?`(분 또는 `"HH:MM"`), `enforcement?`(`light` \| `standard` \| `strict`, 기본 `standard`) | — |
+| `setEnforcement` | `level`(`light` \| `standard` \| `strict`) — 출근 뒤면 오늘부터 적용 | — |
+| `lowerToday` | — (오늘만 한 단계 낮추기: 엄격→보통, 보통→가볍게) | — |
+| `setDayOff` | `off`(bool, 기본 true), `date?`("YYYY-MM-DD", 없으면 오늘) — 쉬는 날 미리 알리기 | — |
+| `checkIn` | `method?`: `"camera"` \| `"noCamera"`(기록만, 규칙에 쓰지 않음) | `{ checkInAt, method, late }` — `late`는 보통·엄격에서 시작 시각을 넘겼을 때 |
 | `saveGoal` | `goal` | — |
-| `confirmTasks` | `goal?`, `tasks: [{ title, completionCriteria, shareForm, carryId? }]` — 이월 과제는 자동으로 앞에 붙고, `carryId`로 칸을 고친다 | `{ tasks }` |
+| `confirmTasks` | `goal?`, `tasks: [{ title, completionCriteria, shareForm, level?(1·2·3, 보통·엄격은 필수), carryId? }]` — 이월 과제는 자동으로 앞에 붙고, `carryId`로 칸을 고친다 | `{ tasks }` |
 | `setTaskStatus` | `taskId`, `status`: `in_progress` \| `submitted` \| `incomplete` (submitted는 제출물이 있어야 함) | — |
 | `submitWork` | `taskId`, `kind`: `text` \| `code` \| `link`, `content` — 링크는 `readScope: "notRead"` | `{ submission }` |
-| `startSharing` | — | — |
+| `observePresence` | `state`: `present` \| `absent` \| `cameraOff` \| `unknown` (보통·엄격 근무 중, 지금은 버튼이 보냄) | — |
+| `requestLunch` | — (보통·엄격, 하루 한 번 1시간) | `{ allowance }` |
+| `registerAway` | `reason` (보통·엄격, 건당 15분) | `{ allowance }` |
+| `returnFromAllowance` | — | — |
+| `submitCheckout` | — (보통·엄격, 마감 시각의 퇴근 점검) | `{ checkout: { kind: "noOvertime" } \| { kind: "overtime", count } }` |
+| `endOvertime` | — (저녁시간·추가근무 중이면 일찍 끝냄, 점검 중이면 점검 제출) | `{ overtime: completed \| ranToEnd \| abandoned }` |
+| `startSharing` | `earlyReason?` (엄격에서 마감 시각 전이면 필수) | — |
 | `recordShareTurn` | `role: "user"`, `text` (기획자 턴은 `/api/office/share`가 남긴다) | — |
-| `endSharing` | `reason?`: `done` \| `userStopped` — 수행 중에 부르면 공유를 건너뜀(`endedBy: "skipped"`) | — |
+| `endSharing` | `reason?`: `done` \| `userStopped`, `earlyReason?` — 수행 중에 부르면 공유를 건너뜀(`endedBy: "skipped"`) | — |
 | `saveReviewDraft` | `review`(아래 Review 8칸) — 사용자 수정으로 저장 | — |
 | `confirmReview` | `review`, `choices: { [taskId]: "adjust" \| "carryOver" \| "endToday" }`(제출하지 않은 과제마다), `reasons?` | `{ close: { submitted, adjusted, carried, ended } }` |
-| `skipHour` | — (시연: 다음 정각, 단계는 안 바뀜) | `{ skip }` |
+| `skipHour` | — (시연: 다음 정각. 보통·엄격은 퇴근 점검·추가근무 시작·종료 시각에서 멈춤) | `{ skip: { from, to, stoppedFor } }` |
 | `markMailRead` | `id` | — |
-| `startNextWorkday` | — (마감 뒤, 또는 출근 전이면 휴식일로 넘김). 실제 날짜가 바뀌었으면 실제 오늘·지금 시각으로, 같은 날이면 다음 근무일 활동 시작 5분 전으로 | — |
+| `startNextWorkday` | — (마감 뒤, 또는 출근 전이면 넘김. 보통·엄격에서 쉬는 날로 알리지 않고 넘기면 결근 후보). 실제 날짜가 바뀌었으면 실제 오늘·지금 시각으로, 같은 날이면 다음 근무일 활동 시작 5분 전으로 | — |
+
+2·3단계가 남았는데 마감 시각 전에 마감하려는 것처럼 규칙에 맞지 않는 요청은 `rule` 오류로 오고, 화면에 그대로 보여 줄 한국어 메시지가 함께 온다.
 
 ### AI 동료 (`src/lib/colleague`)
 
@@ -68,16 +79,19 @@ Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `sh
 
 | 칸 | 내용 |
 | --- | --- |
-| `onboarded`, `profile` | `profile = { name, targetRole, experience, activityStart, activityEnd }` |
+| `onboarded`, `profile` | `profile = { name, targetRole, experience, activityStart, activityEnd, enforcement }` |
 | `clock` | `now`, `hm`, `date`, `dateShort`, `dateLong`, `weekLabel`, `isFriday` |
 | `phase` | `{ value, label, headline }` |
-| `pastActivityEnd` | 사용자가 정한 마감 시각이 지났는지(안내만) |
+| `pastActivityEnd` | 사용자가 정한 마감 시각이 지났는지 |
+| `enforcement` | `chosen`(고른 강도), `level`(오늘 실제 강도), `lowered`, `rules`(켜진 장치), `options`(세 강도 설명) |
+| `attendance` | `isLate`, `absentCandidate`, `dayOff`, `returning`, `presence`, `monitoring`, `activeAllowance`, `lunchUsed`, `unauthorizedAwayMinutes`, `cameraOffMinutes`, `month`(`late`·`absent`·`recovered`·`points`·`estimatedFee`), `lateFee`(규칙 값) |
+| `overtime` | `dinnerHM`·`overtimeHM`, `targetIds`(지금 남은 2·3단계), `assignedIds`, `outcome`, `checkoutAt`, `earlyLeaveReason` |
 | `day` | `date`, `checkInAt`, `checkInMethod`, `goal`, `tasks[]`, `submissions[]`, `share`, `review`, `unsubmittedTaskIds`, `events` |
 | `pendingCarry` | 다음 활동일에 붙을 이월 과제(원본 ID `carriedFromTaskId` 보존) |
-| `can` | `checkIn`, `confirmTasks`, `editTasks`, `startSharing`, `endSharing`, `confirmReview`, `startNextWorkday`, `skipHour` |
+| `can` | `checkIn`, `confirmTasks`, `editTasks`, `startSharing`, `endSharing`, `confirmReview`, `startNextWorkday`, `skipHour`, `lowerToday`, `setDayOff`, `observePresence`, `requestLunch`, `registerAway`, `returnFromAllowance`, `submitCheckout`, `endOvertime`, `earlyLeave`, `earlyLeaveNeedsReason`, `earlyLeaveBlockedBy` |
 | `mail` | `unreadCount`, `inbox[]`, `sent[]` |
-| `history` | `[{ date, dateShort, tasks, review, counted }]` — `counted`: 제출물·설명이 있고 마감을 확정한 날 |
-| `seat`, `state.now` | 3D 사무실 호환용 |
+| `history` | `[{ date, dateShort, tasks, review, counted, checkedIn, isLate, absentCandidate, dayOff }]` — `counted`: 제출물·설명이 있고 마감을 확정한 날 |
+| `seat`, `state.now` | 3D 사무실 호환용. `seat`는 보통·엄격에서 점심·자리 비움·저녁시간·카메라 꺼짐도 반영(`isWarning`) |
 
 `day.tasks[]`: `id`, `title`, `completionCriteria`, `shareForm`, `status`(`confirmed` → `in_progress` → `submitted` → `reviewed`, 또는 `incomplete`), `statusLabel`, `outcome`, `outcomeLabel`, `outcomeReason`, `carriedFrom`, `carriedFromTaskId`, `carryCount`, `submissionCount`.
 

@@ -11,6 +11,7 @@ import { CheckIn } from "./CheckIn";
 import { Desk } from "./Desk";
 import { MailBox } from "./Mail";
 import { MorningPT } from "./MorningPT";
+import { OvertimePanel } from "./Enforcement";
 import { DayClose, DayEnd } from "./Review";
 import { Settings } from "./Settings";
 import { Share } from "./Share";
@@ -42,10 +43,11 @@ export function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeVi
     case "manager":
       return <MailBox office={office} view={view} onGo={go} />;
     case "settings":
-      return <Settings office={office} />;
+      return <Settings office={office} view={view} />;
     case "desk":
       if (view.phase.value === "checkoutReview") return <DayClose office={office} view={view} onGo={go} />;
       if (view.phase.value === "off") return <DayEnd office={office} view={view} onGo={go} />;
+      if (["checkout", "dinner", "overtime", "overtimeReview"].includes(view.phase.value)) return <OvertimePanel office={office} view={view} />;
       return <Desk office={office} view={view} onGo={go} />;
   }
 }

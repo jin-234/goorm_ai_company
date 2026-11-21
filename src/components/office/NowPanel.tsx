@@ -4,7 +4,7 @@
  * 처음 쓰는 사람도 공간을 찾지 않고 바로 실행할 수 있게 지금 할 일·이유·실행 버튼을 늘 보여 주고,
  * 익숙해진 뒤에도 자주 쓰는 체크리스트·결과물 제출은 한 번에 열 수 있게 바로가기를 둔다.
  */
-import type { OfficeView } from "./api";
+import { hhmm, type OfficeView } from "./api";
 import { nextStepOf } from "./TopBar";
 import type { PlaceId } from "./ui";
 
@@ -12,12 +12,28 @@ import type { PlaceId } from "./ui";
 function whyNow(view: OfficeView): string {
   switch (view.phase.value) {
     case "beforeCheckIn":
-      return "문 옆 단말기에 사원증을 찍으면 하루가 시작됩니다.";
+      if (view.attendance.absentCandidate) return "오늘은 결근 후보로 남았습니다. 다음 활동일에 돌아오면 그날은 지각으로 세지 않습니다.";
+      if (view.attendance.dayOff) return "오늘은 쉬는 날로 알렸습니다. 푹 쉬고 다음 활동일에 만나요.";
+      if (view.attendance.returning) return "다시 와서 반갑습니다. 오늘은 늦어도 지각으로 세지 않습니다.";
+      return view.enforcement.rules.attendance
+        ? `${hhmm(view.profile.activityStart)}까지 사원증을 찍으면 지각이 아닙니다.`
+        : "문 옆 단말기에 사원증을 찍으면 하루가 시작됩니다.";
     case "morningPT":
       return "AI 팀장과 오늘 끝낼 작은 범위와 완료 기준을 정합니다.";
     case "working":
+      if (view.seat.isWarning) return view.seat.detail;
       if (view.mail.unreadCount > 0) return "팀장 메일에 확인할 내용이 있습니다.";
+      if (view.overtime.checkoutAt != null) return "퇴근 점검을 마쳤습니다. 회의실 발표와 하루 마감으로 이어 가세요.";
+      if (view.enforcement.rules.checkoutAndOvertime) return `과제를 하고 결과물을 올립니다. ${hhmm(view.profile.activityEnd)}에 퇴근 점검을 합니다.`;
       return view.pastActivityEnd ? "정한 마감 시각이 지났습니다. 결과물을 올리고 공유하면 됩니다." : "과제를 하고 결과물을 올립니다.";
+    case "checkout":
+      return "마감 시각입니다. 제출하지 않은 2·3단계 과제가 있으면 추가근무를 합니다.";
+    case "dinner":
+      return `저녁시간 뒤 ${view.overtime.overtimeHM} 추가근무입니다.`;
+    case "overtime":
+      return "배정된 과제를 3단계부터 진행합니다.";
+    case "overtimeReview":
+      return "추가근무 시간이 끝났습니다. 점검을 제출하고 마감으로 갑니다.";
     case "sharing":
       return "회의실에 부서별 담당자가 와 있습니다. 오늘 한 일을 발표하고, 언제든 마칠 수 있습니다.";
     case "checkoutReview":

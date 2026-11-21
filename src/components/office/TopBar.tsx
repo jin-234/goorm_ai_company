@@ -4,9 +4,10 @@
  * 왼쪽: 팀·이름 / 날짜, 큰 시계, 지금 단계 + 상태 칩
  * 가운데: 지금 할 일(지금 열린 패널과 같은 곳이면 숨김)
  * 오른쪽: 메일함 · 안 읽음 N, 점선 '시연' 묶음, 설정 톱니
- * 개정판: 지각 점수·지각비·착석 상태는 보여 주지 않는다. 마감 시각이 지나면 안내만 한다.
+ * 관리 강도: 지금 강도 칩과 '오늘만 한 단계 낮추기'. 지각·착석은 보통·엄격에서만 칩에 보인다.
  */
 import { hhmm, type OfficeView } from "./api";
+import { LowerTodayButton } from "./panels/Enforcement";
 import type { OfficeHandle } from "./useOffice";
 import type { PlaceId } from "./ui";
 
@@ -21,6 +22,7 @@ export function nextStepOf(view: OfficeView): NextStep | null {
   const tasks = view.day.tasks;
   switch (view.phase.value) {
     case "beforeCheckIn":
+      if (view.attendance.absentCandidate || view.attendance.dayOff) return { label: "출입문 · 다음 활동일로", place: "door" };
       return { label: "출입문 · 사원증 찍고 출근", place: "door" };
     case "morningPT":
       return { label: "회의실로 · 아침보고", place: "meeting" };
@@ -29,6 +31,14 @@ export function nextStepOf(view: OfficeView): NextStep | null {
       if (allHandled && view.can.startSharing) return { label: "회의실 · 오늘 한 일 발표", place: "share" };
       return { label: "내 책상 · 결과물 제출", place: "desk" };
     }
+    case "checkout":
+      return { label: "내 책상 · 퇴근 점검 제출", place: "desk" };
+    case "dinner":
+      return { label: "내 책상 · 저녁시간", place: "desk" };
+    case "overtime":
+      return { label: "내 책상 · 추가근무 과제", place: "desk" };
+    case "overtimeReview":
+      return { label: "내 책상 · 추가근무 점검", place: "desk" };
     case "sharing":
       return { label: "회의실 · 발표 이어가기", place: "share" };
     case "checkoutReview":
@@ -38,18 +48,32 @@ export function nextStepOf(view: OfficeView): NextStep | null {
   }
 }
 
-/** 단계 옆 작은 상태 칩. 착석 대신 오늘 과제 진행을 보여 준다. */
+/** 단계 옆 작은 상태 칩. 보통·엄격 근무 중에는 착석 상태, 그 밖에는 오늘 과제 진행을 보여 준다. */
 function statusChip(view: OfficeView): { text: string; warn: boolean } {
   const tasks = view.day.tasks;
+  if (view.enforcement.rules.seatCheck && ["working", "overtime", "dinner"].includes(view.phase.value) && view.seat.kind !== "seated") {
+    return { text: view.seat.title, warn: view.seat.isWarning };
+  }
   switch (view.phase.value) {
     case "beforeCheckIn":
+      if (view.attendance.absentCandidate) return { text: "결근 후보", warn: true };
+      if (view.attendance.dayOff) return { text: "쉬는 날", warn: false };
       return { text: `활동 ${hhmm(view.profile.activityStart)}~${hhmm(view.profile.activityEnd)}`, warn: false };
+    case "checkout":
+    case "overtimeReview":
+      return { text: "점검 중", warn: false };
+    case "dinner":
+      return { text: `추가근무 ${view.overtime.overtimeHM}`, warn: false };
+    case "overtime": {
+      const left = view.day.tasks.filter((t) => view.overtime.assignedIds.includes(t.id) && view.overtime.targetIds.includes(t.id)).length;
+      return { text: `추가근무 남은 ${left}건`, warn: false };
+    }
     case "morningPT":
       return { text: "범위 정하는 중", warn: false };
     case "working":
     case "sharing": {
       const sub = tasks.filter((t) => t.status === "submitted").length;
-      return { text: `제출 ${sub} / ${tasks.length}`, warn: false };
+      return { text: `제출 ${sub} / ${tasks.length}${view.attendance.isLate ? " · 지각" : ""}`, warn: false };
     }
     case "checkoutReview":
       return { text: "마감 확인 중", warn: false };
@@ -89,7 +113,7 @@ export function TopBar({
   const nextDay = async () => {
     if ((await office.act("startNextWorkday")) != null) onGo("door");
   };
-  const showCloseHint = view.pastActivityEnd && ["working", "sharing"].includes(view.phase.value);
+  const showCloseHint = view.pastActivityEnd && !view.enforcement.rules.checkoutAndOvertime && ["working", "sharing"].includes(view.phase.value);
 
   return (
     <div className="topbar" role="banner">
@@ -103,7 +127,11 @@ export function TopBar({
           </span>
           <div>
             <div className="phase">{view.phase.headline}</div>
-            <span className={`chip ${chip.warn ? "warn" : ""}`}>{chip.text}</span>
+            <span className={`chip ${chip.warn ? "warn" : ""}`}>{chip.text}</span>{" "}
+            <span className="chip" title={view.enforcement.rules.summary}>
+              강도 {view.enforcement.rules.label}
+              {view.enforcement.lowered ? " (오늘만)" : ""}
+            </span>
           </div>
         </div>
       </div>
@@ -115,6 +143,8 @@ export function TopBar({
       ) : null}
 
       <div className="spacer" />
+
+      <LowerTodayButton office={office} view={view} small />
 
       {step && step.place !== place ? (
         <button className="btn topbar-now" onClick={() => onGo(step.place)} title="지금 할 일">
@@ -142,7 +172,7 @@ export function TopBar({
               className="btn secondary small"
               onClick={skip}
               disabled={office.busy || !view.can.skipHour}
-              title="시연 시각을 다음 정각으로 보냅니다. 단계는 바뀌지 않습니다."
+              title={view.enforcement.rules.checkoutAndOvertime ? "시연 시각을 다음 정각으로 보냅니다. 퇴근 점검·추가근무 시각에서 멈춥니다." : "시연 시각을 다음 정각으로 보냅니다. 단계는 바뀌지 않습니다."}
             >
               다음 정각
             </button>
