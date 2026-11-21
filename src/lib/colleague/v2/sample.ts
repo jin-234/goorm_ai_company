@@ -22,7 +22,7 @@ const TYPES_BY_DIFFICULTY: Record<number, string[]> = {
   3: ["Q04", "Q06", "Q05", "Q11", "Q15"],
 };
 
-/** 부서별 변화구 기법 순서(문서 CURVEBALL 블록)와 예시 문장. {a}는 앵커. */
+/** 부서별 변화구 기법 순서(문서 CURVEBALL 블록)와 예시 문장. 앞에 앵커 인용을 붙인다. */
 const CURVE_PREF: Record<ColleagueDept, string[]> = {
   designer: ["C04", "C10", "C11"],
   marketer: ["C06", "C09", "C03"],
@@ -30,19 +30,28 @@ const CURVE_PREF: Record<ColleagueDept, string[]> = {
   dev_lead: ["C01", "C02", "C12"],
 };
 const CURVE_TEXT: Record<string, string> = {
-  C01: "'{a}'를 제가 만들고 당신이 다른 팀이라면, 제일 먼저 고쳐 달라고 할 건 뭐예요?",
-  C02: "'{a}'를 100만 명이 동시에 쓴다면 가장 먼저 달라지는 건 뭘까요?",
-  C03: "1년 뒤 '{a}'를 없앤다면 누가 가장 먼저 아쉬워할까요?",
-  C04: "화면 없이 전화로만 '{a}'를 안내해야 한다면 첫 문장은 뭐라고 할래요?",
-  C05: "'{a}'가 도서관의 무엇이라면 어떤 역할일까요?",
-  C06: "'편리하다', '쉽다', '빠르다'를 빼고 '{a}'의 장점을 말해 보면 어떻게 될까요?",
-  C07: "'{a}' 때문에 문제가 생겼다는 기사가 난다면 제목은 뭘까요?",
-  C08: "'{a}'를 절대 쓰지 않을 사람은 누구일까요?",
-  C09: "'{a}'만 따로 판다면 얼마를 받을 수 있다고 봐요?",
-  C10: "'{a}'를 정반대로 동작하게 만든다면 오히려 좋아지는 건 뭘까요?",
-  C11: "사용자가 '{a}' 화면을 아주 잠깐만 본다면 머릿속에 남는 한 가지는 뭘까요?",
-  C12: "'{a}'를 유지하려면 앞으로 누가 무엇을 계속 해야 할까요?",
+  C01: "제가 만들고 당신이 다른 팀이라면, 이 결과에서 제일 먼저 고쳐 달라고 할 건 뭐예요?",
+  C02: "이 기능을 100만 명이 동시에 쓴다면 가장 먼저 달라지는 건 뭘까요?",
+  C03: "1년 뒤 이 기능을 없앤다면 누가 가장 먼저 아쉬워할까요?",
+  C04: "화면 없이 전화로만 이 기능을 안내해야 한다면 첫 문장은 뭐라고 할래요?",
+  C05: "이 기능이 도서관의 무엇이라면 어떤 역할일까요?",
+  C06: "'편리하다', '쉽다', '빠르다'를 빼고 이 결과의 장점을 말해 보면 어떻게 될까요?",
+  C07: "이 기능 때문에 문제가 생겼다는 기사가 난다면 제목은 뭘까요?",
+  C08: "이 기능을 절대 쓰지 않을 사람은 누구일까요?",
+  C09: "이 기능만 따로 판다면 얼마를 받을 수 있다고 봐요?",
+  C10: "이 기능을 정반대로 동작하게 만든다면 오히려 좋아지는 건 뭘까요?",
+  C11: "사용자가 이 화면을 아주 잠깐만 본다면 머릿속에 남는 한 가지는 뭘까요?",
+  C12: "이 결과를 유지하려면 앞으로 누가 무엇을 계속 해야 할까요?",
 };
+
+/** 따옴표로 받은 말 뒤 조사: 받침이 있으면 '이라고', 없으면 '라고'. */
+export function quoteSaid(said: string): string {
+  const anchor = said.trim().replace(/[.!?。]+$/, "");
+  const last = anchor.slice(-1);
+  const code = last.charCodeAt(0) - 0xac00;
+  const batchim = code >= 0 && code < 11172 && code % 28 !== 0;
+  return `'${anchor}'${batchim ? "이라고" : "라고"} 하셨는데,`;
+}
 
 const words = (s: string) => (s.match(/[A-Za-z]{2,}|[가-힣]{2,}/g) ?? []).map((w) => w.replace(/(했다고|한다고|했고|해요|했어요|합니다|함|을|를|이|가|은|는|에|에서|으로|로|와|과|도)$/, "")).filter((w) => w.length >= 2);
 const overlap = (a: string, b: string) => {
@@ -129,7 +138,7 @@ function makeQuestion(c: Ctx, r: ColleagueReply, lastUser: string): void {
     const usedCurves = new Set([...share.usedCurveballs, ...c.office.colleagueRecent.curveballs]);
     const cb = [...CURVE_PREF[c.dept], ...Object.keys(CURVE_TEXT)].find((id) => !usedCurves.has(id)) ?? CURVE_PREF[c.dept][0];
     r.question_type = cb;
-    r.question = CURVE_TEXT[cb].replace("{a}", anchor);
+    r.question = `${quoteSaid(anchor)} ${CURVE_TEXT[cb]}`;
     r.basis = { type: "team_design", source_ids: [], note: "변화구 질문" };
     return;
   }
@@ -152,7 +161,7 @@ function makeQuestion(c: Ctx, r: ColleagueReply, lastUser: string): void {
     glossaryOf(c.dept)[0];
   const gloss = share.difficulty === 1 ? `(${pick.plain})` : "";
   const core = gloss ? pick.usage.replace(pick.term.split(/\s*\/\s*|\(/)[0].trim(), (m) => `${m}${gloss}`) : pick.usage;
-  r.question = `'${anchor}'라고 하셨는데, ${core}`;
+  r.question = `${quoteSaid(anchor)} ${core}`;
   if (termAppears(pick.term, r.question)) r.terms_used = [{ id: pick.id, term: pick.term, plain: pick.plain }];
 }
 
@@ -181,7 +190,7 @@ export function sampleReply(c: Ctx): ColleagueReply {
     };
     r.terms_used = [{ id: asked.id, term: asked.term, plain: asked.plain }];
     if (c.meetingRole !== "feedback" && prev) {
-      r.question = `쉽게 다시 여쭤보면, ${prev.replace(/^'[^']*'라고 하셨는데,\s*/, "")}`;
+      r.question = `쉽게 다시 여쭤보면, ${prev.replace(/^'[^']*'(이)?라고 하셨는데,\s*/, "")}`;
       r.anchor_quote = anchorOf(users[0]?.text ?? lastUser);
       r.question_reason = REASON[c.dept];
       r.lens_id = "";
@@ -196,7 +205,7 @@ export function sampleReply(c: Ctx): ColleagueReply {
     r.understanding_check = check;
     const lens = lensesOf(c.dept).find((l) => l.id === mine[mine.length - 1]?.reply?.lens_id) ?? lensesOf(c.dept)[0];
     r.feedback = {
-      strength: check.status === "unclear" ? "" : `'${snippet(lastUser, 30)}'라고 구체적으로 짚어 주셔서 제 업무에 바로 쓸 수 있어요.`,
+      strength: check.status === "unclear" ? "" : `${quoteSaid(snippet(lastUser, 30)).replace(/ 하셨는데,$/, "")} 구체적으로 짚어 주셔서 제 업무에 바로 쓸 수 있어요.`,
       perspective: `제 업무에서는 '${lens.name}'도 같이 봐요.`,
       try_next: check.status === "clear" ? "다음 설명에서도 지금처럼 순서와 이유를 함께 말해 보세요." : "다음에 설명할 때는 버튼을 누른 뒤 안에서 일어나는 일을 순서대로 한 번 말해 보세요.",
     };

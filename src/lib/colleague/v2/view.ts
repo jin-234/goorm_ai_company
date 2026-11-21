@@ -6,7 +6,7 @@ import { DECISION_LABEL, DEPT_INFO, basisLabel, personaById } from "./catalog";
 import { understandingStats } from "./minutes";
 import { askedTerm } from "./validate";
 
-function turnView(t: ShareTurn, turns: ShareTurn[]) {
+export function turnView(t: ShareTurn, turns: ShareTurn[]) {
   if (t.role !== "colleague" || !t.reply) return t;
   const r = t.reply;
   // AI가 term_explain을 비웠는데 바로 앞 사용자 말이 용어 뜻을 물었으면 용어집 뜻풀이로 대신 보여 준다(10장).

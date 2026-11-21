@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 import { advanceShare } from "@/lib/colleague/v2/engine";
+import { turnView } from "@/lib/colleague/v2/view";
 import { OfficeError } from "@/lib/office/rules";
 import { SolarClient, solarConfigFromEnv } from "@/lib/solar/client";
 import { errorResponse, json, officeIdOf, readJson } from "@/lib/server/http";
@@ -31,7 +32,9 @@ export async function POST(req: NextRequest) {
       if (office.day.phase !== "sharing") throw OfficeError.notAllowedNow("회의실 발표가 이미 끝났습니다.");
       return advanceShare(office, client, { lowered });
     });
-    return json({ source: result.source, replies: result.turns, solarError: result.solarError, office: officeView(office) }, { officeId });
+    // 화면이 replies만 써도 되게 office의 턴과 같은 화면용 값(basisLabel·termFallback·decisionLabel)을 붙인다.
+    const replies = result.turns.map((t) => turnView(t, office.day.share.turns));
+    return json({ source: result.source, replies, solarError: result.solarError, office: officeView(office) }, { officeId });
   } catch (error) {
     return errorResponse(error);
   }
