@@ -10,6 +10,7 @@ import { CheckIn } from "./panels/CheckIn";
 import { Desk } from "./panels/Desk";
 import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
+import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
 import { type OfficeHandle, useOffice } from "./useOffice";
@@ -119,7 +120,20 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
     case "meeting":
       return <MorningPT office={office} view={view} />;
     case "desk":
-      return <Desk office={office} view={view} onGo={go} />;
+      if (view.seat.kind === "absentCandidate") return <DayEnd office={office} view={view} onGo={go} />;
+      switch (view.phase.value) {
+        case "checkoutReview":
+          return <Checkout office={office} view={view} />;
+        case "dinner":
+        case "overtime":
+          return <Overtime office={office} view={view} />;
+        case "overtimeReview":
+          return <OvertimeEnd office={office} view={view} />;
+        case "off":
+          return <DayEnd office={office} view={view} onGo={go} />;
+        default:
+          return <Desk office={office} view={view} onGo={go} />;
+      }
     default:
       return (
         <Notice kind="info" title="준비 중인 화면입니다">
