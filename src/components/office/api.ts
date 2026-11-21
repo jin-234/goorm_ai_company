@@ -18,7 +18,11 @@ export type PlannerReply = NonNullable<ShareTurn["reply"]>;
 export type ShareState = NonNullable<OfficeView["day"]["share"]["state"]>;
 export type Review = NonNullable<OfficeView["day"]["review"]["draft"]>;
 export type CloseChoice = NonNullable<Task["outcome"]>;
-export type AiSource = "solar" | "manual";
+/** AI 응답 출처. sample = AI 연결 전 예시 생성기(실제처럼 이어지지만 AI가 아님을 꼬리표로 알린다). */
+export type AiSource = "solar" | "manual" | "sample";
+/** 서버 타입에 sample이 아직 없어도 비교할 수 있게 문자열로 본다. */
+export const isSample = (source: string | null | undefined) => source === "sample";
+export const isManual = (source: string | null | undefined) => source === "manual";
 export type DayKey = { year: number; month: number; day: number };
 
 /** AI 팀장 제안(분담표 3.4). AI 실패 시 source "manual"로 사용자의 글을 그대로 한 과제 초안으로 준다. */

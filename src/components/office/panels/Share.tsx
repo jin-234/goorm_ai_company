@@ -5,14 +5,14 @@
  * 사용자는 건너뛰거나 언제든 마칠 수 있다. AI 미연결이면 정해진 안내를 'AI가 말한 것'처럼 보이지 않게 따로 표시한다.
  */
 import { useEffect, useRef, useState } from "react";
-import { api, type OfficeView, type PlannerReply, type ShareTurn } from "../api";
+import { api, isManual, isSample, type OfficeView, type PlannerReply, type ShareTurn } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, ManualMark, Notice, PanelHeader, type PlaceId } from "../ui";
+import { Card, ManualMark, Notice, PanelHeader, type PlaceId, SampleMark } from "../ui";
 import { SubmissionLine } from "./TaskList";
 
 const SKIP_TEXT = "이 질문은 건너뛸게요.";
 
-function PlannerBubble({ reply, manual }: { reply: PlannerReply; manual: boolean }) {
+function PlannerBubble({ reply, manual, sample }: { reply: PlannerReply; manual: boolean; sample: boolean }) {
   if (manual) {
     return (
       <div className="card" style={{ background: "var(--paper-deep)", gap: 6, padding: 12 }}>
@@ -23,8 +23,11 @@ function PlannerBubble({ reply, manual }: { reply: PlannerReply; manual: boolean
   }
   return (
     <div className="card" style={{ gap: 6, padding: 12, borderLeft: "4px solid var(--green)" }}>
-      <div className="small" style={{ fontWeight: 700, color: "var(--green)" }}>
-        AI 기획자 · 서비스 기획팀
+      <div className="row" style={{ gap: 6 }}>
+        <span className="small" style={{ fontWeight: 700, color: "var(--green)" }}>
+          AI 기획자 · 서비스 기획팀
+        </span>
+        {sample ? <SampleMark /> : null}
       </div>
       {reply.acknowledgement ? <div className="pre">{reply.acknowledgement}</div> : null}
       {reply.question ? (
@@ -55,7 +58,7 @@ function Transcript({ turns }: { turns: ShareTurn[] }) {
         t.role === "user" ? (
           <UserBubble key={t.id} text={t.text ?? ""} />
         ) : t.reply ? (
-          <PlannerBubble key={t.id} reply={t.reply} manual={t.source === "manual"} />
+          <PlannerBubble key={t.id} reply={t.reply} manual={isManual(t.source)} sample={isSample(t.source)} />
         ) : null,
       )}
     </div>

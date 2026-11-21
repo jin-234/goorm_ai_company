@@ -60,6 +60,15 @@ export const CHOICE_NAME: Record<CloseChoice, { label: string; detail: string }>
   endToday: { label: "오늘은 여기서 종료", detail: "넘기지 않고 오늘 기록만 남깁니다." },
 };
 
+/** AI 연결 전 예시 응답임을 알리는 작은 꼬리표. 말풍선·제안 카드는 그대로 쓴다. */
+export function SampleMark() {
+  return (
+    <span className="badge tag" title="AI를 연결하기 전이라 예시 생성기가 답했습니다.">
+      예시 응답(AI 연결 전)
+    </span>
+  );
+}
+
 /** AI가 아닌 수동 양식임을 알리는 표시. AI가 답한 것처럼 보이지 않게 한다. */
 export function ManualMark({ text = "AI 미연결 · 직접 입력 양식" }: { text?: string }) {
   return <span className="badge tag">{text}</span>;

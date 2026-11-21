@@ -7,9 +7,9 @@
  * 목표는 말로 해도 된다(OpenAI 음성 인식, 선택). 녹음이 안 돼도 글로 끝까지 할 수 있다.
  */
 import { useEffect, useState } from "react";
-import { type AiSource, api, type OfficeView } from "../api";
+import { type AiSource, api, isSample, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, ManualMark, Notice, PanelHeader, StatusBadge } from "../ui";
+import { Card, ManualMark, Notice, PanelHeader, SampleMark, StatusBadge } from "../ui";
 import { VoiceInput } from "../voice/VoiceInput";
 
 type Row = { key: string; title: string; completionCriteria: string; shareForm: string };
@@ -228,14 +228,25 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
       {rows.length > 0 ? (
         <Card
           title="오늘 끝낼 범위"
-          aside={source === "solar" ? <span className="badge tag">AI 팀장 제안 · 고칠 수 있음</span> : source === "manual" ? <ManualMark /> : <span className="badge tag">직접 작성</span>}
+          aside={
+            source === "solar" || isSample(source) ? (
+              <span className="row" style={{ gap: 6 }}>
+                <span className="badge tag">AI 팀장 제안 · 고칠 수 있음</span>
+                {isSample(source) ? <SampleMark /> : null}
+              </span>
+            ) : source === "manual" ? (
+              <ManualMark />
+            ) : (
+              <span className="badge tag">직접 작성</span>
+            )
+          }
         >
           {source === "manual" ? (
             <Notice kind="info" title="AI 팀장에 연결하지 못했습니다">
               {"적은 목표를 그대로 한 과제로 옮겼습니다.\n완료 기준과 공유 형태를 직접 정해 주세요."}
             </Notice>
           ) : null}
-          {source === "solar" && question ? (
+          {(source === "solar" || isSample(source)) && question ? (
             <Notice kind="info" title="AI 팀장의 확인 질문">
               {question}
             </Notice>
@@ -278,7 +289,7 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
             <button className="btn secondary" onClick={() => setRows((rs) => [...rs, emptyRow()])}>
               과제 추가
             </button>
-            {source === "solar" ? (
+            {source === "solar" || isSample(source) ? (
               <button className="btn plain" onClick={reject}>
                 이 제안 쓰지 않기
               </button>

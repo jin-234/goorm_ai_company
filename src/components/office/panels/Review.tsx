@@ -7,9 +7,9 @@
  * - AI 미연결이면 빈 수동 양식을 주고 AI가 쓴 것처럼 표시하지 않는다.
  */
 import { useEffect, useState } from "react";
-import { api, type CloseChoice, type OfficeView, type Review } from "../api";
+import { api, type CloseChoice, isManual, isSample, type OfficeView, type Review } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, CHOICE_NAME, ManualMark, Notice, PanelHeader, type PlaceId, StatusBadge } from "../ui";
+import { Card, CHOICE_NAME, ManualMark, Notice, PanelHeader, type PlaceId, SampleMark, StatusBadge } from "../ui";
 
 const EMPTY: Review = {
   reported_work: "",
@@ -103,7 +103,7 @@ export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: O
   };
 
   const draft = review.draft;
-  const isManual = review.draftSource === "manual" || (!draft && review.draftSource == null);
+  const manualDraft = isManual(review.draftSource);
   // '내가 고침'은 AI 원본 초안(aiDraft)과 비교한다. AI 원본이 없으면 표시하지 않는다.
   const original = review.aiDraft;
   const edited = (key: TextField | "open_questions") => original != null && valueOf(edit, key).trim() !== valueOf(original, key).trim();
@@ -156,7 +156,18 @@ export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: O
 
       <Card
         title="마감 요약"
-        aside={draft ? (isManual ? <ManualMark /> : <span className="badge tag">AI 초안 · 고칠 수 있음</span>) : undefined}
+        aside={
+          draft ? (
+            manualDraft ? (
+              <ManualMark />
+            ) : (
+              <span className="row" style={{ gap: 6 }}>
+                <span className="badge tag">AI 초안 · 고칠 수 있음</span>
+                {isSample(review.draftSource) ? <SampleMark /> : null}
+              </span>
+            )
+          ) : undefined
+        }
       >
         <div className="row">
           <button className="btn secondary" onClick={makeDraft} disabled={office.busy || drafting}>
@@ -164,7 +175,7 @@ export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: O
           </button>
           <span className="small muted">초안 없이 직접 적어도 됩니다.</span>
         </div>
-        {draft && isManual ? (
+        {draft && manualDraft ? (
           <Notice kind="info" title="AI 요약에 연결하지 못했습니다">
             빈 양식입니다. 오늘 한 일과 다음 행동만 적어도 마감할 수 있습니다.
           </Notice>
