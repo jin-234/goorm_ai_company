@@ -202,7 +202,7 @@ export function DayEnd({ office, view, onGo }: { office: OfficeHandle; view: Off
     <div className="panel">
       <PanelHeader
         place="내 책상"
-        title={closed ? "오늘 활동을 마감했습니다" : "오늘은 활동하지 않았습니다"}
+        title={closed ? "오늘 활동을 마감했습니다" : view.attendance.absentCandidate ? "오늘은 결근 후보로 남았습니다" : "오늘은 활동하지 않았습니다"}
         detail={view.clock.dateLong}
       />
       {closed ? (
@@ -210,8 +210,12 @@ export function DayEnd({ office, view, onGo }: { office: OfficeHandle; view: Off
           <TaskList office={office} view={view} editable={false} />
         </Card>
       ) : (
-        <Notice kind="info" title="쉬는 날로 남깁니다">
-          활동하지 않은 날은 불이익 없이 기록하지 않습니다.
+        <Notice kind="info" title={view.attendance.absentCandidate ? "다음 활동일에 다시 오면 됩니다" : "쉬는 날로 남깁니다"}>
+          {view.attendance.absentCandidate
+            ? "돌아온 날은 늦게 출근해도 지각으로 세지 않습니다."
+            : view.enforcement.rules.attendance && !view.attendance.dayOff
+              ? "출근하지 않고 넘기면 결근 후보로 남습니다. 출입문에서 '오늘은 쉬는 날'을 누르면 세지 않습니다."
+              : "활동하지 않은 날은 불이익 없이 넘어갑니다."}
         </Notice>
       )}
       {confirmed ? (

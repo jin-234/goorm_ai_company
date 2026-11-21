@@ -4,6 +4,7 @@
  * 그리고 실제 기능과 구분한 점선 '시연' 묶음(다음 정각·다음 활동일·금요일 장면).
  */
 import type { OfficeView } from "./api";
+import { LowerTodayButton } from "./panels/Enforcement";
 import type { OfficeHandle } from "./useOffice";
 import type { PlaceId } from "./ui";
 
@@ -17,6 +18,7 @@ export function nextStepOf(view: OfficeView): NextStep | null {
   if (!view.onboarded) return null;
   switch (view.phase.value) {
     case "beforeCheckIn":
+      if (view.attendance.absentCandidate || view.attendance.dayOff) return null;
       return { label: "출입문 · 출근하기", place: "door" };
     case "morningPT":
       return { label: "회의실로 · 아침보고", place: "meeting" };
@@ -24,6 +26,14 @@ export function nextStepOf(view: OfficeView): NextStep | null {
       if (view.can.submitWeekly) return { label: "주간보고서 쓰기", place: "weekly" };
       if (view.mail.unreadCount > 0) return { label: `메일 ${view.mail.unreadCount}통 읽기`, place: "manager" };
       return { label: "내 책상 · 과제 수행", place: "desk" };
+    case "checkout":
+      return { label: "퇴근 점검 제출", place: "desk" };
+    case "dinner":
+      return { label: "저녁시간 · 추가근무 확인", place: "desk" };
+    case "overtime":
+      return { label: "추가근무 과제 수행", place: "desk" };
+    case "overtimeReview":
+      return { label: "추가근무 점검 제출", place: "desk" };
     case "sharing":
       return { label: "기획팀에 설명하기", place: "desk" };
     case "checkoutReview":
@@ -53,6 +63,10 @@ export function TopBar({
     }
   };
   const nextDay = async () => {
+    const skipping = view.phase.value === "beforeCheckIn";
+    if (skipping && view.enforcement.rules.attendance && !view.attendance.dayOff && !view.attendance.absentCandidate) {
+      if (!window.confirm("출근하지 않고 다음 활동일로 넘어가면 결근 후보로 기록됩니다.\n쉬는 날이면 출입문에서 '오늘은 쉬는 날'을 먼저 눌러 주세요.\n그래도 넘어갈까요?")) return;
+    }
     if ((await office.act("startNextWorkday")) != null) onGo("door");
   };
   const showNextDay = view.phase.value === "off" || (view.phase.value === "beforeCheckIn" && view.can.startNextWorkday);
@@ -69,14 +83,20 @@ export function TopBar({
           </span>
           <div>
             <div className="phase">{view.phase.headline}</div>
-            <span className="chip" title={view.seat.detail}>
+            <span className={`chip ${view.seat.isWarning ? "warn" : ""}`} title={view.seat.detail}>
               {view.phase.label}
+            </span>{" "}
+            <span className="chip" title={view.enforcement.rules.summary}>
+              강도 {view.enforcement.rules.label}
+              {view.enforcement.lowered ? " (오늘만 낮춤)" : ""}
             </span>
           </div>
         </div>
       </div>
 
       <div className="spacer" />
+
+      <LowerTodayButton office={office} view={view} small />
 
       {step ? (
         <div className="row topbar-now">

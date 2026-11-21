@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { CheckIn } from "./panels/CheckIn";
 import { Desk } from "./panels/Desk";
+import { OvertimePanel } from "./panels/Enforcement";
 import { MailBox } from "./panels/Mail";
 import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
@@ -33,7 +34,7 @@ const PLACES: PlaceInfo[] = [
   { id: "desk", name: "내 책상", sub: (v) => `과제·공유·마감 · ${v.seat.title}` },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
   { id: "weekly", name: "주간보고", sub: (v) => (v.clock.isFriday ? "오늘 제출" : "금요일에 제출") },
-  { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
+  { id: "settings", name: "설정", sub: (v) => `관리 강도 ${v.enforcement.rules.label} · Solar 연결` },
 ];
 
 /** 단계가 바뀔 때 자동으로 열 패널. */
@@ -138,7 +139,7 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
     case "weekly":
       return <Weekly office={office} view={view} onGo={go} />;
     case "settings":
-      return <Settings office={office} />;
+      return <Settings office={office} view={view} />;
     case "manager":
       return <MailBox office={office} view={view} onGo={go} />;
     case "desk":
@@ -149,6 +150,11 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
           return <Checkout office={office} view={view} />;
         case "off":
           return <DayEnd office={office} view={view} onGo={go} />;
+        case "checkout":
+        case "dinner":
+        case "overtime":
+        case "overtimeReview":
+          return <OvertimePanel office={office} view={view} />;
         default:
           return <Desk office={office} view={view} onGo={go} />;
       }

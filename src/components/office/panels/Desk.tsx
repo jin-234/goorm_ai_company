@@ -3,10 +3,11 @@
  * 내 책상 · 수행. 확정한 과제를 하나씩 수행하고 결과물(글·코드·링크)을 제출한다.
  * 다 했으면 기획팀 공유로 넘어가고, 공유가 맞지 않는 날은 건너뛰고 하루 마감으로 간다.
  */
-import { hm } from "@/lib/office/time";
+import { Clock, hm } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader, type PlaceId } from "../ui";
+import { AttendanceCard, LowerTodayButton } from "./Enforcement";
 import { TaskList } from "./TaskList";
 
 export function TodayLog({ view }: { view: OfficeView }) {
@@ -33,22 +34,43 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
   const submitted = tasks.filter((t) => t.status === "submitted").length;
   const phase = view.phase.value;
 
+  const blockedBy = view.can.earlyLeaveBlockedBy;
+
+  /** 보통·엄격에서 마감 시각 전에 넘어갈 때: 한 번 확인(보통) 또는 사유(엄격). 넘어가지 않으면 null. */
+  const earlyReason = (): string | null => {
+    if (!view.can.earlyLeave) return "";
+    if (view.can.earlyLeaveNeedsReason) {
+      const reason = window.prompt(`마감 시각(${Clock.hm(view.profile.activityEnd)}) 전에 마감하는 사유를 적어 주세요.`);
+      return reason && reason.trim() ? reason.trim() : null;
+    }
+    return window.confirm("아직 마감 시각 전입니다.\n지금 마감으로 넘어가면 퇴근 점검 없이 오늘을 정리합니다. 넘어갈까요?") ? "" : null;
+  };
+
   const startSharing = async () => {
-    if ((await office.act("startSharing")) != null) office.notify("기획팀 공유를 시작합니다.\n오늘 한 일을 설명해 주세요.");
+    const reason = earlyReason();
+    if (reason == null) return;
+    if ((await office.act("startSharing", { earlyReason: reason })) != null) office.notify("기획팀 공유를 시작합니다.\n오늘 한 일을 설명해 주세요.");
   };
   const skipSharing = async () => {
-    if (!window.confirm("기획팀 공유를 건너뛰고 하루 마감으로 갈까요?\n건너뛴 것으로 기록합니다.")) return;
-    if ((await office.act("endSharing")) != null) office.notify("공유를 건너뛰었습니다.\n하루 마감을 작성해 주세요.");
+    if (!view.can.earlyLeave && !window.confirm("기획팀 공유를 건너뛰고 하루 마감으로 갈까요?\n건너뛴 것으로 기록합니다.")) return;
+    const reason = earlyReason();
+    if (reason == null) return;
+    if ((await office.act("endSharing", { earlyReason: reason })) != null) office.notify("공유를 건너뛰었습니다.\n하루 마감을 작성해 주세요.");
   };
 
   return (
     <div className="panel">
       <PanelHeader place="내 책상" title="오늘 과제 수행" detail={view.phase.headline} />
-      {view.pastActivityEnd ? (
+      {view.overtime.checkoutAt != null && phase === "working" ? (
+        <Notice kind="ok" title={view.overtime.outcome ? "추가근무를 마쳤습니다" : "퇴근 점검을 마쳤습니다"}>
+          기획팀 공유와 하루 마감으로 이어 가 주세요.
+        </Notice>
+      ) : view.pastActivityEnd && !view.enforcement.rules.checkoutAndOvertime ? (
         <Notice kind="info" title="정해 둔 마감 시각이 지났습니다">
           {"강제로 넘어가지 않습니다.\n정리가 되면 기획팀 공유와 하루 마감으로 넘어가 주세요."}
         </Notice>
       ) : null}
+      {phase === "working" ? <AttendanceCard office={office} view={view} /> : null}
       <Card title="과제" aside={tasks.length ? <span className="chip">{`제출 ${submitted} / ${tasks.length}`}</span> : undefined}>
         {tasks.length === 0 ? (
           <>
@@ -72,13 +94,23 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
           <p className="muted pre" style={{ margin: 0 }}>
             {"기획팀 윤기획(AI)에게 오늘 한 일을 설명합니다.\n제출하지 못한 과제는 하루 마감에서 처리를 고릅니다."}
           </p>
+          {blockedBy.length > 0 ? (
+            <Notice kind="warning" title="마감 시각 전에는 마감할 수 없습니다">
+              {`2·3단계 과제가 남아 있습니다.\n${blockedBy.map((t) => `· ${t}`).join("\n")}\n제출하거나 마감 시각의 퇴근 점검을 기다려 주세요.`}
+            </Notice>
+          ) : view.can.earlyLeaveNeedsReason ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              마감 시각 전에 넘어가려면 사유를 적습니다.
+            </p>
+          ) : null}
           <div className="row">
-            <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing}>
+            <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing || blockedBy.length > 0}>
               기획팀 공유 시작
             </button>
-            <button className="btn plain" onClick={skipSharing} disabled={office.busy || !view.can.endSharing}>
+            <button className="btn plain" onClick={skipSharing} disabled={office.busy || !view.can.endSharing || blockedBy.length > 0}>
               공유 건너뛰고 마감하기
             </button>
+            {blockedBy.length > 0 ? <LowerTodayButton office={office} view={view} small /> : null}
           </div>
         </Card>
       ) : null}

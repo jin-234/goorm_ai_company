@@ -43,6 +43,7 @@ export function TaskList({
           submissions={view.day.submissions.filter((s) => s.taskId === t.id)}
           office={office}
           editable={editable}
+          showLevel={view.enforcement.rules.taskLevels}
         />
       ))}
     </div>
@@ -54,11 +55,13 @@ function TaskCard({
   submissions,
   office,
   editable,
+  showLevel,
 }: {
   task: Task;
   submissions: Submission[];
   office: OfficeHandle;
   editable: boolean;
+  showLevel: boolean;
 }) {
   const [kind, setKind] = useState<Kind>("text");
   const [content, setContent] = useState("");
@@ -85,6 +88,7 @@ function TaskCard({
         <div style={{ minWidth: 0 }}>
           <div className="row">
             <StatusBadge status={task.status} label={task.statusLabel} />
+            {showLevel ? <span className={`badge ${task.level === 1 ? "tag" : "l" + task.level}`}>{task.level}단계</span> : null}
             {task.carryCount > 0 ? <span className="badge tag">이월 {task.carryCount}회</span> : null}
             {task.outcomeLabel ? <span className="badge tag">{task.outcomeLabel}</span> : null}
           </div>

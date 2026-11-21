@@ -1,9 +1,11 @@
 "use client";
-/** 설정: Solar 연결 상태·연결 확인, 글자 크게(125%), 처음부터 다시. 키는 서버 환경변수로만 넣는다. */
+/** 설정: 관리 강도, Solar 연결 상태·연결 확인, 글자 크게(125%), 처음부터 다시. 키는 서버 환경변수로만 넣는다. */
 import { useEffect, useState } from "react";
-import { api } from "../api";
+import type { EnforcementLevel } from "@/lib/office/rules";
+import { api, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
+import { EnforcementPicker, LowerTodayButton, MonthLine } from "./Enforcement";
 
 const SCALE_KEY = "aiboss.textScale";
 
@@ -18,7 +20,7 @@ export function applySavedTextScale() {
   }
 }
 
-export function Settings({ office }: { office: OfficeHandle }) {
+export function Settings({ office, view }: { office: OfficeHandle; view: OfficeView }) {
   const [solar, setSolar] = useState<{ hasKey: boolean; key: string; model: string; baseURL: string } | null>(null);
   const [ping, setPing] = useState<{ ok: boolean; text: string } | null>(null);
   const [pinging, setPinging] = useState(false);
@@ -51,13 +53,38 @@ export function Settings({ office }: { office: OfficeHandle }) {
   };
 
   const reset = async () => {
-    if (!window.confirm("모두 지우고 다시 시작할까요?\n근태 기록·메일·주간보고가 모두 지워집니다.")) return;
+    if (!window.confirm("모두 지우고 다시 시작할까요?\n활동 기록·근태·메일·주간보고가 모두 지워집니다.")) return;
     if (await office.run(async () => ({ office: await api.reset() }))) office.notify("처음부터 다시 시작합니다.");
+  };
+
+  const setLevel = async (level: EnforcementLevel) => {
+    if (level === view.enforcement.chosen) return;
+    const checkedIn = view.day.checkInAt != null && view.phase.value !== "off";
+    const label = view.enforcement.options.find((o) => o.id === level)?.label ?? level;
+    if (checkedIn && !window.confirm(`관리 강도를 ${label}(으)로 바꿀까요?\n오늘부터 바로 적용합니다. 이미 남은 지각·결근 기록은 그대로입니다.`)) return;
+    if ((await office.act("setEnforcement", { level })) != null) office.notify(`관리 강도를 ${label}(으)로 바꿨습니다.`);
   };
 
   return (
     <div className="panel">
       <PanelHeader place="설정" title="설정" />
+      <Card
+        title="관리 강도"
+        aside={view.enforcement.lowered ? <span className="badge tag">{`오늘만 ${view.enforcement.rules.label}`}</span> : undefined}
+      >
+        <EnforcementPicker
+          options={view.enforcement.options}
+          value={view.enforcement.chosen}
+          onChange={setLevel}
+          start={view.profile.activityStart}
+          end={view.profile.activityEnd}
+          disabled={office.busy}
+        />
+        <MonthLine view={view} />
+        <div className="row">
+          <LowerTodayButton office={office} view={view} />
+        </div>
+      </Card>
       <Card title="Upstage Solar">
         {solar ? (
           <div className="small" style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 12px" }}>

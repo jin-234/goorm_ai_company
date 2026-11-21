@@ -12,14 +12,26 @@ import type { PlaceId } from "./ui";
 function whyNow(view: OfficeView): string {
   switch (view.phase.value) {
     case "beforeCheckIn":
-      return "출근을 누르면 오늘 활동이 시작됩니다.";
+      if (view.attendance.absentCandidate) return "오늘은 결근 후보로 남았습니다. 다음 활동일에 돌아오면 그날은 지각으로 세지 않습니다.";
+      if (view.attendance.dayOff) return "오늘은 쉬는 날로 알렸습니다. 푹 쉬고 다음 활동일에 만나요.";
+      return view.enforcement.rules.attendance ? "정해 둔 시작 시각까지 출근하면 지각으로 세지 않습니다." : "출근을 누르면 오늘 활동이 시작됩니다.";
     case "morningPT":
       return "오늘 끝낼 범위를 정해야 과제가 생깁니다.";
     case "working":
       if (view.can.submitWeekly) return "금요일에는 주간보고서를 올립니다.";
       if (view.mail.unreadCount > 0) return "팀장 메일에 확인할 내용이 있습니다.";
+      if (view.seat.isWarning) return view.seat.detail;
+      if (view.overtime.checkoutAt != null) return "퇴근 점검을 마쳤습니다. 기획팀 공유와 하루 마감으로 이어 가세요.";
       if (view.pastActivityEnd) return "정해 둔 마감 시각이 지났습니다. 정리되면 공유로 넘어가세요.";
       return "과제를 수행하고 결과물을 제출합니다.";
+    case "checkout":
+      return "마감 시각입니다. 남은 2·3단계 과제가 있으면 추가근무를 합니다.";
+    case "dinner":
+      return `저녁시간 뒤 ${view.overtime.overtimeHM} 추가근무입니다.`;
+    case "overtime":
+      return "배정된 과제를 3단계부터 진행합니다.";
+    case "overtimeReview":
+      return "추가근무 시간이 끝났습니다. 점검을 제출하고 마감으로 갑니다.";
     case "sharing":
       return "기획팀이 이어서 일할 수 있게 오늘 한 일을 설명합니다.";
     case "checkoutReview":

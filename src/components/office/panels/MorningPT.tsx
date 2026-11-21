@@ -6,6 +6,7 @@
  * 이월된 과제는 원본을 보존한 채 목록 앞에 붙고 빼지 않는다.
  */
 import { useEffect, useRef, useState } from "react";
+import { TASK_LEVEL_LABEL, TASK_LEVELS, type TaskLevel } from "@/lib/office/models";
 import { api, type OfficeView, type SolarErrorInfo } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader, StatusBadge } from "../ui";
@@ -16,6 +17,8 @@ interface Row {
   title: string;
   completionCriteria: string;
   shareForm: string;
+  /** 중요도(보통·엄격). 직접 고른다. */
+  level?: TaskLevel | null;
   /** 이월 과제면 pendingCarry의 ID. */
   carryId?: string;
   carryCount?: number;
@@ -107,9 +110,11 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
     title: t.title,
     completionCriteria: t.completionCriteria,
     shareForm: t.shareForm,
+    level: t.level,
     carryId: t.id,
     carryCount: t.carryCount,
   }));
+  const needLevel = view.enforcement.rules.taskLevels;
   const [goal, setGoal] = useState(view.day.goal);
   const [rows, setRows] = useState<Row[]>([]);
   const [drafting, setDrafting] = useState(false);
@@ -163,10 +168,11 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
   };
 
   const confirm = async () => {
-    const tasks = rows.map(({ title, completionCriteria, shareForm, carryId }) => ({
+    const tasks = rows.map(({ title, completionCriteria, shareForm, level, carryId }) => ({
       title,
       completionCriteria,
       shareForm,
+      level: needLevel ? (level ?? null) : null,
       ...(carryId ? { carryId } : {}),
     }));
     if ((await office.act("confirmTasks", { goal, tasks })) != null) {
@@ -175,7 +181,7 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
     }
   };
 
-  const missing = rows.some((r) => !r.title.trim() || !r.completionCriteria.trim());
+  const missing = rows.some((r) => !r.title.trim() || !r.completionCriteria.trim() || (needLevel && r.level == null));
 
   return (
     <div className="panel">
@@ -228,6 +234,7 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
               key={r.key}
               row={r}
               index={i}
+              needLevel={needLevel}
               onChange={(f) => patch(r.key, f)}
               onRemove={() => update(rows.filter((x) => x.key !== r.key))}
             />
@@ -240,7 +247,7 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
 
       {missing ? (
         <Notice kind="warning" title="확인이 필요한 칸이 있습니다">
-          과제마다 과제명과 완료 기준을 채워 주세요.
+          {needLevel ? "과제마다 과제명·완료 기준·중요도를 채워 주세요." : "과제마다 과제명과 완료 기준을 채워 주세요."}
         </Notice>
       ) : null}
 
@@ -254,11 +261,13 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
 function TaskRow({
   row,
   index,
+  needLevel,
   onChange,
   onRemove,
 }: {
   row: Row;
   index: number;
+  needLevel: boolean;
   onChange: (fields: Partial<Row>) => void;
   onRemove: () => void;
 }) {
@@ -291,6 +300,25 @@ function TaskRow({
           onChange={(e) => onChange({ completionCriteria: e.target.value })}
         />
       </label>
+      {needLevel ? (
+        <div className="stack">
+          <span>{row.level == null ? "확인 필요 · 중요도" : "중요도"}</span>
+          <div className="row" role="radiogroup" aria-label={`${row.title || `${index + 1}번째 과제`} 중요도`}>
+            {TASK_LEVELS.map((lv) => (
+              <button
+                key={lv}
+                type="button"
+                role="radio"
+                aria-checked={row.level === lv}
+                className={`btn small ${row.level === lv ? "" : "secondary"}`}
+                onClick={() => onChange({ level: lv })}
+              >
+                {TASK_LEVEL_LABEL[lv]}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
       <label className="stack">
         공유 형태 (선택)
         <input

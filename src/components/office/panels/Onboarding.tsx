@@ -1,11 +1,13 @@
 "use client";
-/** 입사. 희망 직무·현재 경험·활동 시간을 받고, 역할과 데이터 처리, AI 동료임을 안내한다. */
+/** 입사. 희망 직무·현재 경험·활동 시간·관리 강도를 받고, 역할과 데이터 처리, AI 동료임을 안내한다. */
 import { useState } from "react";
 import { Cast } from "@/lib/office/models";
+import type { EnforcementLevel } from "@/lib/office/rules";
 import { Clock } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card } from "../ui";
+import { EnforcementPicker } from "./Enforcement";
 
 const STEPS = [
   ["출근", "버튼으로 오늘 활동을 시작합니다."],
@@ -22,10 +24,11 @@ export function Onboarding({ office, view }: { office: OfficeHandle; view: Offic
   const [experience, setExperience] = useState(p.experience);
   const [start, setStart] = useState(Clock.hm(p.activityStart));
   const [end, setEnd] = useState(Clock.hm(p.activityEnd));
+  const [level, setLevel] = useState<EnforcementLevel>(p.enforcement);
   const timeOk = Clock.minutesFromHM(start) != null && Clock.minutesFromHM(end) != null;
 
   const join = async () => {
-    if ((await office.act("onboard", { name, targetRole, experience, activityStart: start, activityEnd: end })) != null) {
+    if ((await office.act("onboard", { name, targetRole, experience, activityStart: start, activityEnd: end, enforcement: level })) != null) {
       office.notify("입사를 환영합니다.\n출입문에서 출근 버튼을 눌러 주세요.");
     }
   };
@@ -104,9 +107,25 @@ export function Onboarding({ office, view }: { office: OfficeHandle; view: Offic
               <input className="field" type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
             </label>
           </div>
-          <p className="small muted" style={{ margin: 0 }}>
-            시간은 안내에만 씁니다. 지나도 강제로 넘어가지 않습니다.
-          </p>
+          <div className="stack">
+            <div style={{ fontWeight: 600 }}>관리 강도</div>
+            <p className="small muted pre" style={{ margin: 0 }}>
+              {"자리를 지키게 하는 장치를 얼마나 쓸지 고릅니다.\n설정에서 언제든 바꿀 수 있고, 힘든 날에는 그날만 한 단계 낮출 수 있습니다."}
+            </p>
+            <EnforcementPicker
+              options={view.enforcement.options}
+              value={level}
+              onChange={setLevel}
+              start={Clock.minutesFromHM(start) ?? p.activityStart}
+              end={Clock.minutesFromHM(end) ?? p.activityEnd}
+              disabled={office.busy}
+            />
+            <p className="small muted pre" style={{ margin: 0 }}>
+              {level === "light"
+                ? "시간은 안내에만 씁니다. 지나도 강제로 넘어가지 않습니다."
+                : "착석 확인은 지금은 버튼으로 알립니다.\n카메라를 쓰게 되면 영상은 브라우저 안에서만 판정하고, 서버에는 '자리에 있음·없음·카메라 꺼짐'과 시각만 남습니다.\n카메라가 꺼진 시간은 자리 비움으로 세지 않습니다."}
+            </p>
+          </div>
           <button className="btn" type="submit" disabled={office.busy || !name.trim() || !timeOk}>
             확인했습니다 · 입사하기
           </button>
