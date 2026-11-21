@@ -75,8 +75,8 @@ export interface ShareView {
   endedBy: "done" | "userStopped" | "skipped" | null;
 }
 
-/** 서버 타입이 바뀌기 전후 모두에서 같은 모양으로 읽는다. */
-export const shareOf = (view: OfficeView): ShareView => view.day.share as unknown as ShareView;
+/** 서버 view.day.share를 그대로 읽는다(강제 변환 없이 이 타입과 맞는지 컴파일러가 확인한다). */
+export const shareOf = (view: OfficeView): ShareView => view.day.share;
 
 export const DEPT_NAME: Record<DeptId, { name: string; team: string }> = {
   dev_lead: { name: "AI 팀장", team: "개발팀" },

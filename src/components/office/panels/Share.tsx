@@ -210,7 +210,16 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
   const stage = share.stage;
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [waited, setWaited] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // 동료 발언이 여러 번 이어지고 회의록까지 만들면 5~30초쯤 걸린다. 기다린 시간을 보여 준다.
+  useEffect(() => {
+    if (!sending) return;
+    setWaited(0);
+    const t = setInterval(() => setWaited((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [sending]);
 
   const stageTurns = stage === "meeting" || stage === "closed" ? (share.meeting?.turns ?? []) : (share.review?.turns ?? []);
 
@@ -282,7 +291,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
     );
   }
 
-  const active = phase === "sharing" && (stage === "review" || stage === "meeting");
+  const active = phase === "sharing" && (stage === "review" || stage === "meeting") && view.can.talkInShare;
   const subs = view.day.submissions;
   const confirm = share.review?.confirm ?? null;
   const meeting = share.meeting;
@@ -368,7 +377,11 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
                 </ul>
               </div>
             ) : null}
-            <button className="btn" onClick={() => act("enterMeeting", {}, "회의실로 이동합니다.\n디자인·마케팅·기획팀이 기다리고 있습니다.")} disabled={office.busy}>
+            <button
+              className="btn"
+              onClick={() => act("enterMeeting", {}, "회의실로 이동합니다.\n디자인·마케팅·기획팀이 기다리고 있습니다.")}
+              disabled={office.busy || !view.can.enterMeeting}
+            >
               회의실로 가기
             </button>
           </div>
@@ -415,7 +428,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
             ) : null}
             <div className="row">
               {share.canAnotherRound ? (
-                <button className="btn secondary" onClick={() => act("anotherRound", {}, "한 바퀴 더 돌아가며 묻습니다.")} disabled={office.busy}>
+                <button className="btn secondary" onClick={() => act("anotherRound", {}, "한 바퀴 더 돌아가며 묻습니다.")} disabled={office.busy || !view.can.anotherRound}>
                   한 바퀴 더
                 </button>
               ) : null}
@@ -424,6 +437,12 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
               </button>
             </div>
           </div>
+        ) : null}
+
+        {sending ? (
+          <Notice kind="info" title={`동료들이 차례로 답하는 중입니다 · ${waited}초`}>
+            {stage === "meeting" ? "부서마다 순서대로 답하고, 한 바퀴가 끝나면 회의록까지 정리합니다.\n30초쯤 걸릴 수 있습니다." : "팀장이 읽고 답하는 중입니다. 잠시만 기다려 주세요."}
+          </Notice>
         ) : null}
 
         {active ? (
