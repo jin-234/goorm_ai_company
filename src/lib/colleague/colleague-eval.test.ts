@@ -207,8 +207,9 @@ describe("다른 부서에 공유하면 질문 관점이 달라진다(수용 기
     await plannerReply(client, office, "designer");
     expect(contextOf(sent).role_followup_task).toBe(ROLES.designer.followupTask);
 
-    const offline = new SolarClient({ apiKey: null, baseURL: "https://example.invalid", model: "m", timeout: 5 });
-    const manual = await plannerReply(offline, office, "operations");
+    const down = (async () => new Response("bad gateway", { status: 502 })) as typeof fetch;
+    const failing = new SolarClient({ apiKey: "k", baseURL: "https://example.invalid", model: "m", timeout: 5 }, down);
+    const manual = await plannerReply(failing, office, "operations");
     expect(manual.source).toBe("manual");
     expect(manual.value.question).toBe(ROLES.operations.manualQuestions[0]);
   });

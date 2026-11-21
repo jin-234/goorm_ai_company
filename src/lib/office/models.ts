@@ -149,8 +149,12 @@ export interface PlannerReply {
   can_finish: boolean;
 }
 
-/** solar = AI가 답함, manual = AI 미연결이라 정해진 안내 문구(AI가 말한 것처럼 표시하지 않는다). */
-export type ColleagueSource = "solar" | "manual";
+/**
+ * solar = AI가 답함.
+ * sample = AI 연결 전 예시 응답(Solar 키가 없을 때). 대화는 실제처럼 이어지지만 화면에 '예시 응답(AI 연결 전)'으로 표시한다.
+ * manual = AI를 부르다 실패해 정해진 안내 문구(AI가 말한 것처럼 표시하지 않는다).
+ */
+export type ColleagueSource = "solar" | "sample" | "manual";
 
 export interface ShareTurn {
   id: string;

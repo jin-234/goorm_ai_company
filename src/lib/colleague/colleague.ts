@@ -14,7 +14,15 @@ import {
   REVIEW_SCHEMA, REVIEW_SCHEMA_NAME, ROLES, reviewSystem, SKIP_MESSAGE,
 } from "./prompts";
 
-export type Source = "solar" | "manual";
+export type Source = "solar" | "sample" | "manual";
+
+/**
+ * AI를 어떻게 부를지. Solar 키가 없거나 OFFICE_AI_MODE=sample이면 예시 응답(sample).
+ * AI 연결은 맨 마지막에 하므로, 그 전까지 대화가 실제처럼 이어지게 한다(사용자 결정 2026-11-21).
+ */
+export function aiModeOf(client: SolarClient, env: Record<string, string | undefined> = process.env): "solar" | "sample" {
+  return env.OFFICE_AI_MODE?.trim() === "sample" || !client.hasKey ? "sample" : "solar";
+}
 
 export interface ProposedTask {
   title: string;
@@ -250,6 +258,95 @@ export function manualProposal(goal: string, activityEnd = 18 * 60): LeaderPropo
   return { tasks, question: "완료 기준과 저녁에 공유할 형태를 직접 적어 주세요." };
 }
 
+// MARK: - 예시 응답(AI 연결 전)
+// 실제 모델 없이 사용자의 말·제출물만으로 만든다. 판정·검증 표현은 쓰지 않고, 안전장치는 Solar 응답과 똑같이 거친다.
+
+/** 첫 문장 앞부분(따옴표로 받아 말하기용). */
+function snippet(text: string, n = 40): string {
+  const first = text.trim().split(/(?<=[.!?。])\s+|\n/)[0] ?? "";
+  return first.length > n ? `${first.slice(0, n)}…` : first;
+}
+
+const LEARN = /배우|공부|학습|읽|익히|정리|복습|강의/;
+const BUILD = /만들|구현|화면|페이지|붙이|추가|고치|수정|배포|컴포넌트|기능/;
+
+/** 예시 팀장: 목표 글을 문장·쉼표·'하고'·'그리고' 기준으로 1~3개 과제로 나누고 완료 기준·공유 형태를 채운다. */
+export function sampleProposal(goal: string): LeaderProposal {
+  const parts = goal
+    .split(/\n+|[.。]\s*|,\s*|\s그리고\s|(?<=[가-힣])하고\s/)
+    .map((p) => p.replace(/^[\s\-·•*\d.)]+/, "").trim())
+    .filter((p) => p.length >= 2)
+    .slice(0, 3);
+  const titles = parts.length > 0 ? parts : [goal.trim().slice(0, 80)];
+  const tasks = titles.filter(Boolean).map((title) => {
+    if (BUILD.test(title)) return { title, completionCriteria: "화면에서 직접 실행해 동작을 확인한다", shareForm: "화면 캡처와 3줄 설명" };
+    if (LEARN.test(title)) return { title, completionCriteria: "배운 내용을 내 말로 3줄 정리한다", shareForm: "핵심 3줄 정리" };
+    return { title, completionCriteria: "결과물을 하나 남긴다", shareForm: "결과 요약 3줄" };
+  });
+  return { tasks, question: "오늘 쓸 수 있는 시간 안에 이 범위면 될까요?" };
+}
+
+/** 예시 기획자가 이번 공유에서 묻는 질문 수(기본 1~2개). */
+const SAMPLE_QUESTIONS = 2;
+
+/** 예시 기획자: 받은 말을 짚고, 역할의 '파악할 정보'를 아직 안 물은 순서대로 하나씩, 두 개 묻고 마무리한다. */
+export function samplePlannerReply(office: Office, roleId: ColleagueRoleId = "planner"): PlannerReply {
+  const share = office.day.share;
+  const turns = share.turns;
+  const asked = askedQuestions(turns);
+  const users = turns.map((t, i) => ({ t, ref: `턴 ${i + 1}` })).filter(({ t }) => t.role === "user");
+  const said = users.filter(({ t }) => (t.text ?? "").trim() !== SKIP_MESSAGE);
+  const last = users[users.length - 1]?.t.text?.trim() ?? "";
+  const skipped = last === SKIP_MESSAGE;
+
+  const pool = ROLES[roleId].manualQuestions.filter((q) => !isRepeatQuestion(q, asked));
+  const limit = Math.min(SAMPLE_QUESTIONS, share.maxQuestions);
+  const question = asked.length < limit ? (pool[0] ?? "") : "";
+  const learningOnly = activityTypeOf(office.day.submissions) === "learning_only";
+
+  return {
+    acknowledgement: skipped
+      ? "알겠습니다. 그 부분은 남은 질문으로 적어 둘게요."
+      : last
+        ? `"${snippet(last)}" 말씀 잘 받았습니다.`
+        : "공유해 주셔서 고맙습니다.",
+    question,
+    question_reason: question
+      ? learningOnly
+        ? "안내 초안에 필요해서요. 직접 만든 기능이 아니면 가상으로 적용한다고 생각하고 답해 주셔도 됩니다."
+        : "사용자 안내 초안에 이 내용이 들어가야 해서요."
+      : "",
+    known_facts: said.map(({ t }) => snippet(t.text ?? "", 60)),
+    open_questions: [...share.openQuestions, ...(question ? [] : pool.slice(0, 1))].filter((q, i, a) => a.indexOf(q) === i),
+    evidence_refs: said.map(({ ref }) => ref),
+    can_finish: !question,
+  };
+}
+
+/** 예시 마감 요약: 실제로 들은 말·읽은 제출물만 옮긴다. 다음 행동은 남은 질문(없으면 미제출 과제)을 행동 문장으로. */
+export function sampleReview(office: Office): Review {
+  const day = office.day;
+  const turns = day.share.turns;
+  const said = turns.map((t, i) => ({ t, ref: `턴 ${i + 1}` })).filter(({ t }) => t.role === "user" && t.text && t.text !== SKIP_MESSAGE);
+  const first = said[0]?.t.text?.trim() ?? "";
+  const answers = said.slice(1).map(({ t }) => snippet(t.text ?? "", 80));
+  const read = day.submissions.filter((s) => s.readScope === "read");
+  const learningOnly = activityTypeOf(day.submissions) === "learning_only";
+  const pending = day.tasks.filter((t) => t.status !== "submitted" && t.status !== "reviewed");
+  const open = day.share.openQuestions[0];
+  const role = office.profile.targetRole.trim();
+  return {
+    reported_work: first ? snippet(first, 200) : `확정한 과제: ${day.tasks.map((t) => t.title).join(", ")}`,
+    explained_learning: learningOnly && first ? snippet(first, 200) : "",
+    artifact_observations: read.length > 0 ? `붙여 넣은 글·코드 ${read.length}건이 있습니다(예시 응답은 내용을 분석하지 않았습니다).` : "읽은 자료 없음(설명 기준).",
+    shared_scope_and_limits: answers.length > 0 ? answers.join(" / ") : "",
+    open_questions: [...day.share.openQuestions],
+    job_connection: role ? `${role} 관점에서 오늘 한 일을 다른 부서가 이해하도록 설명해 보았습니다.` : "오늘 한 일을 다른 부서가 이해하도록 설명해 보았습니다.",
+    next_action: open ? `"${open}"에 대한 답을 정리해 둔다` : pending[0] ? `"${pending[0].title}"를 마무리한다` : "오늘 결과를 다음 활동일 목표와 연결해 적어 둔다",
+    evidence_refs: [...said.map(({ ref }) => ref), ...read.map((s) => `제출물 ${s.id}`)],
+  };
+}
+
 // MARK: - Solar 호출
 
 function parse(content: string): unknown {
@@ -271,6 +368,7 @@ export async function proposeScope(
   client: SolarClient,
   input: { goal: string; targetRole: string; availableMinutes: number | null; carried: string[]; activityEnd?: number },
 ): Promise<Outcome<LeaderProposal>> {
+  if (aiModeOf(client) === "sample") return { source: "sample", value: sampleProposal(input.goal), solarError: null };
   try {
     const content = await client.completeJSON({
       system: leaderSystem(),
@@ -310,6 +408,9 @@ export async function proposeScope(
 export async function plannerReply(client: SolarClient, office: Office, roleId: ColleagueRoleId = "planner"): Promise<Outcome<PlannerReply>> {
   const share = office.day.share;
   const guardCtx = { turns: share.turns, questionCount: share.questionCount, maxQuestions: share.maxQuestions, submissions: office.day.submissions };
+  if (aiModeOf(client) === "sample") {
+    return { source: "sample", value: guardPlannerReply(samplePlannerReply(office, roleId), guardCtx), solarError: null };
+  }
   try {
     const content = await client.completeJSON({
       system: plannerSystem(share.maxQuestions, share.questionCount, roleId),
@@ -332,6 +433,7 @@ export async function plannerReply(client: SolarClient, office: Office, roleId: 
 export async function reviewDraft(client: SolarClient, office: Office): Promise<Outcome<Review>> {
   const day = office.day;
   const guardCtx = { turns: day.share.turns, submissions: day.submissions };
+  if (aiModeOf(client) === "sample") return { source: "sample", value: guardReview(sampleReview(office), guardCtx), solarError: null };
   try {
     const content = await client.completeJSON({
       system: reviewSystem(),
