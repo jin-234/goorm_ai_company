@@ -29,28 +29,34 @@
 
 | type | 값 | result |
 | --- | --- | --- |
-| `onboard` | `name` | — |
-| `checkIn` | — | `{ attendance: "onTime" \| "late" }` |
-| `setTranscript` | `transcript` | — |
-| `addDraft` | — | `{ draft }` |
-| `updateDraft` | `id`, `title?`, `level?`(1·2·3·null), `due?`("HH:MM"·분·null), `doneCriteria?` | — |
-| `removeDraft` | `id` (이월 초안은 안 지워짐) | — |
-| `confirmTasks` | — | — |
-| `setTaskDone` | `id`, `done`(bool) | — |
-| `setDeliverable` | `id`, `text` | — |
-| `requestLunch` | — | `{ allowance }` |
-| `registerAway` | `reason` | `{ allowance }` |
+| `onboard` | `name`, `targetRole?`, `experience?`, `activityStart?`·`activityEnd?`("HH:MM"·분), `enforcement?`(`light` \| `standard` \| `strict`, 기본 `standard`) | — |
+| `setEnforcement` | `level`(`light` \| `standard` \| `strict`) — 출근 뒤면 오늘부터 적용 | — |
+| `lowerToday` | — (오늘만 한 단계 낮추기: 엄격→보통, 보통→가볍게) | — |
+| `setDayOff` | `off`(bool, 기본 true), `date?`("YYYY-MM-DD", 없으면 오늘) — 쉬는 날 미리 알리기 | — |
+| `checkIn` | — | `{ checkInAt, late }` |
+| `saveGoal` | `goal` | — |
+| `confirmTasks` | `goal?`, `tasks: [{ title, completionCriteria, shareForm, level?(1·2·3, 보통·엄격은 필수), carryId? }]` | `{ tasks }` |
+| `setTaskStatus` | `taskId`, `status`: `in_progress` \| `submitted` \| `incomplete` | — |
+| `submitWork` | `taskId`, `kind`: `text` \| `code` \| `link`, `content` | `{ submission }` |
+| `observePresence` | `state`: `present` \| `absent` \| `cameraOff` \| `unknown` (보통·엄격, 지금은 버튼이 보냄) | — |
+| `requestLunch` | — (보통·엄격, 하루 한 번 1시간) | `{ allowance }` |
+| `registerAway` | `reason` (보통·엄격, 건당 15분) | `{ allowance }` |
 | `returnFromAllowance` | — | — |
-| `observePresence` | `state`: `present` \| `absent` \| `cameraOff` \| `unknown` | — |
-| `skipHour` | — ('다음 정각') | `{ skip: { from, to, stoppedFor } }` — `stoppedFor`가 있으면 "{이유}에서 멈췄습니다" |
-| `submitCheckout` | `carryReports: { [taskId]: { reason, plan } }` (1단계 미완료마다 필수) | `{ checkout: { kind: offAllDone \| offWithCarry \| offNoTasks \| overtimeAssigned, ... } }` |
-| `endOvertimeEarly` | — | `{ overtime: completed \| abandoned }` |
-| `submitOvertimeReview` | — | `{ overtime: completed \| ranToEnd }` |
+| `submitCheckout` | — (보통·엄격, 마감 시각의 퇴근 점검) | `{ checkout: { kind: "noOvertime" } \| { kind: "overtime", count } }` |
+| `endOvertime` | — (저녁시간·추가근무 중이면 일찍 끝냄, 점검 중이면 점검 제출) | `{ overtime: completed \| ranToEnd \| abandoned }` |
+| `startSharing` | `earlyReason?` (엄격에서 마감 시각 전이면 필수) | — |
+| `recordShareTurn` | `role: "user"`, `text` | — |
+| `endSharing` | `reason?`(`done` \| `userStopped`), `earlyReason?` — 수행 중에 부르면 공유 건너뛰기 | — |
+| `saveReviewDraft` | `review` | — |
+| `confirmReview` | `review`, `choices: { [taskId]: adjust \| carryOver \| endToday }`, `reasons?` | `{ close }` |
+| `skipHour` | — ('다음 정각') | `{ skip: { from, to, stoppedFor } }` — 보통·엄격은 퇴근 점검·추가근무 시작·종료 시각에서 멈춤 |
 | `saveWeeklyDraft` | `completed?`, `incomplete?`, `nextGoals?` | — |
 | `submitWeeklyReport` | 세 칸(없으면 저장된 초안 사용) | `{ report }` |
 | `markMailRead` | `id` | — |
-| `startNextWorkday` | — | — |
+| `startNextWorkday` | — (보통·엄격에서 출근 없이 넘기면 결근 후보, 쉬는 날로 알렸으면 세지 않음) | — |
 | `jumpToFriday` | — ('금요일 장면') | — |
+
+규칙 위반(예: 2·3단계가 남았는데 마감 시각 전 마감)은 `rule` 오류와 화면에 그대로 보여 줄 한국어 메시지로 온다.
 
 ### `POST /api/office/draft`
 아침 PT 업무 초안 만들기. 본문 `{ "transcript"?: string }`(주면 전사문을 바꾼 뒤 만든다).
@@ -78,19 +84,18 @@ GET: `{ hasKey, key("up_1…abcd"), model, baseURL }`. POST: 연결 확인 → `
 
 | 키 | 내용 |
 | --- | --- |
-| `state` | 저장된 상태 전체(`profile`, `day`, `history`, `mails`, `pendingCarry`, `weeklyReports`, `weeklyDraft`, `presence`) |
+| `profile` | 이름·희망 직무·경험·활동 시작/마감 시각·`enforcement` |
 | `clock` | `now`(ms), `hm`("09:05"), `dateShort`("11월 16일(월)"), `dateLong`, `weekLabel`, `isFriday` |
-| `phase` | `value`, `label`, `headline`("근무 중 · 18:00 퇴근 점검") |
-| `seat` | `kind`, `title`, `detail`(줄바꿈 포함), `isWarning`, `showsWorkingAvatar`, (`until`/`since`/`reason`) |
-| `monthStats` | `late`, `absent`, `points`, `estimatedFee` |
-| `can` | `checkIn`, `confirmTasks`, `editTasks`, `requestLunch`, `registerAway`, `skipHour`, `submitWeekly`, `startNextWorkday`, `jumpToFriday` — 버튼 켜고 끄기에 그대로 사용 |
-| `morningPT` | `drafts`(각 `isCarried`, `missingFields`), `draftSourceLabel`, `blocker`(확정 못 하는 이유) |
-| `checkout` | `carryReportTargetIds`(이월 보고 칸을 보여 줄 업무), `overtimeTargetIds` |
-| `overtimeTaskIds` | 추가근무 대상(3단계부터) |
-| `activeAllowance` | 지금 점심·자리 비움·저녁 |
-| `attendance` | `unauthorizedAwayMinutes`, `cameraOffMinutes` |
+| `phase` | `value`, `label`, `headline`("수행 중 · 18:00 퇴근 점검") |
+| `enforcement` | `chosen`(고른 강도), `level`(오늘 실제 강도), `lowered`, `rules`(켜진 장치), `options`(세 강도 설명) |
+| `attendance` | `isLate`, `absentCandidate`, `dayOff`, `returning`, `presence`, `monitoring`, `activeAllowance`, `lunchUsed`, `unauthorizedAwayMinutes`, `cameraOffMinutes`, `month`(`late`·`absent`·`recovered`·`points`·`estimatedFee`), `lateFee`(규칙 값) |
+| `overtime` | `dinnerHM`·`overtimeHM`, `targetIds`(지금 남은 2·3단계), `assignedIds`, `outcome`, `checkoutAt`, `earlyLeaveReason` |
+| `seat` | `kind`, `title`, `detail`, `isWarning`, `showsWorkingAvatar`, (`until`/`since`/`reason`) — 3D 내 캐릭터 |
+| `day` | 목표·과제(각 `level`·`levelLabel`)·제출물·공유·마감 초안·기록 |
+| `can` | 버튼 켜고 끄기: `checkIn`, `confirmTasks`, `editTasks`, `startSharing`, `endSharing`, `confirmReview`, `lowerToday`, `setDayOff`, `observePresence`, `requestLunch`, `registerAway`, `returnFromAllowance`, `submitCheckout`, `endOvertime`, `earlyLeave`, `earlyLeaveNeedsReason`, `earlyLeaveBlockedBy`, `skipHour`, `submitWeekly`, `startNextWorkday`, `jumpToFriday` |
 | `mail` | `unreadCount`, `inbox`, `sent`(최신순, 각 `tag`·`fromName`·`toName`) |
-| `weekly` | `draft`(쓰던 내용), `awaitingReplyId` |
+| `weekly` | `draft`, `awaitingReplyId`, `lastSubmitted` |
+| `history` | 지난 날(각 `checkedIn`·`isLate`·`absentCandidate`·`dayOff`·`counted`) |
 
 ## 예시
 
