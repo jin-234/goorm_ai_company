@@ -70,7 +70,7 @@ const SHOTS: Record<Focus, { target: [number, number, number]; yaw: number; pitc
   restroom: { target: [5.6, 1.0, -3.0], yaw: -25, pitch: 30, distance: 14, fov: 20 },
   share: { target: [5.2, 0.75, 3.7], yaw: 12, pitch: 38, distance: 9.5, fov: 22 },
   // 문 앞 클로즈업: 문 밖 오른쪽 앞에서 단말기 앞에 선 나와 닫힌 자동문을 본다.
-  doorWait: { target: [-0.35, 0.85, 5.35], yaw: 22, pitch: 11, distance: 6.2, fov: 30 },
+  doorWait: { target: [-0.25, 1.25, 5.3], yaw: 20, pitch: 6, distance: 8.2, fov: 28 },
 };
 
 function shotPosition(shot: (typeof SHOTS)[Focus]) {
@@ -92,7 +92,7 @@ export function Office3D({ view, onPlace, speed = 1, focus: initialFocus = "over
   };
   return (
     <div className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }} data-office3d-focus={focus}>
-      <Canvas shadows dpr={[1, 2]} camera={{ fov: 20, near: 2, far: 160, position: shotPosition(SHOTS.overview).toArray() }} gl={{ preserveDrawingBuffer: true, toneMapping: NeutralToneMapping, toneMappingExposure: 1.15 }}>
+      <Canvas shadows dpr={[1, 2]} camera={{ fov: 20, near: 2, far: 160, position: shotPosition(SHOTS.overview).toArray() }} gl={{ preserveDrawingBuffer: true, toneMapping: NeutralToneMapping, toneMappingExposure: 1.6 }}>
         <Scene view={view} speed={speed} focus={focus} onClick={handle} onEntranceStart={() => setFocus("overview")} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} />
       </Canvas>
       {focus !== "overview" && (
@@ -148,6 +148,7 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
   const deskKey = useRef("");
   const [doors, setDoors] = useState({ entrance: 0, restroom: 0 });
   const [reader, setReader] = useState(0);
+  const [facade, setFacade] = useState(phase === "beforeCheckIn" ? 1 : 0);
   const [cinematic, setCinematic] = useState(false);
 
   // 출근 전에는 문 앞 클로즈업. 출근(단계가 beforeCheckIn에서 바뀜)하면 입장 연출을 시작한다.
@@ -187,6 +188,9 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       flash = e.readerFlash;
       // 문이 열리기 시작하면 클로즈업이 천천히 풀리며 전체 샷으로 간다.
       aim.current = t < ENTRANCE.tap ? { shot: "doorWait", rate: 4 } : { shot: "overview", rate: 0.75 };
+      // 문 앞에서는 건물 정면(앞벽을 올림). 카메라가 물러나기 시작하면 벽을 내려 안이 보이게 한다.
+      const f = t < ENTRANCE.tap + ENTRANCE.open + 0.4 ? 1 : 0;
+      if (f !== facade) setFacade(f);
       if (e.done) {
         entrance.current = null;
         endRef.current?.();
@@ -203,6 +207,8 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       }
     } else {
       aim.current = waiting ? { shot: "doorWait", rate: 4 } : { shot: focus, rate: 4 };
+      const f = waiting ? 1 : 0;
+      if (f !== facade) setFacade(f);
     }
     const nowCinematic = waiting || entrance.current != null || leaving.current != null;
     if (nowCinematic !== cinematic) setCinematic(nowCinematic);
@@ -238,7 +244,7 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       <color attach="background" args={[light.background]} />
       <Lights light={light} />
       <CameraRig aim={aim} />
-      <Room light={light} minute={minute} desks={desks} doors={doors} reader={reader} onClick={onClick} />
+      <Room light={light} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} onClick={onClick} />
       <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : id === "planner" ? onClick("share") : undefined)} />
       {!cinematic && <Labels onClick={onClick} />}
     </>
@@ -287,7 +293,7 @@ function Lights({ light }: { light: ReturnType<typeof lightAt> }) {
       <primitive object={fillTarget} />
       <primitive object={ceilingTarget} />
       <ambientLight intensity={light.ambientIntensity} color={light.ambientColor} />
-      <hemisphereLight args={[light.sky[1], "#C9C2B4", 0.45]} />
+      <hemisphereLight args={["#FFF8EC", "#C9C2B4", 0.3 + 0.3 * light.night]} />
       {light.sunIntensity > 0.01 && (
         <directionalLight
           ref={sun}

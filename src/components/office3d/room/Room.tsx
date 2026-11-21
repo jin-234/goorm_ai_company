@@ -23,6 +23,8 @@ interface RoomProps {
   doors: { entrance: number; restroom: number };
   /** 사원증 단말기 불빛(0 평소 ~ 1 찍는 순간). */
   reader?: number;
+  /** 앞벽을 천장까지 올린 정도(0 낮은 벽 ~ 1 건물 정면). 출근 전 문 앞 장면에서 올린다(맥 앱 setFrontWallRaised). */
+  facade?: number;
   onClick: (place: ClickPlace) => void;
 }
 
@@ -47,10 +49,10 @@ function clickable(place: ClickPlace, onClick: (p: ClickPlace) => void) {
   };
 }
 
-export function Room({ light, minute, desks, doors, reader = 0, onClick }: RoomProps) {
+export function Room({ light, minute, desks, doors, reader = 0, facade = 0, onClick }: RoomProps) {
   return (
     <group>
-      <Shell light={light} />
+      <Shell light={light} facade={facade} />
       <Floors />
       {(Object.keys(SEATS) as SeatId[]).map((id) => (
         <Station key={id} id={id} props={desks[id]} night={light.night} lamp={light.lamp} onClick={onClick} />
@@ -67,7 +69,7 @@ export function Room({ light, minute, desks, doors, reader = 0, onClick }: RoomP
 
 // ─── 벽·창 ──────────────────────────────────────────────────
 
-function Shell({ light }: { light: Light }) {
+function Shell({ light, facade }: { light: Light; facade: number }) {
   const sky = useTextTexture((ctx, w, h) => {
     const g = ctx.createLinearGradient(0, 0, 0, h);
     g.addColorStop(0, "#" + light.sky[0].getHexString());
@@ -87,10 +89,7 @@ function Shell({ light }: { light: Light }) {
       <Box size={[2 * HW + T, 0.06, T + 0.04]} at={[0, 0.92, -HD]} color={PALETTE.wallCap} shadow={false} />
       <Box size={[T, LW, 2 * HD]} at={[-HW, LW / 2, 0]} color={PALETTE.creamLower} rough={0.95} />
       <Box size={[T + 0.06, 0.06, 2 * HD + 0.06]} at={[-HW, LW + 0.03, 0]} color={PALETTE.wallCap} />
-      <Box size={[HW + ROOM.doorX0, LW, T]} at={[(-HW + ROOM.doorX0) / 2, LW / 2, HD]} color={PALETTE.creamLower} rough={0.95} />
-      <Box size={[HW - ROOM.doorX1, LW, T]} at={[(HW + ROOM.doorX1) / 2, LW / 2, HD]} color={PALETTE.creamLower} rough={0.95} />
-      <Box size={[HW + ROOM.doorX0, 0.06, T + 0.06]} at={[(-HW + ROOM.doorX0) / 2, LW + 0.03, HD]} color={PALETTE.wallCap} />
-      <Box size={[HW - ROOM.doorX1, 0.06, T + 0.06]} at={[(HW + ROOM.doorX1) / 2, LW + 0.03, HD]} color={PALETTE.wallCap} />
+      <FrontWall raised={facade} />
       {/* 오른벽: 창 아래·위·양옆 */}
       <Box size={[T, ROOM.windowY0, 2 * HD]} at={[HW, ROOM.windowY0 / 2, 0]} color={PALETTE.cream} rough={0.95} />
       <Box size={[T, WH - ROOM.windowY1, 2 * HD]} at={[HW, (WH + ROOM.windowY1) / 2, 0]} color={PALETTE.cream} rough={0.95} />
@@ -123,15 +122,80 @@ function Shell({ light }: { light: Light }) {
   );
 }
 
+/**
+ * 앞벽(출입문 양옆과 문 위). 평소엔 허리 높이로 낮춰 방 안이 보이고, 출근 전 문 앞에서는 천장까지 올려
+ * 건물 정면처럼 보이게 한다. 문 위에는 회사 간판.
+ */
+function FrontWall({ raised }: { raised: number }) {
+  const sign = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = PALETTE.green;
+    roundRect(ctx, 0, 0, w, h, 14);
+    ctx.fill();
+    ctx.strokeStyle = PALETTE.brass;
+    ctx.lineWidth = 6;
+    roundRect(ctx, 12, 12, w - 24, h - 24, 8);
+    ctx.stroke();
+    ctx.fillStyle = "#F4ECDB";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `800 ${Math.round(h * 0.42)}px ${FONT}`;
+    ctx.fillText("VISION COMPANY", w / 2, h / 2 + 3);
+  }, 640, 150, []);
+  const left = useRef<Group>(null);
+  const right = useRef<Group>(null);
+  const lintel = useRef<Group>(null);
+  const caps = useRef<Group>(null);
+  const board = useRef<Group>(null);
+  const value = useRef(raised);
+  useFrame((_, dt) => {
+    value.current += (raised - value.current) * (1 - Math.exp(-dt * 3));
+    const v = value.current;
+    const h = LW + (WH - LW) * v;
+    for (const g of [left.current, right.current]) if (g) g.scale.y = h / WH;
+    if (lintel.current) {
+      // 문 위 벽: 문틀 위(doorHeight)부터 벽 높이까지. 낮을 땐 없음.
+      const top = Math.max(ROOM.doorHeight + 0.06, h);
+      lintel.current.visible = h > ROOM.doorHeight + 0.08;
+      lintel.current.scale.y = (top - ROOM.doorHeight - 0.06) / (WH - ROOM.doorHeight - 0.06) || 0.001;
+    }
+    if (caps.current) caps.current.position.y = h + 0.03;
+    if (board.current) {
+      board.current.visible = v > 0.55;
+      board.current.scale.setScalar(Math.min(1, Math.max(0.001, (v - 0.55) / 0.45)));
+    }
+  });
+  const wl = HW + ROOM.doorX0;
+  const wr = HW - ROOM.doorX1;
+  const dw = ROOM.doorX1 - ROOM.doorX0 + 0.2;
+  const lintelH = WH - ROOM.doorHeight - 0.06;
+  return (
+    <group>
+      <group ref={left}><Box size={[wl, WH, T]} at={[(-HW + ROOM.doorX0) / 2, WH / 2, HD]} color={PALETTE.creamLower} rough={0.95} /></group>
+      <group ref={right}><Box size={[wr, WH, T]} at={[(HW + ROOM.doorX1) / 2, WH / 2, HD]} color={PALETTE.creamLower} rough={0.95} /></group>
+      <group ref={lintel} position={[0, ROOM.doorHeight + 0.06, 0]}>
+        <Box size={[dw, lintelH, T]} at={[DOOR_X, lintelH / 2, HD]} color={PALETTE.creamLower} rough={0.95} />
+      </group>
+      <group ref={caps} position={[0, LW + 0.03, 0]}>
+        <Box size={[wl, 0.06, T + 0.06]} at={[(-HW + ROOM.doorX0) / 2, 0, HD]} color={PALETTE.wallCap} />
+        <Box size={[wr, 0.06, T + 0.06]} at={[(HW + ROOM.doorX1) / 2, 0, HD]} color={PALETTE.wallCap} />
+      </group>
+      <group ref={board} position={[DOOR_X, ROOM.doorHeight + 0.42, HD + T / 2 + 0.03]}>
+        <Box size={[1.7, 0.42, 0.05]} at={[0, 0, -0.02]} color={PALETTE.greenDark} round={0.02} />
+        <group position={[0, 0, 0.007]}><Panel w={1.62} h={0.38} texture={sign} emissive={0.12} /></group>
+      </group>
+    </group>
+  );
+}
+
 function Floors() {
   const planks = useTextTexture((ctx, w, h) => {
     ctx.fillStyle = PALETTE.oak;
     ctx.fillRect(0, 0, w, h);
     for (let row = 0; row < 16; row++) {
       const y = (row * h) / 16;
-      ctx.fillStyle = row % 2 ? "#D7B98C" : "#DFC296";
+      ctx.fillStyle = row % 2 ? "#E2C9A0" : "#E9D2AA";
       ctx.fillRect(0, y, w, h / 16 - 2);
-      ctx.fillStyle = "#C9AA7C";
+      ctx.fillStyle = "#D2B88E";
       ctx.fillRect(0, y + h / 16 - 2, w, 2);
       const offset = (row * 137) % 256;
       for (let x = offset; x < w; x += 256) ctx.fillRect(x, y, 2, h / 16);
@@ -399,6 +463,17 @@ function Pantry({ onClick }: { onClick: (p: ClickPlace) => void }) {
         <Box size={[0.14, 0.06, 0.1]} at={[0.08, 0.77, -0.05]} color="#E5603F" round={0.015} />
       </group>
       <group position={[-4.1, 0, 4.5]}><Plant height={0.8} /></group>
+      {/* 간식 탁자 아래 둥근 깔개, 뒷벽 앞 분리수거함 세 개 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[-4.9, 0.008, 1.05]} receiveShadow>
+        <circleGeometry args={[0.95, 40]} />
+        <meshStandardMaterial color="#9DC3B4" roughness={0.95} />
+      </mesh>
+      {(["#2E7459", "#E9B94F", "#3B78CC"] as const).map((c, i) => (
+        <group key={c} position={[-4.65 + i * 0.36, 0, ROOM.pantryZ0 + 0.28]}>
+          <Box size={[0.32, 0.46, 0.32]} at={[0, 0.23, 0]} color={c} round={0.03} />
+          <Box size={[0.34, 0.04, 0.34]} at={[0, 0.48, 0]} color={c} round={0.015} />
+        </group>
+      ))}
     </group>
   );
 }
@@ -484,10 +559,15 @@ function Entrance({ open, hall, reader, onClick }: { open: number; hall: number;
         {/* 미닫이 유리문 두 짝 */}
         {[-1, 1].map((side) => (
           <DoorLeaf key={side} side={side} leaf={leaf} open={open}>
-            <Box size={[leaf, DH - 0.04, 0.05]} at={[0, (DH - 0.04) / 2, 0]} color={PALETTE.green} round={0.01} />
-            <mesh position={[0, DH / 2, 0.03]}>
-              <planeGeometry args={[leaf - 0.12, DH - 0.22]} />
-              <meshStandardMaterial color="#E4F1EC" transparent opacity={0.55} roughness={0.1} />
+            {/* 초록 틀(위·아래·양옆)과 유리. 안이 비쳐 보인다. */}
+            <Box size={[leaf, 0.07, 0.05]} at={[0, 0.035, 0]} color={PALETTE.green} />
+            <Box size={[leaf, 0.07, 0.05]} at={[0, DH - 0.075, 0]} color={PALETTE.green} />
+            <Box size={[0.06, DH - 0.04, 0.05]} at={[-leaf / 2 + 0.03, (DH - 0.04) / 2, 0]} color={PALETTE.green} />
+            <Box size={[0.06, DH - 0.04, 0.05]} at={[leaf / 2 - 0.03, (DH - 0.04) / 2, 0]} color={PALETTE.green} />
+            <Box size={[0.02, 0.5, 0.03]} at={[side < 0 ? leaf / 2 - 0.08 : -leaf / 2 + 0.08, DH * 0.48, 0.04]} color={PALETTE.brass} metal={0.6} rough={0.3} shadow={false} />
+            <mesh position={[0, DH / 2, 0]}>
+              <planeGeometry args={[leaf - 0.1, DH - 0.16]} />
+              <meshStandardMaterial color="#DDF0EA" transparent opacity={0.22} roughness={0.05} depthWrite={false} />
             </mesh>
           </DoorLeaf>
         ))}
@@ -526,12 +606,12 @@ function BadgeReader({ flash }: { flash: number }) {
   const [x, y, z] = BADGE_READER;
   return (
     <group position={[x, y, z]}>
-      <Box size={[0.15, 0.2, 0.035]} at={[0, 0, 0]} color={PALETTE.charcoal} round={0.015} rough={0.4} />
-      <mesh position={[0, 0.012, 0.0185]}>
-        <planeGeometry args={[0.11, 0.135]} />
+      <Box size={[0.19, 0.26, 0.035]} at={[0, 0, 0]} color={PALETTE.charcoal} round={0.018} rough={0.4} />
+      <mesh position={[0, 0.016, 0.0185]}>
+        <planeGeometry args={[0.145, 0.18]} />
         {label ? <meshStandardMaterial map={label} emissiveMap={label} emissive="#ffffff" emissiveIntensity={0.25 + flash * 0.6} /> : <meshStandardMaterial color="#1E2326" />}
       </mesh>
-      <mesh position={[0, -0.078, 0.019]}>
+      <mesh position={[0, -0.1, 0.019]}>
         <circleGeometry args={[0.011, 16]} />
         <meshStandardMaterial color="#3DDC84" emissive="#3DDC84" emissiveIntensity={0.8 + flash * 4} />
       </mesh>
@@ -586,9 +666,10 @@ function Decor({ minute }: { minute: number }) {
         })}
       </group>
       {/* 화분 */}
-      <group position={[6.5, 0, 4.75]}><Plant height={1.25} /></group>
+      <group position={[6.45, 0, 4.7]} scale={1.35}><Plant height={1.25} /></group>
       <group position={[4.3, 0, -4.55]}><Plant height={1.0} /></group>
-      <group position={[-2.45, 0, 4.5]}><Plant height={1.2} /></group>
+      {/* 탕비실 출입구 옆 둥근 나무(맥 앱) */}
+      <RoundTree at={[-2.6, 0, 4.35]} />
       {[-2.7, 0.35, 2.3].map((z) => <group key={z} position={[HW - 0.12, ROOM.windowY0, z]}><Plant small /></group>)}
     </group>
   );
@@ -648,6 +729,22 @@ function WallClock({ minute, hourAngle, minuteAngle }: { minute: number; hourAng
           {digits ? <meshStandardMaterial map={digits} emissiveMap={digits} emissive="#ffffff" emissiveIntensity={0.35} roughness={0.6} /> : <meshStandardMaterial color={PALETTE.greenDark} />}
         </mesh>
       </group>
+    </group>
+  );
+}
+
+/** 둥근 나무: 줄기와 둥근 잎 덩어리 셋. */
+function RoundTree({ at }: { at: [number, number, number] }) {
+  return (
+    <group position={at}>
+      <Cylinder r={0.17} top={0.2} h={0.3} at={[0, 0.15, 0]} color={PALETTE.terracotta} />
+      <Cylinder r={0.04} h={0.6} at={[0, 0.55, 0]} color={PALETTE.walnut} />
+      {([[0, 1.05, 0, 0.36], [-0.2, 0.95, 0.08, 0.26], [0.2, 0.97, -0.05, 0.27]] as const).map(([x, y, z, r], i) => (
+        <mesh key={i} position={[x, y, z]} castShadow>
+          <sphereGeometry args={[r, 20, 16]} />
+          <meshStandardMaterial color={i ? PALETTE.leafDeep : PALETTE.leaf} roughness={0.85} />
+        </mesh>
+      ))}
     </group>
   );
 }

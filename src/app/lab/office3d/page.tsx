@@ -6,6 +6,7 @@
  *  - phase: 단계(view.phase.value). 화면용 새 모양(view.clock.now·view.profile·view.day)으로 넘긴다.
  *  - speed: 시계 빠르기(0 멈춤, 1 실제, 60이면 1초에 1분), focus: overview|door|desk|manager|director|meeting|share|pantry|restroom
  *  - start, end: 사용자가 정한 활동 시작·마감(HH:MM, 기본 09:00·18:00)
+ *  - bare=1: 위 도구 막대를 숨긴다(맥 앱 그림과 같은 크기로 비교할 때).
  *  - phase=beforeCheckIn이면 문 앞 클로즈업. '출근' 버튼을 누르면 입장 연출이 나온다.
  */
 import dynamic from "next/dynamic";
@@ -50,8 +51,8 @@ function Lab() {
   );
 
   return (
-    <main style={{ display: "grid", gridTemplateRows: "auto 1fr", height: "100vh", margin: 0, background: "#F4ECDB", fontFamily: "system-ui, sans-serif" }}>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", padding: "10px 16px", fontSize: 15, color: "#2C3032" }}>
+    <main style={{ display: "grid", gridTemplateRows: q.get("bare") ? "1fr" : "auto 1fr", height: "100vh", margin: 0, background: "#F4ECDB", fontFamily: "system-ui, sans-serif" }}>
+      <div style={{ display: q.get("bare") ? "none" : "flex", flexWrap: "wrap", gap: 12, alignItems: "center", padding: "10px 16px", fontSize: 15, color: "#2C3032" }}>
         <strong style={{ fontSize: 18 }}>3D 사무실 확인</strong>
         <label>시각 <input type="time" step={1} value={time} onChange={(e) => setTime(e.target.value)} /></label>
         <label>빠르기 <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
