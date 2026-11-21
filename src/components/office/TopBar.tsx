@@ -52,6 +52,8 @@ export function nextStepOf(view: OfficeView): NextStep | null {
 function statusChip(view: OfficeView): { text: string; warn: boolean } {
   const tasks = view.day.tasks;
   if (view.enforcement.rules.seatCheck && ["working", "overtime", "dinner"].includes(view.phase.value) && view.seat.kind !== "seated") {
+    // 카메라 없이 출근을 고른 날은 '카메라 꺼짐'이 예상된 상태다. 불이익이 없다고 안내했으니 경고색으로 보이지 않게 한다.
+    if (view.day.checkInMethod === "noCamera" && view.seat.kind === "cameraOff") return { text: "카메라 없이 근무", warn: false };
     return { text: view.seat.title, warn: view.seat.isWarning };
   }
   switch (view.phase.value) {
