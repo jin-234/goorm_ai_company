@@ -15,7 +15,6 @@ const ROLE_SCREENS: Record<SeatId, ScreenKind[]> = {
   kwajang: ["calendar", "doc", "mail"],
   manager: ["mail", "calendar", "doc"],
   director: ["doc", "mail", "calendar"],
-  planner: ["wireframe", "guide", "wireframe", "doc"],
   me: ["tasks"],
 };
 

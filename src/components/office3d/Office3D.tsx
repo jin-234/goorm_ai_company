@@ -4,7 +4,9 @@
  * - 시각: view.clock.now. 다음 응답이 올 때까지 실제 시간만큼 흘려 부드럽게 움직인다.
  * - 나: view.phase.value로 자리를 정한다(출근 전=문 밖 단말기 앞, 아침보고=회의실, 수행·마감=내 자리, 공유=기획팀, off=퇴근).
  * - 활동 시간: view.profile.activityStart/End. 옛 모양(view.state.now, view.seat)도 readView가 함께 읽는다.
- * - 연출: beforeCheckIn → 다른 단계가 되면 출근 입장(onEntranceEnd), off가 되면 퇴근(onLeaveEnd).
+ * - 연출: beforeCheckIn → 다른 단계가 되면 출근 입장(onEntranceEnd), off가 되면 퇴근(onLeaveEnd),
+ *   sharing이 되면 타 부서 담당자(기획팀·디자인팀 1명씩)가 들어와 회의실에 앉고 내가 발표 자리에 선다(onShareReady),
+ *   sharing이 끝나면 손님은 인사하고 나가고 나는 자리로 돌아온다.
  * - 동료: crew/schedule.ts가 그 시각의 위치·자세·소품을 정한다.
  * - 장소를 누르면 카메라가 다가가고, 2D 패널이 있는 곳(door·desk·manager·meeting)은 onPlace로 알린다.
  */
@@ -14,11 +16,12 @@ import type React from "react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { type AmbientLight, Color, type DirectionalLight, type HemisphereLight, NeutralToneMapping, Object3D, PerspectiveCamera, Vector3 } from "three";
 import { CrewLayer, type CrewFrame } from "./crew/CrewLayer";
-import { DOOR_X, PLANNER_X, ROOM, type SeatId } from "./crew/layout";
-import { type ActivityWindow, crewAt, DEFAULT_WINDOW, type DeskProps, ENTRANCE, entranceAt, leaveAt, type SeatKind } from "./crew/schedule";
+import { DOOR_X, ROOM, type SeatId } from "./crew/layout";
+import { GUESTS, shareArrivalAt, shareEndAt, shareSteady } from "./crew/share";
+import { type ActivityWindow, crewAt, DEFAULT_WINDOW, type DeskProps, ENTRANCE, entranceAt, leaveAt, type SeatKind, type Snapshot } from "./crew/schedule";
 import { type Light, lightAt } from "./room/daylight";
 import type { TaskLine } from "./room/screens";
-import { type ClickPlace, Room, useDeskDefaults } from "./room/Room";
+import { type ClickPlace, type MeetingMode, Room, useDeskDefaults } from "./room/Room";
 
 export type OfficePlace = "door" | "desk" | "manager" | "meeting" | "share";
 /** doorWait: 출근 전 문 앞 클로즈업(전체 샷 대신). */
@@ -52,6 +55,8 @@ export interface Office3DProps {
   onEntranceEnd?: () => void;
   /** 퇴근 연출(짐 챙기기 → 가방 메고 문으로 나감 → 전체 샷)이 끝나면 부른다. */
   onLeaveEnd?: () => void;
+  /** 타 부서 공유 연출에서 손님 둘이 회의실에 앉고 내가 화면 앞에 서서 발표를 시작하는 순간 부른다. */
+  onShareReady?: () => void;
   className?: string;
   style?: CSSProperties;
 }
@@ -69,7 +74,8 @@ const SHOTS: Record<Focus, { target: [number, number, number]; yaw: number; pitc
   meeting: { target: [-4.6, 0.9, -3.1], yaw: 24, pitch: 40, distance: 15, fov: 20 },
   pantry: { target: [-5.6, 0.8, 2.4], yaw: 62, pitch: 38, distance: 12, fov: 22 },
   restroom: { target: [5.6, 1.0, -3.0], yaw: -25, pitch: 30, distance: 14, fov: 20 },
-  share: { target: [5.2, 0.75, 3.7], yaw: 12, pitch: 38, distance: 9.5, fov: 22 },
+  // 타 부서 공유는 회의실에서: 손님 둘과 화면 옆의 나를 함께 본다.
+  share: { target: [-4.7, 0.9, -3.2], yaw: 24, pitch: 40, distance: 14, fov: 20 },
   // 문 앞 클로즈업: 문 밖 오른쪽 앞에서 단말기 앞에 선 나와 닫힌 자동문을 본다.
   doorWait: { target: [-0.25, 1.25, 5.3], yaw: 20, pitch: 6, distance: 8.2, fov: 28 },
 };
@@ -84,7 +90,7 @@ function shotPosition(shot: (typeof SHOTS)[Focus]) {
   );
 }
 
-export function Office3D({ view, onPlace, speed = 1, focus: initialFocus = "overview", onEntranceEnd, onLeaveEnd, className, style }: Office3DProps) {
+export function Office3D({ view, onPlace, speed = 1, focus: initialFocus = "overview", onEntranceEnd, onLeaveEnd, onShareReady, className, style }: Office3DProps) {
   const [focus, setFocus] = useState<Focus>(initialFocus);
   // 이름표(drei Html)를 붙일 곳을 고정한다. 지정하지 않으면 이벤트 연결 시점에 붙일 곳이 바뀌어 이름표마다 root를 다시 만든다.
   const host = useRef<HTMLDivElement>(null);
@@ -96,7 +102,7 @@ export function Office3D({ view, onPlace, speed = 1, focus: initialFocus = "over
   return (
     <div ref={host} className={className} style={{ position: "relative", width: "100%", height: "100%", ...style }} data-office3d-focus={focus}>
       <Canvas shadows dpr={[1, 2]} resize={{ offsetSize: true }} camera={{ fov: 20, near: 2, far: 160, position: shotPosition(SHOTS.overview).toArray() }} gl={{ preserveDrawingBuffer: true, toneMapping: NeutralToneMapping, toneMappingExposure: 1.6 }}>
-        <Scene view={view} speed={speed} focus={focus} onClick={handle} onEntranceStart={() => setFocus("overview")} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} labelHost={host} />
+        <Scene view={view} speed={speed} focus={focus} onClick={handle} onEntranceStart={() => setFocus("overview")} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} onShareReady={onShareReady} onShareSeated={() => setFocus("share")} labelHost={host} />
       </Canvas>
       {focus !== "overview" && (
         <button type="button" onClick={() => setFocus("overview")} style={overviewButton}>
@@ -120,13 +126,15 @@ interface SceneProps {
   onEntranceStart: () => void;
   onEntranceEnd?: () => void;
   onLeaveEnd?: () => void;
+  onShareReady?: () => void;
+  onShareSeated: () => void;
   labelHost: React.RefObject<HTMLDivElement | null>;
 }
 
 /** 카메라가 지금 따라갈 구도와 빠르기(클수록 빨리 붙는다). 장면이 매 프레임 정하고 CameraRig가 읽는다. */
 export type CameraAim = { shot: Focus; rate: number };
 
-function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, onLeaveEnd, labelHost }: SceneProps) {
+function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, onLeaveEnd, onShareReady, onShareSeated, labelHost }: SceneProps) {
   const read = readView(view);
   // 가상 시계: 서버 시각에서 실제 시간만큼 흘린다.
   const anchor = useRef({ base: read.now, at: typeof performance === "undefined" ? 0 : performance.now() });
@@ -168,6 +176,12 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
   const waiting = phase === "beforeCheckIn";
   const entrance = useRef<number | null>(null);
   const leaving = useRef<number | null>(null);
+  // 타 부서 공유: 들어오는 연출(arrive)과 나가는 연출(end)의 시작 시각.
+  const shareArrive = useRef<number | null>(null);
+  const shareEnd = useRef<number | null>(null);
+  const shareReadyRef = useRef(onShareReady);
+  shareReadyRef.current = onShareReady;
+  const [meetingMode, setMeetingMode] = useState<MeetingMode>(phase === "sharing" ? "share" : "morning");
   const lastPhase = useRef(phase);
   const endRef = useRef(onEntranceEnd);
   endRef.current = onEntranceEnd;
@@ -178,7 +192,16 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
     if (prev === "beforeCheckIn" && phase !== "beforeCheckIn") {
       entrance.current = performance.now();
       onEntranceStart();
-    } else if (phase === "off" && prev !== "off" && prev !== "beforeCheckIn") {
+    } else if (phase === "sharing" && prev !== "sharing") {
+      shareArrive.current = performance.now();
+      shareEnd.current = null;
+      onEntranceStart();
+    } else if (prev === "sharing" && phase !== "sharing") {
+      shareArrive.current = null;
+      shareEnd.current = performance.now();
+      onEntranceStart();
+    }
+    if (phase === "off" && prev !== "off" && prev !== "beforeCheckIn") {
       // 하루 마감 확정: 짐을 챙겨 문으로 나간다.
       leaving.current = performance.now();
       onEntranceStart();
@@ -239,10 +262,37 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       if (f !== facade) setFacade(f);
       if (f !== frosted) setFrosted(f);
     }
-    const nowCinematic = waiting || entrance.current != null || leaving.current != null;
+    // 타 부서 손님(기획팀·디자인팀 담당자 1명씩).
+    const clockSec = performance.now() / 1000;
+    let guests: Record<string, { snapshot: Snapshot }> = {};
+    if (shareArrive.current != null) {
+      const t = (performance.now() - shareArrive.current) / 1000;
+      const a = shareArrivalAt(t);
+      for (const g of GUESTS) guests[g] = { snapshot: a.guests[g] };
+      crew.me = { snapshot: a.me, desk: { ...crew.me.desk, screenOn: true, bagAtDesk: true } };
+      // 걸어오는 동안은 사무실 전체, 내가 발표 자리에 서면 회의실로 다가간다.
+      aim.current = a.ready ? { shot: "share", rate: 2 } : { shot: "overview", rate: 2 };
+      if (a.ready) {
+        shareArrive.current = null;
+        onShareSeated();
+        shareReadyRef.current?.();
+      }
+    } else if (phase === "sharing") {
+      const st = shareSteady(clockSec);
+      for (const g of GUESTS) guests[g] = { snapshot: st.guests[g] };
+    } else if (shareEnd.current != null) {
+      const t = (performance.now() - shareEnd.current) / 1000;
+      const e = shareEndAt(t);
+      for (const g of GUESTS) guests[g] = { snapshot: e.guests[g] };
+      if (leaving.current == null) crew.me = { snapshot: e.me, desk: { ...crew.me.desk, screenOn: true, bagAtDesk: true } };
+      if (e.done) shareEnd.current = null;
+    }
+    const mode: MeetingMode = phase === "sharing" || shareEnd.current != null ? "share" : "morning";
+    if (mode !== meetingMode) setMeetingMode(mode);
+    const nowCinematic = waiting || entrance.current != null || leaving.current != null || shareArrive.current != null;
     if (nowCinematic !== cinematic) setCinematic(nowCinematic);
     if (flash !== reader) setReader(flash);
-    frame.current = crew;
+    frame.current = { ...crew, ...guests };
     const nextDesks = {} as Record<SeatId, DeskProps>;
     let key = "";
     for (const id of Object.keys(crew) as SeatId[]) {
@@ -270,10 +320,10 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
     <>
       <Lights lightRef={lightRef} />
       <CameraRig aim={aim} />
-      <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} myTasks={myTasks} onClick={onClick} />
-      <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : id === "planner" ? onClick("share") : undefined)} />
+      <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} meetingMode={meetingMode} myTasks={myTasks} onClick={onClick} />
+      <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : GUESTS.includes(id as (typeof GUESTS)[number]) ? onClick("share") : undefined)} />
       {/* 이름표는 늘 붙여 두고 연출 중엔 감추기만 한다. 지웠다 다시 만들면 drei Html이 렌더 도중 떼어져 React 경고가 난다. */}
-      <Labels onClick={onClick} hidden={cinematic} host={labelHost} />
+      <Labels onClick={onClick} hidden={cinematic} host={labelHost} meetingMode={meetingMode} />
     </>
   );
 }
@@ -393,19 +443,20 @@ function CameraRig({ aim }: { aim: React.MutableRefObject<CameraAim> }) {
 
 // 이름표도 누를 수 있다. 이름표는 물체 위 공중에 떠 있어 클릭을 통과시키면 아래에 누를 물체가 없다.
 // 개정 기획서: 핵심 흐름을 여는 다섯 곳에만 이름표를 단다(탕비실·화장실·부장 자리는 눌러서 다가가기만).
-const LABELS: { text: string; at: [number, number, number]; place: ClickPlace }[] = [
-  { text: "출입문", at: [DOOR_X, 2.65, ROOM.halfDepth], place: "door" },
-  { text: "회의실 · 아침보고", at: [-4.6, 2.55, -1.2], place: "meeting" },
-  { text: "내 책상", at: [-0.9, 1.95, 2.25], place: "desk" },
-  { text: "기획팀", at: [PLANNER_X, 1.95, 3.9], place: "share" },
-  { text: "팀장 자리", at: [4.5, 1.75, 1.0], place: "manager" },
+// 회의실 이름표는 단계에 따라 문구와 여는 곳이 바뀐다(아침보고 → meeting, 타 부서 공유 → share). key는 고정한다.
+const LABELS: { key: string; text: string; at: [number, number, number]; place: ClickPlace }[] = [
+  { key: "door", text: "출입문", at: [DOOR_X, 2.65, ROOM.halfDepth], place: "door" },
+  { key: "meeting-room", text: "회의실 · 아침보고", at: [-4.6, 2.55, -1.2], place: "meeting" },
+  { key: "desk", text: "내 책상", at: [-0.9, 1.95, 2.25], place: "desk" },
+  { key: "manager", text: "팀장 자리", at: [4.5, 1.75, 1.0], place: "manager" },
 ];
 
-function Labels({ onClick, hidden, host }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null> }) {
+function Labels({ onClick, hidden, host, meetingMode }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null>; meetingMode: MeetingMode }) {
+  const labels = LABELS.map((l) => (l.key === "meeting-room" && meetingMode === "share" ? { ...l, text: "회의실 · 타 부서 공유", place: "share" as ClickPlace } : l));
   return (
     <>
-      {LABELS.map((l) => (
-        <Html key={l.place} portal={host as React.MutableRefObject<HTMLElement>} position={l.at} center zIndexRange={[10, 0]} style={{ visibility: hidden ? "hidden" : "visible" }}>
+      {labels.map((l) => (
+        <Html key={l.key} portal={host as React.MutableRefObject<HTMLElement>} position={l.at} center zIndexRange={[10, 0]} style={{ visibility: hidden ? "hidden" : "visible" }}>
           <button type="button" style={labelStyle} onClick={() => onClick(l.place)} tabIndex={hidden ? -1 : 0} aria-hidden={hidden}>
             {l.text}
           </button>
