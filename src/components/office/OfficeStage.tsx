@@ -18,17 +18,6 @@ const Office3D = dynamic(() => import("@/components/office3d/Office3D").then((m)
 
 const HIDE_KEY = "aiboss.hide3d";
 
-/**
- * (임시) 3D 부품이 새 화면 상태 모양을 읽게 바뀔 때까지 옛 모양(state.now·seat.kind)으로 바꿔 넘긴다.
- * e2의 Office3D 개정이 들어오면 이 함수를 지운다.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function legacyView(view: OfficeView): any {
-  const phase = view.phase.value;
-  const kind =
-    phase === "beforeCheckIn" ? "beforeCheckIn" : phase === "checkoutReview" || phase === "sharing" ? "review" : phase === "off" ? "off" : "seated";
-  return { ...view, state: { now: view.clock.now }, seat: { kind } };
-}
 const WIDE = "(min-width: 861px)";
 
 function webglWorks(): boolean {
@@ -83,8 +72,18 @@ export function useStageMode(): StageMode {
 }
 
 /** 화면 전체를 채우는 3D 사무실(맥 앱 배치). 장소 이름표를 누르면 그 장소의 패널을 연다. */
-export function OfficeBackdrop({ view, onGo }: { view: OfficeView; onGo: (place: PlaceId) => void }) {
-  return <Office3D view={legacyView(view)} onPlace={(p) => onGo(p as PlaceId)} />;
+export function OfficeBackdrop({
+  view,
+  onGo,
+  onEntranceEnd,
+  onLeaveEnd,
+}: {
+  view: OfficeView;
+  onGo: (place: PlaceId) => void;
+  onEntranceEnd?: () => void;
+  onLeaveEnd?: () => void;
+}) {
+  return <Office3D view={view} onPlace={(p) => onGo(p)} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} />;
 }
 
 /** 2D 배치 위에 놓는 3D 사무실 띠(좁은 화면) 또는 3D 다시 보기 버튼(3D를 숨긴 넓은 화면). */
@@ -103,7 +102,7 @@ export function OfficeStage({ view, onGo, mode }: { view: OfficeView; onGo: (pla
       </div>
       {showStrip ? (
         <div className="stage-canvas">
-          <Office3D view={legacyView(view)} onPlace={(p) => onGo(p as PlaceId)} />
+          <Office3D view={view} onPlace={(p) => onGo(p)} />
         </div>
       ) : null}
     </section>

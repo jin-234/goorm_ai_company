@@ -6,7 +6,7 @@
  * - 3D를 숨겼거나 못 그리거나 좁은 화면: 위 막대 + 왼쪽 장소 이름표 + 패널의 2D 배치(웹 기획서 7장).
  * 어느 쪽이든 단계가 바뀌면 그 단계의 패널을 자동으로 연다(맥 앱과 같은 규칙).
  */
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { Onboarding } from "./panels/Onboarding";
 import { applySavedTextScale } from "./panels/Settings";
@@ -66,15 +66,55 @@ export function OfficeApp() {
     applySavedTextScale();
   }, []);
 
-  // 단계가 바뀌면 그 단계의 패널로(처음 불러올 때도).
+  // 출근·퇴근 연출(3D) 동안은 패널을 닫아 둔다. 그동안 열려던 패널은 연출이 끝나면 연다(맥 앱 입장·퇴근 장면).
+  // 3D가 끝났다고 알리지 못하는 경우를 대비해 정해진 시간 뒤에는 연다.
+  const [cutscene, setCutscene] = useState<"entrance" | "leave" | null>(null);
+  const pending = useRef<PlaceId | null>(null);
+  const fallback = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const endCutscene = useCallback(() => {
+    if (fallback.current) clearTimeout(fallback.current);
+    fallback.current = null;
+    setCutscene(null);
+    if (pending.current) setPlace(pending.current);
+    pending.current = null;
+  }, []);
+  const startCutscene = useCallback(
+    (kind: "entrance" | "leave", then: PlaceId) => {
+      if (fallback.current) clearTimeout(fallback.current);
+      pending.current = then;
+      setPlace(null);
+      setCutscene(kind);
+      // 실측: 입장 약 5.4초, 퇴근 약 8.6초.
+      fallback.current = setTimeout(endCutscene, kind === "entrance" ? 8000 : 11000);
+    },
+    [endCutscene],
+  );
+  useEffect(() => () => {
+    if (fallback.current) clearTimeout(fallback.current);
+  }, []);
+  /** 패널 열기. 연출 중이면 끝난 뒤로 미룬다(출근 패널의 '다음은 회의실' 같은 이동도 여기로 온다). */
+  const go = useCallback(
+    (next: PlaceId | null) => {
+      if (cutscene && next) pending.current = next;
+      else setPlace(next);
+    },
+    [cutscene],
+  );
+
+  // 단계가 바뀌면 그 단계의 패널로(처음 불러올 때도). 3D 화면에서 출근·퇴근 순간이면 연출부터.
+  const prevPhase = useRef<string | null>(null);
   useEffect(() => {
     if (!view) return;
     const key = `${view.clock.date}:${view.phase.value}`;
-    if (lastPhase.current !== key) {
-      lastPhase.current = key;
-      setPlace(placeForPhase(view));
-    }
-  }, [view]);
+    if (lastPhase.current === key) return;
+    lastPhase.current = key;
+    const before = prevPhase.current;
+    prevPhase.current = view.phase.value;
+    const target = placeForPhase(view);
+    if (stage.full && before === "beforeCheckIn" && view.phase.value !== "beforeCheckIn") startCutscene("entrance", target);
+    else if (stage.full && before != null && before !== "off" && view.phase.value === "off") startCutscene("leave", target);
+    else setPlace(target);
+  }, [view, stage.full, startCutscene]);
 
   if (!view) {
     return (
@@ -115,7 +155,7 @@ export function OfficeApp() {
     );
   }
 
-  if (stage.full) return <FullOffice office={office} view={view} place={place} setPlace={setPlace} stage={stage} />;
+  if (stage.full) return <FullOffice office={office} view={view} place={place} setPlace={go} onCutsceneEnd={endCutscene} />;
 
   const shown: PlaceId = place ?? placeForPhase(view);
   const now = nextStepOf(view)?.place;
@@ -162,19 +202,19 @@ function FullOffice({
   view,
   place,
   setPlace,
-  stage,
+  onCutsceneEnd,
 }: {
   office: OfficeHandle;
   view: OfficeView;
   place: PlaceId | null;
   setPlace: (p: PlaceId | null) => void;
-  stage: StageMode;
+  onCutsceneEnd: () => void;
 }) {
   const title = PLACES.find((p) => p.id === place)?.name ?? "";
   return (
     <div className={`o3 ${place ? "with-panel" : ""}`}>
       <div className="o3-canvas">
-        <OfficeBackdrop view={view} onGo={setPlace} />
+        <OfficeBackdrop view={view} onGo={setPlace} onEntranceEnd={onCutsceneEnd} onLeaveEnd={onCutsceneEnd} />
       </div>
 
       <div className="o3-top">
