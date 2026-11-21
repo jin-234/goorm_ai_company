@@ -6,7 +6,7 @@
  * 그래서 마실 때 자기 컵이 다른 색 컵으로 바뀌지 않는다. 흰 머그는 쓰지 않는다(종이컵·남의 컵처럼 보인다).
  */
 
-export type PersonId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner" | "designer" | "operations" | "courier";
+export type PersonId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner" | "designer" | "marketer" | "operations" | "courier";
 
 export type HairStyle =
   /** 정수리 똥머리. 김서울. */
@@ -39,7 +39,9 @@ export type Extra = "cardigan" | "tieSuit" | "tieShirt" | "glasses" | "hoodiePoc
   /** 왼손 메모장과 펜. 듣고 질문할 때 든다. */
   | "notepad"
   /** 한쪽 귀 헤드셋과 마이크. 운영 담당자(이용 안내·문의 대응). */
-  | "headset";
+  | "headset"
+  /** 성과 그래프가 뜬 태블릿(왼손). 마케터. */
+  | "tablet";
 
 export interface CrewLook {
   id: PersonId;
@@ -134,6 +136,14 @@ export const CREW: Record<PersonId, CrewLook> = {
     mugColor: "#C9B8E8", bagColor: "#2E2E36", bagKind: "tote", hasBadge: true, badgeY: 0.21, lanyard: "#E07A3F",
     browTilt: 0, browWeight: 0.9, eyeWidth: 1, rate: 0.99, phase: 1.1,
   },
+  // 타 부서 손님(마케팅팀). 부서 회의에 디자인팀·기획팀과 함께 참석한다(AI 동료 프롬프트 문서 2장).
+  // 성과·목표시장·고객관리 관점(페르소나 P_mkt_A~C)이라 성과 그래프가 뜬 태블릿을 든다.
+  marketer: {
+    id: "marketer", name: "AI 마케터", skin: SKIN, hair: "#4A2E22", hairStyle: "sidePart",
+    top: "#B5476A", pants: "#3A3A44", extras: ["collar", "tablet"],
+    mugColor: "#B5476A", bagColor: "#6B4A3A", bagKind: "tote", hasBadge: true, badgeY: 0.2, lanyard: "#E07A3F",
+    browTilt: -2, browWeight: 1, eyeWidth: 1, rate: 1.04, phase: 2.9,
+  },
   // 타 부서 손님(운영팀). 이용 안내·문제 발생 시 대응을 맡는다. 헤드셋과 주황 사원증 줄로 구분한다.
   operations: {
     id: "operations", name: "AI 운영 담당자", skin: SKIN, hair: "#7A3E2A", hairStyle: "bob",
@@ -150,4 +160,4 @@ export const CREW: Record<PersonId, CrewLook> = {
 };
 
 /** 조직도 순서(부장, 팀장, 과장, 대리, 선배, 동기 둘, 나)와 택배 기사. */
-export const LINEUP: PersonId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "designer", "operations", "courier"];
+export const LINEUP: PersonId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "designer", "marketer", "operations", "courier"];

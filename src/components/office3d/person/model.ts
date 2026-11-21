@@ -300,6 +300,7 @@ export function buildPerson(look: CrewLook): Rig {
       case "collar": addCollar(torso, look); break;
       case "notepad": rig.props.notepad = buildNotepad(handL); break;
       case "headset": addHeadset(head, look); break;
+      case "tablet": rig.props.notepad = buildTablet(handL); break;
     }
   }
   if (look.hasBadge) rig.props.badgeChest = addBadge(torso, look.badgeY, look.lanyard ?? "#F4C534");
@@ -520,6 +521,21 @@ function addHeadset(head: THREE.Group, look: CrewLook) {
   boom.rotation.set(deg(-55), 0, deg(-35));
   head.add(boom);
   place(sphere(0.016, accent, 12), -0.12, -0.11, -0.17, head);
+}
+
+/** 왼손 태블릿: 어두운 테두리, 화면에 막대그래프와 오르는 선. 듣거나 끄덕일 때 든다(메모장 자리를 같이 쓴다). */
+function buildTablet(hand: THREE.Group): THREE.Group {
+  const pad = place(group("tablet"), 0, -0.02, -0.06, hand);
+  pad.add(box(0.15, 0.11, 0.012, 0.01, satin("#2A2A30", 0.35)));
+  place(box(0.135, 0.095, 0.004, 0.004, new THREE.MeshBasicMaterial({ color: "#F4F1EA" })), 0, 0, -0.007, pad);
+  const bar = new THREE.MeshBasicMaterial({ color: "#2F6B4F" });
+  [0.025, 0.04, 0.032, 0.055].forEach((h, i) => {
+    place(box(0.016, h, 0.002, 0.001, bar), -0.045 + i * 0.026, -0.04 + h / 2, -0.01, pad);
+  });
+  const line = new THREE.MeshBasicMaterial({ color: "#E07A3F" });
+  place(turn(box(0.11, 0.004, 0.002, 0.001, line), 0, 0, 18), 0.0, 0.015, -0.011, pad);
+  pad.visible = false;
+  return pad;
 }
 
 /** 왼손 메모장과 펜. */
