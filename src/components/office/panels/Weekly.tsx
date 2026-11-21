@@ -32,7 +32,9 @@ export function Weekly({ office, view, onGo }: { office: OfficeHandle; view: Off
     setValues({ completed: draft.completed, incomplete: draft.incomplete, nextGoals: draft.nextGoals });
   }, [draft.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // 서버가 이번 주에 제출한 보고서만 lastSubmitted로 준다.
   const thisWeek = view.weekly.lastSubmitted;
+  const submittedThisWeek = thisWeek != null;
   const missing = FIELDS.filter(([k]) => !values[k].trim()).map(([, label]) => label.slice(3));
 
   const save = (key: FieldKey) => {
@@ -55,7 +57,7 @@ export function Weekly({ office, view, onGo }: { office: OfficeHandle; view: Off
 
   const header = <PanelHeader place="주간보고" title="주간보고서" detail={`${view.clock.weekLabel} · 양식에 맞춰 직접 씁니다.`} />;
 
-  if (thisWeek) {
+  if (submittedThisWeek && thisWeek) {
     return (
       <div className="panel">
         {header}

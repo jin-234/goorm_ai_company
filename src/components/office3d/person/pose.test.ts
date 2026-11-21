@@ -100,3 +100,19 @@ describe("눈 깜빡임", () => {
     expect(samples.filter((v) => v === 0).length).toBeGreaterThan(900);
   });
 });
+
+describe("사원증 찍기", () => {
+  it("0.4~0.9초에는 오른손이 단말기(앞 0.22m·오른쪽 0.15m·높이 0.7m) 3cm 안에 있다", () => {
+    for (const s of [0.45, 0.6, 0.85]) {
+      const body = bodyFor("tapBadge", 3, { ...ctx(), desk: null, sincePoseStart: s });
+      const hand = handAt(body.right, 1, body.torsoPitch, body.reachR);
+      expect(distance(hand, [0.15, 0.7, -0.22])).toBeLessThan(0.03);
+    }
+  });
+
+  it("1.5초가 지나면 손을 내린다", () => {
+    const body = bodyFor("tapBadge", 3, { ...ctx(), desk: null, sincePoseStart: 1.6 });
+    const hand = handAt(body.right, 1, body.torsoPitch, body.reachR);
+    expect(hand[1]).toBeLessThan(0.45);
+  });
+});

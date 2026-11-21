@@ -1,29 +1,22 @@
 "use client";
-/**
- * 출입문 · 출근. 버튼으로 오늘 활동을 시작한다.
- * 시작 시각만 기록하고 지각을 판정하지 않는다. 정해 둔 시작 시각은 안내에만 쓴다.
- */
-import { Clock, hm } from "@/lib/office/time";
-import type { OfficeView } from "../api";
+/** 출입문 · 출근(개정판): 사원증을 찍어 활동을 시작한다. 카메라·지각 판정은 하지 않는다. 문 열림 연출은 3D가 맡는다. */
+import { hhmm, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
 
 export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: OfficeView; onDone: () => void }) {
-  const day = view.day;
-  const { activityStart, activityEnd } = view.profile;
-
-  const checkIn = async () => {
+  const { day, profile } = view;
+  const start = async () => {
     if ((await office.act("checkIn")) == null) return;
-    office.notify("오늘 활동을 시작했습니다.\n회의실에서 아침보고를 해 주세요.");
+    office.notify("출근했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.");
     onDone();
   };
 
   return (
     <div className="panel">
-      <PanelHeader place="출입문" title="출근" detail="버튼을 누르면 오늘 활동이 시작됩니다." />
-
+      <PanelHeader place="출입문" title="출근" detail="문 옆 단말기에 사원증을 찍으면 자동문이 열리고 하루가 시작됩니다." />
       {day.checkInAt != null ? (
-        <Notice kind="ok" title={`${hm(day.checkInAt)}에 활동을 시작했습니다`}>
+        <Notice kind="ok" title={`${view.clock.dateShort} 활동을 시작했습니다`}>
           회의실에서 아침보고를 진행해 주세요.
         </Notice>
       ) : (
@@ -35,18 +28,23 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
                 <div style={{ fontSize: 34, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{view.clock.hm}</div>
               </div>
               <div style={{ textAlign: "right" }}>
-                <div className="small muted">내가 정한 활동 시간</div>
+                <div className="small muted">정해 둔 활동 시간</div>
                 <div style={{ fontSize: 22, fontWeight: 700 }}>
-                  {Clock.hm(activityStart)} ~ {Clock.hm(activityEnd)}
+                  {hhmm(profile.activityStart)}~{hhmm(profile.activityEnd)}
                 </div>
               </div>
             </div>
             <p className="small muted" style={{ margin: 0 }}>
-              시간은 안내에만 씁니다. 늦게 시작해도 불이익이 없습니다.
+              늦게 시작해도 괜찮습니다. 시작 시각은 기록에만 남습니다.
             </p>
           </Card>
-          <button className="btn" onClick={checkIn} disabled={office.busy || !view.can.checkIn}>
-            출근하기
+          {view.pendingCarry.length > 0 ? (
+            <Notice kind="info" title={`지난 활동일에서 넘어온 일 ${view.pendingCarry.length}건`}>
+              {view.pendingCarry.map((t) => `· ${t.title}`).join("\n")}
+            </Notice>
+          ) : null}
+          <button className="btn" onClick={start} disabled={office.busy || !view.can.checkIn}>
+            사원증 찍고 출근하기
           </button>
         </>
       )}

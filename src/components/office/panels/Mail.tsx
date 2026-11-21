@@ -28,7 +28,7 @@ export function MailBox({ office, view, onGo }: { office: OfficeHandle; view: Of
 
   return (
     <div className="panel">
-      <PanelHeader place="팀장 자리" title="사내 메일함" detail="한정민 팀장 자리" />
+      <PanelHeader place="팀장 자리" title="사내 메일함" detail="AI 팀장 자리 · 공지와 주간 피드백이 옵니다." />
       <div className="row">
         {view.can.submitWeekly ? (
           <button className="btn" onClick={() => onGo("weekly")}>
