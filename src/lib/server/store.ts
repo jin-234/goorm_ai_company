@@ -2,10 +2,14 @@
  * 회사 상태 저장소.
  *
  * Vercel 함수는 요청마다 새로 뜰 수 있어 메모리에 상태를 둘 수 없다.
- * DATABASE_URL(Neon Postgres)이 있으면 Postgres에, 없으면 프로세스 메모리에 저장한다(로컬 개발용).
+ * Supabase Postgres 연결 주소가 있으면 Postgres에, 없으면 프로세스 메모리에 저장한다(로컬 개발용).
  * 상태는 참여자 한 명당 한 줄(JSONB)로 둔다.
+ *
+ * 연결 주소는 DATABASE_URL을 먼저 보고, 없으면 Vercel의 Supabase 연동이 넣어 주는 POSTGRES_URL을 쓴다.
+ * 서버리스에서는 Supabase의 Transaction pooler 주소(포트 6543)를 쓴다. 이 풀러는 prepared statement를
+ * 지원하지 않으므로 prepare: false로 연결한다.
  */
-import { neon } from "@neondatabase/serverless";
+import postgres from "postgres";
 import type { OfficeState } from "../office/office";
 
 export interface StoredOffice {
@@ -44,52 +48,77 @@ CREATE TABLE IF NOT EXISTS offices (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 )`;
 
+/** 로컬 Postgres(개발·시험)는 SSL 없이, 그 밖(Supabase)은 SSL로 연결한다. */
+function sslFor(url: string): false | "require" {
+  const host = new URL(url).hostname;
+  return host === "localhost" || host === "127.0.0.1" ? false : "require";
+}
+
 export class PostgresStore implements OfficeStore {
-  private sql: ReturnType<typeof neon>;
+  private sql: postgres.Sql;
   private ready: Promise<unknown> | null = null;
 
   constructor(url: string) {
-    this.sql = neon(url);
+    this.sql = postgres(url, {
+      prepare: false,
+      ssl: sslFor(url),
+      // 함수 하나는 요청을 하나씩 처리하므로 연결 하나면 충분하다.
+      max: 1,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      onnotice: () => {},
+    });
   }
 
   private ensureTable() {
-    this.ready ??= this.sql.query(SCHEMA_SQL);
+    this.ready ??= this.sql.unsafe(SCHEMA_SQL).catch((error) => {
+      this.ready = null;
+      throw error;
+    });
     return this.ready;
   }
 
   async load(id: string) {
     await this.ensureTable();
-    const rows = (await this.sql.query("SELECT state, clock_anchor FROM offices WHERE id = $1", [id])) as {
-      state: OfficeState;
-      clock_anchor: string | number;
-    }[];
+    const rows = await this.sql<{ state: OfficeState; clock_anchor: string }[]>`
+      SELECT state, clock_anchor FROM offices WHERE id = ${id}`;
     if (rows.length === 0) return null;
     return { state: rows[0].state, clockAnchor: Number(rows[0].clock_anchor) };
   }
 
   async save(id: string, stored: StoredOffice) {
     await this.ensureTable();
-    await this.sql.query(
-      `INSERT INTO offices (id, state, clock_anchor) VALUES ($1, $2::jsonb, $3)
-       ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, clock_anchor = EXCLUDED.clock_anchor, updated_at = now()`,
-      [id, JSON.stringify(stored.state), stored.clockAnchor],
-    );
+    await this.sql`
+      INSERT INTO offices (id, state, clock_anchor)
+      VALUES (${id}, ${this.sql.json(stored.state as unknown as postgres.JSONValue)}, ${stored.clockAnchor})
+      ON CONFLICT (id) DO UPDATE
+        SET state = EXCLUDED.state, clock_anchor = EXCLUDED.clock_anchor, updated_at = now()`;
   }
 
   async remove(id: string) {
     await this.ensureTable();
-    await this.sql.query("DELETE FROM offices WHERE id = $1", [id]);
+    await this.sql`DELETE FROM offices WHERE id = ${id}`;
   }
+
+  async close() {
+    await this.sql.end({ timeout: 5 });
+  }
+}
+
+/** Postgres 연결 주소. DATABASE_URL이 먼저, 없으면 Vercel Supabase 연동의 POSTGRES_URL. */
+export function databaseUrl(env: Record<string, string | undefined> = process.env): string | null {
+  const url = env.DATABASE_URL?.trim() || env.POSTGRES_URL?.trim();
+  return url ? url : null;
 }
 
 const globalStore = globalThis as unknown as { __officeStore?: OfficeStore };
 
 export function getStore(): OfficeStore {
   if (!globalStore.__officeStore) {
-    const url = process.env.DATABASE_URL?.trim();
+    const url = databaseUrl();
     globalStore.__officeStore = url ? new PostgresStore(url) : new MemoryStore();
   }
   return globalStore.__officeStore;
 }
 
-export const storeKind = () => (process.env.DATABASE_URL?.trim() ? "postgres" : "memory");
+export const storeKind = () => (databaseUrl() ? "postgres" : "memory");
