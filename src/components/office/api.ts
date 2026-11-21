@@ -6,6 +6,7 @@
 
 // MARK: 상태 모양
 // 서버가 만드는 officeView 타입을 그대로 쓴다(타입만 가져오므로 서버 코드는 화면에 실리지 않는다).
+import type { RecordsPayload } from "@/lib/records/records";
 import type { OfficeView as ServerOfficeView } from "@/lib/server/view";
 
 export type OfficeView = ServerOfficeView;
@@ -100,6 +101,8 @@ export const api = {
       "/api/office/review-draft",
       post({}),
     ),
+  /** 기록 내보내기: 출근한 날과 오늘의 과제·결과물·회의실 질문·마감 요약. */
+  records: () => call<RecordsPayload>("/api/office/records"),
   solarStatus: () => call<{ hasKey: boolean; key: string; model: string; baseURL: string }>("/api/solar"),
   solarPing: () => call<{ ok: boolean; model?: string; error?: SolarErrorInfo }>("/api/solar", { method: "POST" }),
 };

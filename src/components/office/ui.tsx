@@ -2,8 +2,11 @@
 import type { ReactNode } from "react";
 import type { CloseChoice, TaskStatus } from "./api";
 
-/** 장소. share = 회의실에서 하는 타 부서 공유(발표). 장소는 회의실이지만 아침보고(meeting)와 패널이 달라 따로 둔다. */
-export type PlaceId = "door" | "meeting" | "desk" | "share" | "manager" | "settings";
+/**
+ * 장소. share = 회의실에서 하는 타 부서 공유(발표). 장소는 회의실이지만 아침보고(meeting)와 패널이 달라 따로 둔다.
+ * records = 기록 내보내기(PDF·엑셀). 사무실 안 장소가 아니라 3D에서는 전체 보기로 둔다.
+ */
+export type PlaceId = "door" | "meeting" | "desk" | "share" | "manager" | "settings" | "records";
 
 export function PanelHeader({ place, title, detail }: { place: string; title: string; detail?: string }) {
   return (

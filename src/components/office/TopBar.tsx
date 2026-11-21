@@ -157,6 +157,10 @@ export function TopBar({
         {unread > 0 ? `메일함 · 안 읽음 ${unread}` : "메일함"}
       </button>
 
+      <button className={`btn ${place === "records" ? "secondary" : "plain"}`} onClick={() => onGo("records")} title="지금까지의 기록을 골라 PDF·엑셀로 내보냅니다">
+        기록 내보내기
+      </button>
+
       {view.onboarded ? (
         <div className="demo-group" aria-label="시연용 조작">
           <span className="label">시연</span>

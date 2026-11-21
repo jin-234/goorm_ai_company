@@ -38,6 +38,7 @@ const PLACES: PlaceInfo[] = [
   // 타 부서 공유는 회의실에서 하는 발표다(부서별 담당자 1명씩 — 기획팀·디자인팀·운영팀 — 출입문으로 들어와 회의실에 앉아 듣는다).
   { id: "share", name: "회의실 · 타 부서 공유", sub: (v) => (v.phase.value === "sharing" ? "지금 발표" : "오늘 한 일 발표") },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
+  { id: "records", name: "기록 내보내기", sub: (v) => `PDF·엑셀 · 지난 활동일 ${v.history.filter((h) => h.checkedIn).length}일` },
   { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
 ];
 
