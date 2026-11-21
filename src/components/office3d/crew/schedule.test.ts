@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLOCKERS, route, SEATS, SPOTS, type Spot, type Vec2 } from "./layout";
 import { BADGE_READER, BADGE_READER_FACE_Z, DECOR, INTERIOR, MEETING, MEETING_TABLE_BOX, OUTSIDE_MAT } from "./layout";
-import { arrivalTimes, GUEST_SEATS, GUESTS, guestInPath, guestOutPath, meBackPath, meToPresenterPath, shareArrivalAt, shareEndAt, shareSteady } from "./share";
+import { arrivalTimes, ENTRY_ORDER, GUEST_SEATS, GUESTS, guestInPath, guestOutPath, meBackPath, meToPresenterPath, shareArrivalAt, shareEndAt, shareSteady } from "./share";
 import { COWORKERS, coworkerAt, crewAt, dayStart, ENTRANCE, entranceAt, entrancePath, leavePath, meAt, planSummary } from "./schedule";
 
 // 2026-11-16(월)~20(금) 한국 시각 자정.
@@ -311,8 +311,8 @@ describe("타 부서 공유(회의실 발표)", () => {
     }
   };
 
-  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀)", () => {
-    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀"]);
+  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀·운영팀)", () => {
+    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀", "운영팀"]);
     expect(new Set(GUEST_SEATS.map((g) => g.dept)).size).toBe(GUEST_SEATS.length);
     expect(GUEST_SEATS.map((g) => g.guest)).toEqual([...GUESTS]);
   });
@@ -328,9 +328,10 @@ describe("타 부서 공유(회의실 발표)", () => {
     for (const g of GUESTS) expect(t.guestSeat(g)).toBeLessThanOrEqual(t.ready);
     expect(t.ready).toBeLessThan(12);
     const start = shareArrivalAt(0.3);
-    expect(start.guests.planner.pose).toBe("walk");
-    expect(start.guests.planner.position[2]).toBeGreaterThan(5); // 문 밖
-    expect(start.guests.designer.visible).toBe(false); // 시차를 두고 뒤에
+    const [first, , last] = ENTRY_ORDER;
+    expect(start.guests[first].pose).toBe("walk");
+    expect(start.guests[first].position[2]).toBeGreaterThan(5); // 문 밖
+    expect(start.guests[last].visible).toBe(false); // 시차를 두고 한 줄로
     expect(start.me.pose).toBe("sitType"); // 아직 자리에서 일하는 중
     const done = shareArrivalAt(t.ready + 0.1);
     expect(done.ready).toBe(true);
@@ -348,7 +349,10 @@ describe("타 부서 공유(회의실 발표)", () => {
   });
 
   it("공유가 끝나면 손님은 인사하고 문으로 나가고, 나는 자리로 돌아와 앉는다", () => {
-    expect(shareEndAt(1.0).guests.planner.pose).toBe("bow");
+    // 문 쪽 의자부터 한 줄로: 첫 사람이 인사할 때 마지막 사람은 아직 앉아 있다.
+    const out = [...ENTRY_ORDER].reverse();
+    expect(shareEndAt(1.0).guests[out[0]].pose).toBe("bow");
+    expect(shareEndAt(1.0).guests[out[2]].pose).toBe("sitListen");
     let t = 0;
     while (!shareEndAt(t).done) { t += 0.1; if (t > 30) break; }
     expect(t).toBeLessThan(15);

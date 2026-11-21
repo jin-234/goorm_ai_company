@@ -8,7 +8,6 @@ import { BADGE_READER, DECOR, DOOR_X, headingOf, MEETING, ROOM, SEATS, type Seat
 import type { DeskProps } from "../crew/schedule";
 import type { Light } from "./daylight";
 import { screenKind, type TaskLine } from "./screens";
-import { GUEST_SEATS } from "../crew/share";
 import {
   Box, Chair, Cylinder, Desk, DeskBag, FONT, Keyboard, Monitor, Mouse, Mug, PALETTE, Panel, PaperStack, Plant,
   roundRect, signTexture, useTextTexture,
@@ -379,7 +378,7 @@ function MeetingRoom({ night, mode, onClick }: { night: number; mode: MeetingMod
     ctx.fillRect(0, 0, w, 70);
     ctx.fillStyle = "#fff";
     ctx.font = `700 34px ${FONT}`;
-    ctx.fillText("개발팀 → 기획팀 · 디자인팀 공유", 28, 48);
+    ctx.fillText("개발팀 → 기획 · 디자인 · 운영팀 공유", 28, 48);
     const rows = ["오늘 한 일과 결과물", "사용자 안내에 필요한 것", "확인할 상황: 빈 화면 · 오류 · 로딩 · 입력"];
     rows.forEach((text, i) => {
       const y = 110 + i * 62;
@@ -414,31 +413,13 @@ function MeetingRoom({ night, mode, onClick }: { night: number; mode: MeetingMod
           <Chair />
         </group>
       ))}
-      {/* 공유 중: 손님 자리 앞 탁자에 부서 명패(부서당 담당자 1명) */}
-      {mode === "share" && GUEST_SEATS.map((g) => (
-        <DeptPlate key={g.dept} dept={g.dept} at={[MEETING.chairs[g.chair].at[0], 0.765, MEETING.table[1] + MEETING.tableSize[1] / 2 - 0.12]} />
-      ))}
+
       {/* 뒷벽 화면 */}
       <group position={[MEETING.screenX, 1.55, Z0 + 0.14]}>
         <Box size={[1.72, 0.98, 0.05]} at={[0, 0, -0.02]} color={PALETTE.charcoal} round={0.02} />
         <group position={[0, 0, 0.007]}>
           <Panel w={1.62} h={0.9} texture={screen} emissive={0.55 + 0.45 * (1 - night)} />
         </group>
-      </group>
-    </group>
-  );
-}
-
-/** 탁자 위 세움 명패. 글자는 의자 쪽(+Z)을 보고, 반대편(화면 쪽)에서도 읽히게 양면. */
-function DeptPlate({ dept, at }: { dept: string; at: [number, number, number] }) {
-  const tex = useTextTexture(signTexture(dept, "#FFFFFF", PALETTE.greenDark), 256, 96, [dept]);
-  return (
-    <group position={at}>
-      <Box size={[0.34, 0.02, 0.08]} at={[0, 0.01, 0]} color={PALETTE.charcoal} shadow={false} />
-      <group position={[0, 0.075, 0]} rotation={[-0.15, 0, 0]}>
-        <Box size={[0.32, 0.12, 0.012]} at={[0, 0, 0]} color={PALETTE.white} round={0.006} />
-        <group position={[0, 0, 0.0075]}><Panel w={0.3} h={0.1} texture={tex} emissive={0.1} /></group>
-        <group position={[0, 0, -0.0075]} rotation={[0, Math.PI, 0]}><Panel w={0.3} h={0.1} texture={tex} emissive={0.1} /></group>
       </group>
     </group>
   );

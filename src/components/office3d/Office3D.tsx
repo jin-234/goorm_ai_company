@@ -18,6 +18,8 @@ import { type AmbientLight, Color, type DirectionalLight, type HemisphereLight, 
 import { CrewLayer, type CrewFrame } from "./crew/CrewLayer";
 import { DOOR_X, ROOM, type SeatId } from "./crew/layout";
 import { GUESTS, shareArrivalAt, shareEndAt, shareSteady } from "./crew/share";
+import { separate } from "./crew/separate";
+import { fitShot } from "./camera";
 import { type ActivityWindow, crewAt, DEFAULT_WINDOW, type DeskProps, ENTRANCE, entranceAt, leaveAt, type SeatKind, type Snapshot } from "./crew/schedule";
 import { type Light, lightAt } from "./room/daylight";
 import type { TaskLine } from "./room/screens";
@@ -292,7 +294,10 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
     const nowCinematic = waiting || entrance.current != null || leaving.current != null || shareArrive.current != null;
     if (nowCinematic !== cinematic) setCinematic(nowCinematic);
     if (flash !== reader) setReader(flash);
-    frame.current = { ...crew, ...guests };
+    // 모두의 위치가 정해진 뒤 겹치지 않게 떼어 놓는다(걷는 사람이 옆으로 비켜섬).
+    const everyone = { ...crew, ...guests };
+    separate(Object.values(everyone).map((e) => e.snapshot));
+    frame.current = everyone;
     const nextDesks = {} as Record<SeatId, DeskProps>;
     let key = "";
     for (const id of Object.keys(crew) as SeatId[]) {
@@ -306,7 +311,8 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
     // 문: 사람이 가까이 오면 연다. 출근 전 단말기 앞에서 기다리는 나에게는 열리지 않는다(사원증을 찍어야 열린다).
     let door = entranceDoor ? 1 : 0;
     let restroom = 0;
-    for (const [id, { snapshot: s }] of Object.entries(crew)) {
+    // 손님(타 부서 담당자)도 문을 지나면 자동문이 열린다.
+    for (const [id, { snapshot: s }] of Object.entries(everyone)) {
       if (!s.visible) continue;
       if (id === "me" && (waiting || entrance.current != null)) continue; // 퇴근할 때는 나에게도 열린다
       if (Math.hypot(s.position[0] - DOOR_X, s.position[2] - ROOM.halfDepth) < 1.5) door = 1;
@@ -321,7 +327,7 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       <Lights lightRef={lightRef} />
       <CameraRig aim={aim} />
       <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} meetingMode={meetingMode} myTasks={myTasks} onClick={onClick} />
-      <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : GUESTS.includes(id as (typeof GUESTS)[number]) ? onClick("share") : undefined)} />
+      <CrewLayer frame={frame} labelHost={labelHost} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : GUESTS.includes(id as (typeof GUESTS)[number]) ? onClick("share") : undefined)} />
       {/* 이름표는 늘 붙여 두고 연출 중엔 감추기만 한다. 지웠다 다시 만들면 drei Html이 렌더 도중 떼어져 React 경고가 난다. */}
       <Labels onClick={onClick} hidden={cinematic} host={labelHost} meetingMode={meetingMode} />
     </>
@@ -425,10 +431,17 @@ function Lights({ lightRef }: { lightRef: React.MutableRefObject<Light> }) {
 
 function CameraRig({ aim }: { aim: React.MutableRefObject<CameraAim> }) {
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
+  const fit = useRef<{ aspect: number; shot: (typeof SHOTS)["overview"] } | null>(null);
+  const fitted = (aspect: number) => {
+    const key = Math.round(aspect * 100) / 100;
+    if (!fit.current || fit.current.aspect !== key) fit.current = { aspect: key, shot: fitShot(SHOTS.overview, key) };
+    return fit.current.shot;
+  };
   const lookAt = useRef(new Vector3(...SHOTS[aim.current.shot].target));
   const placed = useRef(false);
   useFrame((_, dt) => {
-    const shot = SHOTS[aim.current.shot];
+    // 전체 구도는 캔버스 비율에 맞춰 사무실 전체가 늘 들어오게(오른쪽 패널이 열려 좁아져도 잘리지 않게).
+    const shot = aim.current.shot === "overview" ? fitted(camera.aspect) : SHOTS[aim.current.shot];
     // 처음 한 번은 바로 그 구도에 놓는다(출근 전 화면이 전체 샷에서 날아오지 않게).
     const k = placed.current ? 1 - Math.exp(-dt * aim.current.rate) : 1;
     placed.current = true;
