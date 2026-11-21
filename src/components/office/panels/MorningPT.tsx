@@ -1,7 +1,7 @@
 "use client";
 /**
  * 회의실 · 아침 PT.
- * 전사문(글 입력, 음성은 AI 담당 작업) → 업무 초안 만들기(Solar, 실패하면 서버 규칙 초안) → 칸 고치기 → 확정.
+ * 전사문(녹음 → OpenAI 음성 인식, 안 되면 글 입력) → 업무 초안 만들기(Solar, 실패하면 서버 규칙 초안) → 칸 고치기 → 확정.
  * 칸은 입력을 마칠 때(blur) 한 번만 서버에 보낸다. 빈 칸은 '확인 필요'로 보인다.
  */
 import { useEffect, useState } from "react";
@@ -9,6 +9,7 @@ import { Clock } from "@/lib/office/time";
 import { api, type OfficeView, type SolarErrorInfo } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, LEVEL_NAME, LevelBadge, Notice, PanelHeader } from "../ui";
+import { VoiceInput } from "../voice/VoiceInput";
 
 type Draft = OfficeView["morningPT"]["drafts"][number];
 
@@ -79,6 +80,13 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
     if (transcript !== view.state.day.transcript) await office.save("setTranscript", { transcript });
   };
 
+  // 인식된 글은 적어 둔 전사문 뒤에 덧붙이고 바로 저장한다(직접 적은 글을 지우지 않는다).
+  const addSpoken = (text: string) => {
+    const next = transcript.trim() ? `${transcript.trimEnd()}\n${text}` : text;
+    setTranscript(next);
+    void office.save("setTranscript", { transcript: next });
+  };
+
   const makeDraft = async () => {
     if (!transcript.trim()) {
       office.notify("전사문이 비어 있습니다.\n직접 적거나 '예시 넣기'를 눌러 주세요.");
@@ -119,9 +127,7 @@ function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view:
           </button>
         }
       >
-        <Notice kind="info" title="말로 하기는 준비 중입니다">
-          {"지금은 할 일을 직접 적어 주세요.\n녹음은 이 기기 안에서 글로 옮긴 뒤 바로 지웁니다."}
-        </Notice>
+        <VoiceInput onText={addSpoken} disabled={office.busy || drafting} />
         <textarea
           className="field"
           aria-label="전사문"
