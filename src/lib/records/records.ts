@@ -5,11 +5,10 @@
  * 개인적인 미완료 사유는 기본으로 넣지 않는다. 링크 결과물은 서비스가 본문을 읽지 않았다고 표시한다.
  */
 import {
-  MEETING_ROLE_NAME,
+  type ColleagueDept,
   type ColleagueSource,
   type Review,
   type SubmissionKind,
-  speakerOf,
   TASK_OUTCOME_LABEL,
   TASK_STATUS_LABEL,
   type DayRecord,
@@ -80,14 +79,19 @@ export interface RecordsPayload {
 
 const isDone = (t: WorkTask) => t.status === "submitted" || t.status === "reviewed" || t.outcome === "adjust";
 
+/** 부서 이름(AI 동료 프롬프트 문서 2장). */
+const DEPT_LABEL: Record<ColleagueDept, string> = { dev_lead: "개발팀장", designer: "디자인팀", marketer: "마케팅팀", planner: "기획팀" };
+
+/** AI 동료(팀장 사전 보고·부서 회의)가 물은 질문과, 그 다음 내 답을 짝짓는다. */
 function questionsOf(turns: ShareTurn[]): RecordQuestion[] {
   const out: RecordQuestion[] = [];
   turns.forEach((t, i) => {
-    const question = t.role === "planner" ? t.reply?.question?.trim() : "";
+    const question = t.role === "colleague" ? t.reply?.question?.trim() : "";
     if (!question) return;
     const answer = turns.slice(i + 1).find((n) => n.role === "user")?.text?.trim() ?? "";
+    const dept = t.dept ?? t.reply?.department;
     out.push({
-      department: MEETING_ROLE_NAME[speakerOf(t)].department,
+      department: dept ? DEPT_LABEL[dept] : "",
       question,
       reason: t.reply?.question_reason?.trim() ?? "",
       answer,

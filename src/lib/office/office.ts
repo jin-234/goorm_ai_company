@@ -31,16 +31,18 @@ import {
   type EmployeeProfile,
   isIncoming,
   type Mail,
-  PART_MAX_QUESTIONS,
-  type MeetingRoleId,
   newTask,
   newWorkDay,
-  type PlannerReply,
+  type ColleagueDept,
+  type ColleagueMeetingRole,
+  type ColleagueRecent,
+  type ColleagueReply,
+  emptyColleagueRecent,
+  newShareSession,
+  type ShareSession,
+  type Minutes,
   readScopeOf,
   type Review,
-  type SharePart,
-  sharePartsOf,
-  sharePartState,
   STATE_VERSION,
   type Submission,
   type SubmissionKind,
@@ -76,6 +78,7 @@ import {
   mondayOfWeek,
   nextWorkday,
   sameDay,
+  isWeekend,
 } from "./time";
 
 function makeDayFromString(key: string): DayKey {
@@ -97,6 +100,8 @@ export interface OfficeState {
   pendingCarry: WorkTask[];
   /** 미리 알린 쉬는 날("YYYY-MM-DD"). 결근 후보로 세지 않는다. */
   daysOff: string[];
+  /** AI 동료 반복 방지용 최근 사용 기록(렌즈·질문 형식·변화구·페르소나, 각 최근 12개). 옛 상태에는 없다. */
+  colleagueRecent?: ColleagueRecent;
 }
 
 export interface SkipResult {
@@ -122,12 +127,28 @@ export interface ConfirmInput {
   tasks: (TaskInput & { carryId?: string })[];
 }
 
-export interface ShareTurnInput {
-  role: "user" | "planner";
-  text?: string;
-  reply?: PlannerReply;
-  source?: ColleagueSource;
-}
+/** 부록 B 고정 안내 문구(docs/ai-colleague/AI동료_프롬프트.md). */
+const REVIEW_GREETING =
+  "회의 들어가기 전에 오늘 한 거 먼저 같이 볼까요? 디자인·마케팅·기획팀에 설명하기 전에 제가 한번 확인할게요. 뭘 했는지 들려줘요.";
+const TEAM_NAME: Record<ColleagueDept, string> = { dev_lead: "개발팀", designer: "디자인팀", marketer: "마케팅팀", planner: "기획팀" };
+const meetingGreeting = (host: ColleagueDept, participants: ColleagueDept[]) =>
+  `${TEAM_NAME[host]}에서 진행할게요. 오늘 ${participants.map((d) => TEAM_NAME[d].replace(/팀$/, "")).join("·")}팀에서 들어와 있어요. 개발팀에서 오늘 작업한 내용을 공유해 주시면 한 분씩 돌아가며 질문할게요.`;
+
+/** 회의 참석 부서(문서 1장 순서)와 진행자. 기획팀이 빠지면 첫 참석 부서가 진행한다. */
+export const MEETING_PARTICIPANTS: ColleagueDept[] = ["designer", "marketer", "planner"];
+export const MEETING_HOST_DEPT: ColleagueDept = "planner";
+/** 팀장 사전 보고 질문 상한(13.1). */
+export const REVIEW_QUESTION_LIMIT = 2;
+/** 최근 사용 기록 길이(13.4). */
+const RECENT_LIMIT = 12;
+
+/** 0 이상 1 미만 난수. 시험에서 바꿔 끼운다. */
+export type Random = () => number;
+
+const pushRecent = (list: string[], value: string) => {
+  if (!value) return list;
+  return [...list.filter((v) => v !== value), value].slice(-RECENT_LIMIT);
+};
 
 export interface CloseOutcome {
   submitted: number;
@@ -157,6 +178,7 @@ export class Office implements OfficeState {
   mails: Mail[];
   pendingCarry: WorkTask[];
   daysOff: string[];
+  colleagueRecent: ColleagueRecent = emptyColleagueRecent();
 
   constructor(startingAt: Instant, profile: EmployeeProfile = defaultProfile()) {
     this.version = STATE_VERSION;
@@ -192,6 +214,17 @@ export class Office implements OfficeState {
     if (!hadAttendance && this.day.checkInAt != null) this.day.level = "light";
     for (const t of [...this.day.tasks, ...this.pendingCarry]) if (!isTaskLevel(t.level)) t.level = 1;
     this.daysOff ??= [];
+    this.colleagueRecent ??= emptyColleagueRecent();
+    // 회의 흐름(팀장 사전 보고 → 부서 회의)이 생기기 전의 공유 기록: 사용자 발언만 살린다.
+    const share = this.day.share as Partial<ShareSession> & { turns?: { role: string; text?: string; at: number; id: string }[] };
+    if (!("stage" in share)) {
+      const userTurns = (share.turns ?? []).filter((t) => t.role === "user" && t.text);
+      this.day.share = {
+        ...newShareSession(),
+        endedBy: (share.endedBy as ShareSession["endedBy"]) ?? null,
+        turns: userTurns.map((t) => ({ id: t.id, at: t.at, role: "user", stage: "meeting", text: t.text })),
+      };
+    }
   }
 
   toJSON(): OfficeState {
@@ -205,6 +238,7 @@ export class Office implements OfficeState {
       mails: this.mails,
       pendingCarry: this.pendingCarry,
       daysOff: this.daysOff,
+      colleagueRecent: this.colleagueRecent,
     };
   }
 
@@ -247,6 +281,14 @@ export class Office implements OfficeState {
   /** 지금 적용하는 강도. 출근 전에는 입사·설정에서 고른 강도. */
   get level(): EnforcementLevel {
     return this.day.level ?? this.profile.enforcement;
+  }
+
+  /**
+   * 오늘 지각·결근을 세는지. 보통·엄격이어도 토·일요일은 세지 않는다(활동은 할 수 있다).
+   * 다음 활동일은 원래 주말을 건너뛰지만, 시계가 실제 한국 시각이 되면서 첫날이 주말일 수 있다.
+   */
+  get countsAttendance(): boolean {
+    return this.rules.attendance && !isWeekend(this.day.date);
   }
 
   get rules(): EnforcementInfo {
@@ -376,7 +418,7 @@ export class Office implements OfficeState {
     this.day.checkInMethod = method;
     this.day.phase = "morningPT";
     this.day.presence = "present";
-    const late = this.rules.attendance && !this.day.returning && minuteOfDay(this.now) > this.profile.activityStart;
+    const late = this.countsAttendance && !this.day.returning && minuteOfDay(this.now) > this.profile.activityStart;
     this.day.isLate = late;
     this.log("checkIn", `활동 시작 ${hm(this.now)}${method === "camera" ? " · 카메라 확인" : method === "noCamera" ? " · 카메라 없이" : ""}`);
     if (this.day.returning) this.log("returned", "다시 돌아옴 · 오늘은 지각으로 세지 않음");
@@ -532,65 +574,162 @@ export class Office implements OfficeState {
     this.log("earlyLeave", `마감 시각(${Clock.hm(this.profile.activityEnd)}) 전 마감${this.day.earlyLeaveReason ? ` · ${this.day.earlyLeaveReason}` : ""}`);
   }
 
-  startSharing(earlyReason = ""): void {
+  /**
+   * 회의실 발표를 연다: ① 개발팀장 사전 보고부터. 팀장 페르소나는 최근에 안 만난 성향에서 고르고(문서 2장),
+   * 부록 B 인사를 고정 문구 턴으로 남긴다.
+   */
+  startSharing(earlyReason = "", random: Random = Math.random): void {
     if (!this.canStartSharing) throw OfficeError.notAllowedNow("회의실 발표는 과제를 확정하고 수행한 뒤에 시작합니다.");
     this.leaveEarly(earlyReason);
     this.closeSpans(this.now);
     this.day.phase = "sharing";
-    this.day.share.state = "awaiting_explanation";
-    this.day.share.parts = sharePartsOf(this.day.tasks);
-    this.day.share.maxQuestions = this.day.share.parts.length * PART_MAX_QUESTIONS;
-    this.log("shareStart", `회의실 발표 시작 ${hm(this.now)}`);
+    const share = { ...newShareSession(), stage: "review" as const };
+    share.review = { personaId: this.pickPersona("dev_lead", random), questionCount: 0, confirm: null };
+    this.day.share = share;
+    this.addSystemTurn("review", REVIEW_GREETING);
+    this.log("shareStart", `회의실 발표 시작 · 개발팀장 사전 보고 ${hm(this.now)}`);
   }
 
-  /** 발표 파트(과제마다 한 부서). 옛 기록에 없으면 과제로 다시 만든다. */
-  get shareParts(): SharePart[] {
-    return this.day.share.parts ?? sharePartsOf(this.day.tasks);
+  /** 부서별 페르소나 고르기: 최근에 만난 성향을 빼고 무작위. 다 만났으면 가장 오래전에 만난 것부터. */
+  pickPersona(dept: ColleagueDept, random: Random = Math.random): string {
+    const prefix = { dev_lead: "P_dev_", designer: "P_des_", marketer: "P_mkt_", planner: "P_pln_" }[dept];
+    const all = ["A", "B", "C"].map((x) => prefix + x);
+    const recent = this.colleagueRecent.personas;
+    const fresh = all.filter((id) => !recent.includes(id));
+    const pool = fresh.length > 0 ? fresh : [all.sort((a, b) => recent.indexOf(a) - recent.indexOf(b))[0]];
+    const id = pool[Math.min(pool.length - 1, Math.floor(random() * pool.length))];
+    this.colleagueRecent.personas = pushRecent(this.colleagueRecent.personas, id);
+    return id;
+  }
+
+  private addSystemTurn(stage: "review" | "meeting", text: string): void {
+    this.day.share.turns.push({ id: crypto.randomUUID(), at: this.now, role: "system", stage, text });
+  }
+
+  /** 지금 사용자가 말할 수 있는지(팀장 사전 보고 중이거나 부서 회의 중). */
+  get canTalkInShare(): boolean {
+    const stage = this.day.share.stage;
+    return this.day.phase === "sharing" && (stage === "review" || stage === "meeting");
   }
 
   /**
-   * 회의실에서 다음에 말할 동료: 지금 파트를 맡은 부서. 파트마다 질문은 PART_MAX_QUESTIONS개까지 하고,
-   * 질문 없이 말하면(마무리) 다음 파트를 맡은 부서로 넘어간다. 모든 파트가 끝난 뒤에는 마지막 부서가 질문 없이 답한다.
+   * 사용자 발언을 남긴다(AI 호출 전에 먼저 기록해 실패해도 설명이 사라지지 않게).
+   * 난이도(문서 4장): 구체적인 답 2번 연속이면 +1, "모르겠다"·건너뛰기면 -1.
    */
-  get shareSpeaker(): { role: MeetingRoleId; canAsk: boolean; part: number } {
-    const parts = this.shareParts;
-    const { index, done, askedInPart } = sharePartState(parts, this.day.share.turns);
-    return { role: parts[index].role, canAsk: !done && askedInPart < PART_MAX_QUESTIONS, part: index };
-  }
-
-  /**
-   * 공유 대화 한 턴을 남긴다. 동료 턴은 지금 파트를 맡은 부서를 붙이고, 질문할 수 없는 차례의 질문은 받지 않는다.
-   * 사용자가 이미 답한 질문을 다시 묻지 않는 판단은 AI 쪽에서 하고, 여기서는 기록과 차례·상한만 지킨다.
-   */
-  recordShareTurn(input: ShareTurnInput): void {
-    if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("발표 대화는 회의실 발표 중에만 남깁니다.");
+  recordUserTurn(text: string): { lowered: boolean } {
+    if (!this.canTalkInShare) throw OfficeError.notAllowedNow("지금은 회의실 발표에서 말할 차례가 아닙니다.");
+    const body = text.trim();
+    if (!body) throw OfficeError.notAllowedNow("설명할 내용을 적어 주세요.");
     const share = this.day.share;
-    if (input.role === "user") {
-      const text = (input.text ?? "").trim();
-      if (!text) throw OfficeError.notAllowedNow("설명할 내용을 적어 주세요.");
-      share.turns.push({ id: crypto.randomUUID(), role: "user", at: this.now, text: text.slice(0, WorkRules.maxFieldLength) });
-      if (share.state === "awaiting_explanation") share.state = "clarifying";
-      this.log("shareTurn", "회의실에서 발표");
-      return;
+    const stage = share.stage === "review" ? "review" : "meeting";
+    share.turns.push({ id: crypto.randomUUID(), at: this.now, role: "user", stage, text: body.slice(0, WorkRules.maxFieldLength) });
+    const answeredQuestion = share.turns.some((t) => t.role === "colleague" && t.stage === stage && t.reply?.question);
+    let lowered = false;
+    if (/모르겠|모르겟|잘 몰라|건너뛸|패스/.test(body)) {
+      share.difficulty = Math.max(1, share.difficulty - 1);
+      share.concreteStreak = 0;
+      lowered = true;
+    } else if (answeredQuestion && body.length >= 30) {
+      share.concreteStreak += 1;
+      if (share.concreteStreak >= 2) {
+        share.difficulty = Math.min(3, share.difficulty + 1);
+        share.concreteStreak = 0;
+      }
+    } else {
+      share.concreteStreak = 0;
     }
-    const reply = input.reply;
-    if (!reply) throw OfficeError.notAllowedNow("동료 응답이 비어 있습니다.");
-    const { role: speaker, canAsk } = this.shareSpeaker;
-    const asks = reply.question.trim().length > 0;
-    if (asks && (!canAsk || share.questionCount >= share.maxQuestions)) throw new OfficeError("shareQuestionLimit");
-    share.turns.push({ id: crypto.randomUUID(), role: "planner", speaker, at: this.now, reply, source: input.source ?? "manual" });
-    if (asks) share.questionCount += 1;
-    // 파트마다 그 부서가 마지막으로 정리한 것을 이어 붙인다(다음 부서가 앞 파트 정리를 지우지 않게).
-    const { turnPart, done } = sharePartState(this.shareParts, share.turns);
-    const lastByPart = new Map<number, PlannerReply>();
-    share.turns.forEach((t, i) => {
-      if (t.role === "planner" && t.reply) lastByPart.set(turnPart[i], t.reply);
-    });
-    const unique = (xs: string[]) => xs.filter((x, i) => xs.indexOf(x) === i);
-    share.knownFacts = unique([...lastByPart.values()].flatMap((r) => r.known_facts));
-    share.openQuestions = unique([...lastByPart.values()].flatMap((r) => r.open_questions));
-    // 질문이 없으면 이 파트를 마치고 다음 파트로 넘어간다. 마지막 파트까지 마쳤으면 정리할 수 있다.
-    share.state = done ? "ready_to_summarize" : "clarifying";
+    this.log("shareTurn", stage === "review" ? "개발팀장에게 보고" : "회의실에서 발표");
+    return { lowered };
+  }
+
+  /** AI 동료 발언을 남기고 진행 상태를 바꾼다(13.1). 반복 방지 기록·설명한 용어도 함께 갱신한다. */
+  recordColleagueTurn(dept: ColleagueDept, meetingRole: ColleagueMeetingRole, reply: ColleagueReply, source: ColleagueSource): void {
+    if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("회의실 발표 중이 아닙니다.");
+    const share = this.day.share;
+    const stage = meetingRole === "review" || meetingRole === "confirm" ? "review" : "meeting";
+    share.turns.push({ id: crypto.randomUUID(), at: this.now, role: "colleague", stage, dept, meetingRole, reply, source });
+    const asked = reply.question.trim().length > 0;
+    if (asked) {
+      if (reply.lens_id) share.usedLenses = pushRecent(share.usedLenses, reply.lens_id);
+      if (reply.question_type) {
+        share.usedQuestionTypes = pushRecent(share.usedQuestionTypes, reply.question_type);
+        if (reply.question_type.startsWith("C")) share.usedCurveballs = pushRecent(share.usedCurveballs, reply.question_type);
+      }
+      const recent = this.colleagueRecent;
+      recent.lenses = pushRecent(recent.lenses, reply.lens_id);
+      recent.questionTypes = pushRecent(recent.questionTypes, reply.question_type);
+      if (reply.question_type.startsWith("C")) recent.curveballs = pushRecent(recent.curveballs, reply.question_type);
+    }
+    for (const id of [reply.term_explain?.id ?? "", ...reply.terms_used.map((t) => t.id)]) {
+      if (id && !share.explainedTerms.includes(id)) share.explainedTerms.push(id);
+    }
+    if (reply.known_facts.length) share.knownFacts = [...reply.known_facts];
+    share.openQuestions = [...reply.open_questions];
+
+    if (meetingRole === "review" && share.review && asked && !reply.can_finish) share.review.questionCount += 1;
+    if (meetingRole === "confirm" && share.review) {
+      share.review.confirm = reply.confirm ?? { decision: "approved_with_notes", summary: reply.acknowledgement, notes: [] };
+      share.stage = "confirm";
+      this.log("shareTurn", `개발팀장 컨펌 · ${share.review.confirm.decision}`);
+    }
+    const meeting = share.meeting;
+    if (meeting && meetingRole === "ask") {
+      meeting.awaitingFeedback = dept;
+      meeting.nextAsk += 1;
+    }
+    if (meeting && meetingRole === "feedback") meeting.awaitingFeedback = null;
+    if (meeting && meetingRole === "close") {
+      meeting.close = { recap: reply.acknowledgement, openByDept: [...reply.open_questions], tryNext: reply.feedback?.try_next ?? "" };
+      meeting.awaitingFeedback = null;
+      share.stage = "closed";
+      this.log("shareTurn", `부서 회의 정리 · ${meeting.round}바퀴`);
+    }
+  }
+
+  get canEnterMeeting(): boolean {
+    return this.day.phase === "sharing" && (this.day.share.stage === "confirm" || this.day.share.stage === "review");
+  }
+
+  /** ② 부서 회의로 들어간다. 컨펌 결과와 관계없이 들어갈 수 있다(문서 1장). */
+  enterMeeting(random: Random = Math.random): void {
+    if (!this.canEnterMeeting) throw OfficeError.notAllowedNow("부서 회의는 팀장 사전 보고 뒤에 들어갑니다.");
+    const share = this.day.share;
+    const participants = MEETING_PARTICIPANTS.map((dept) => ({ dept, personaId: this.pickPersona(dept, random) }));
+    const host = participants.some((p) => p.dept === MEETING_HOST_DEPT) ? MEETING_HOST_DEPT : participants[0].dept;
+    share.meeting = {
+      host,
+      participants,
+      round: 1,
+      nextAsk: 0,
+      awaitingFeedback: null,
+      curveballDept: participants[Math.min(participants.length - 1, Math.floor(random() * participants.length))].dept,
+      close: null,
+    };
+    share.stage = "meeting";
+    this.addSystemTurn("meeting", meetingGreeting(host, participants.map((p) => p.dept)));
+    this.log("shareTurn", "부서 회의 시작");
+  }
+
+  get canAnotherRound(): boolean {
+    return this.day.phase === "sharing" && this.day.share.stage === "closed" && this.day.share.meeting != null;
+  }
+
+  /** 회의를 한 바퀴 더 한다(13.1). 회의록은 바퀴가 끝나면 새로 정리해 덮어쓴다. */
+  anotherRound(random: Random = Math.random): void {
+    if (!this.canAnotherRound) throw OfficeError.notAllowedNow("회의 정리가 끝난 뒤에 한 바퀴 더 할 수 있습니다.");
+    const meeting = this.day.share.meeting!;
+    meeting.round += 1;
+    meeting.nextAsk = 0;
+    meeting.awaitingFeedback = null;
+    meeting.close = null;
+    meeting.curveballDept = meeting.participants[Math.min(meeting.participants.length - 1, Math.floor(random() * meeting.participants.length))].dept;
+    this.day.share.stage = "meeting";
+    this.log("shareTurn", `부서 회의 ${meeting.round}바퀴`);
+  }
+
+  /** 회의록을 붙인다(12장). */
+  setMinutes(minutes: Minutes): void {
+    this.day.share.minutes = minutes;
   }
 
   /** 공유를 끝내고 하루 마감으로 간다. 수행 중에 바로 부르면 공유를 건너뛴 것으로 남긴다(공유가 맞지 않는 학습). */
@@ -603,7 +742,6 @@ export class Office implements OfficeState {
       this.log("shareEnd", "회의실 발표 건너뜀");
     } else if (this.day.phase === "sharing") {
       share.endedBy = reason;
-      if (share.turns.length > 0) share.state = "user_confirmed";
       this.log("shareEnd", reason === "done" ? "회의실 발표 마침" : "회의실 발표를 사용자가 종료");
     } else {
       throw OfficeError.notAllowedNow("회의실 발표 중이 아닙니다.");
@@ -997,7 +1135,7 @@ export class Office implements OfficeState {
     const r = this.rules;
     const end = this.activityEndDate;
 
-    if (this.day.phase === "beforeCheckIn" && this.onboarded && r.attendance && !this.day.absentCandidate && !this.day.dayOff && this.now >= end) {
+    if (this.day.phase === "beforeCheckIn" && this.onboarded && this.countsAttendance && !this.day.absentCandidate && !this.day.dayOff && this.now >= end) {
       this.markAbsent(end);
     }
 
@@ -1043,7 +1181,7 @@ export class Office implements OfficeState {
   startNextWorkday(): void {
     if (!this.canStartNextWorkday) throw OfficeError.notAllowedNow("하루 마감을 확정한 뒤에 다음 활동일로 넘어갈 수 있습니다.");
     const missed = this.day.checkInAt == null;
-    if (missed && this.rules.attendance && !this.day.dayOff && !this.day.absentCandidate) this.markAbsent(this.now);
+    if (missed && this.countsAttendance && !this.day.dayOff && !this.day.absentCandidate) this.markAbsent(this.now);
     const real = this.realNow;
     // 며칠 앱을 열지 않았다가 돌아온 경우도 '돌아온 날'이다. 열지 않은 날은 결근 후보로 세지 않는다.
     const skippedDays = real != null && dayAfter(dayKeyOf(real), nextWorkday(this.day.date));

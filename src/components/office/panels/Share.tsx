@@ -1,34 +1,28 @@
 "use client";
 /**
- * 회의실 · 타 부서 공유(발표). 타 부서 AI 동료들이 회의실에 와 있고, 내가 오늘 한 일을 발표한다(개정 기획서 3.1, 4.2, 4.3 B·E).
- * 발표는 과제(파트)마다 그 일을 이어받을 부서 한 곳과 짧게 대화하고, 그 부서가 마무리하면 다음 파트의 부서로 넘어간다.
- * 사용자는 건너뛰거나 언제든 마칠 수 있다. AI 미연결이면 정해진 안내를 'AI가 말한 것'처럼 보이지 않게 따로 표시한다.
+ * 타 부서 공유(AI 동료 프롬프트 문서 1·5·10·12·13장, 부록 B).
+ * ① 개발팀장 사전 보고: 팀장 인사 → 내 설명 → 피드백+질문(최대 2회) → 컨펌 카드. 결과와 관계없이 회의로 갈 수 있다.
+ * ② 부서 회의(디자인·마케팅·기획, 진행 기획팀): 진행자 인사 → 내 설명 → 부서마다 질문 → 답 → 피드백·설명 확인
+ *    → 한 바퀴 뒤 진행자 정리(되말하기·부서별 남은 확인·다음 행동), 필요하면 한 바퀴 더.
+ * ③ 회의록: 서버가 정리한 날짜별 폴더의 파일을 보고 내려받는다.
+ * 모든 동료는 가상 인물이다. AI 연결 전 예시 응답·AI 미연결 양식은 AI가 말한 것처럼 보이지 않게 표시한다.
  */
 import { useEffect, useRef, useState } from "react";
-import { MEETING_ROLE_NAME, type MeetingRoleId, type SharePart, sharePartsOf, sharePartState } from "@/lib/office/models";
-import { api, isManual, isSample, type OfficeView, type PlannerReply, type ShareTurn } from "../api";
+import { api, isManual, isSample, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, ManualMark, Notice, PanelHeader, type PlaceId, SampleMark } from "../ui";
-import { SubmissionLine } from "./TaskList";
 import { VoiceInput } from "../voice/VoiceInput";
-
-const SKIP_TEXT = "이 질문은 건너뛸게요.";
-
-/** 질문 근거(서버 question_basis·basis_ref). 가이드로 만든 질문을 실제 기획자 발언처럼 보이지 않게 구분한다. */
-function basisText(reply: PlannerReply, speaker: MeetingRoleId): string | null {
-  const r = reply as PlannerReply & { question_basis?: string; basis_ref?: string };
-  const ref = r.basis_ref?.trim();
-  switch (r.question_basis) {
-    case "role_need":
-      return `질문 근거: 역할상 필요 · ${MEETING_ROLE_NAME[speaker].department} 업무에 필요한 정보`;
-    case "ux_guide":
-      return `질문 근거: 공개 가이드 기반 시나리오${ref ? ` · ${ref}` : ""}`;
-    case "collected_case":
-      return `질문 근거: 현직자 인터뷰 사례${ref ? ` · ${ref}` : ""}`;
-    default:
-      return null;
-  }
-}
+import {
+  type ColleagueReply,
+  DEPT_NAME,
+  type DeptId,
+  LAYER_NAME,
+  type MeetingTurn,
+  shareOf,
+  type ShareView,
+  STATUS_NAME,
+} from "./meetingTypes";
+import { SubmissionLine } from "./TaskList";
 
 /** 설명할 때 놓치기 쉬운 상황. 누르면 입력창에 말머리를 넣는다. */
 const MISSED_CASES: [string, string][] = [
@@ -38,206 +32,309 @@ const MISSED_CASES: [string, string][] = [
   ["잘못 입력했을 때", "잘못 입력하면 "],
 ];
 
-function PlannerBubble({ reply, speaker, manual, sample }: { reply: PlannerReply; speaker: MeetingRoleId; manual: boolean; sample: boolean }) {
-  const name = MEETING_ROLE_NAME[speaker];
-  if (manual) {
-    return (
-      <div className="card" style={{ background: "var(--paper-deep)", gap: 6, padding: 12 }}>
-        <ManualMark text={`AI 미연결 · ${name.department} 정해진 안내 문구`} />
-        <div className="pre">{[reply.acknowledgement, reply.question].filter(Boolean).join("\n")}</div>
-      </div>
-    );
-  }
+const DECISION_KIND = { approved: "ok", approved_with_notes: "info", revise: "warning" } as const;
+
+function speakerOf(share: ShareView, dept: DeptId | undefined) {
+  if (!dept) return { title: "AI 동료", persona: "" };
+  const base = DEPT_NAME[dept];
+  if (dept === "dev_lead") return { title: `${base.name} · ${base.team}`, persona: share.review?.lead.personaLabel ?? "" };
+  const p = share.meeting?.participants.find((x) => x.dept === dept);
+  const host = share.meeting?.host === dept ? " · 진행" : "";
+  return { title: `${p?.name ?? base.name} · ${p?.team ?? base.team}${host}`, persona: p?.personaLabel ?? "" };
+}
+
+function ColleagueCard({ turn, share }: { turn: MeetingTurn; share: ShareView }) {
+  const r = turn.reply as ColleagueReply;
+  const who = speakerOf(share, turn.dept);
+  const manual = isManual(turn.source);
+  const isClose = turn.meetingRole === "close";
+  const term = r.term_explain ?? (r.termFallback ? { term: r.termFallback.term, plain: r.termFallback.plain, example: "", why_we_use: "" } : null);
   return (
-    <div className="card" style={{ gap: 6, padding: 12, borderLeft: "4px solid var(--green)" }}>
+    <div
+      className="card"
+      style={{ gap: 6, padding: 12, borderLeft: manual ? undefined : "4px solid var(--green)", background: manual ? "var(--paper-deep)" : undefined }}
+    >
       <div className="row" style={{ gap: 6 }}>
         <span className="small" style={{ fontWeight: 700, color: "var(--green)" }}>
-          {name.title} · {name.department}
+          {who.title}
         </span>
-        {sample ? <SampleMark /> : null}
+        {who.persona ? <span className="badge tag">{who.persona}</span> : null}
+        {isSample(turn.source) ? <SampleMark /> : null}
+        {manual ? <ManualMark text="AI 미연결 · 정해진 안내 문구" /> : null}
       </div>
-      {reply.acknowledgement ? <div className="pre">{reply.acknowledgement}</div> : null}
-      {reply.question ? (
+
+      {r.acknowledgement ? <div className="pre">{r.acknowledgement}</div> : null}
+
+      {r.feedback ? (
+        <div className="small" style={{ display: "grid", gap: 2, background: "var(--green-soft)", borderRadius: 8, padding: "8px 10px" }}>
+          {r.feedback.strength ? <div>잘한 점 · {r.feedback.strength}</div> : null}
+          {r.feedback.perspective ? <div>{isClose ? "정리" : "직무 관점"} · {r.feedback.perspective}</div> : null}
+          {r.feedback.try_next ? <div>다음에 써볼 것 · {r.feedback.try_next}</div> : null}
+        </div>
+      ) : null}
+
+      {r.question ? (
         <div>
           <div className="pre" style={{ fontWeight: 600 }}>
-            {reply.question}
+            {r.question}
           </div>
-          {reply.question_reason ? <div className="small muted pre">필요한 이유: {reply.question_reason}</div> : null}
-          {basisText(reply, speaker) ? <div className="small muted">{basisText(reply, speaker)}</div> : null}
+          {r.question_reason ? <div className="small muted pre">묻는 이유: {r.question_reason}</div> : null}
+        </div>
+      ) : null}
+
+      {r.basisLabel ? <div className="small muted">{r.basisLabel}</div> : null}
+
+      {r.understanding_check ? (
+        <div className="small" style={{ borderTop: "1px dashed var(--line)", paddingTop: 6 }}>
+          <span style={{ fontWeight: 700 }}>설명 확인</span> · {LAYER_NAME[r.understanding_check.layer]} ·{" "}
+          {STATUS_NAME[r.understanding_check.status]}
+          {r.understanding_check.gap ? <span className="muted"> — {r.understanding_check.gap}</span> : null}
+        </div>
+      ) : null}
+
+      {r.terms_used.length > 0 ? (
+        <div className="small muted">
+          용어 메모 · {r.terms_used.map((t) => `${t.term}: ${t.plain}`).join(" / ")}
+        </div>
+      ) : null}
+
+      {term ? (
+        <div className="small" style={{ background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 10px" }}>
+          <div style={{ fontWeight: 700 }}>용어 설명 · {term.term}</div>
+          <div>{term.plain}</div>
+          {term.example ? <div className="muted">예: {term.example}</div> : null}
+          {term.why_we_use ? <div className="muted">이 말을 쓰는 이유: {term.why_we_use}</div> : null}
+          {!r.term_explain ? <div className="muted">부서 용어집 뜻풀이</div> : null}
         </div>
       ) : null}
     </div>
   );
 }
 
-function UserBubble({ text }: { text: string }) {
-  return (
-    <div style={{ alignSelf: "flex-end", maxWidth: "85%", background: "var(--green-soft)", borderRadius: 12, padding: "10px 14px" }}>
-      <div className="small muted">나</div>
-      <div className="pre">{text}</div>
-    </div>
-  );
-}
-
-/** 부서마다 하는 일(회의에 온 부서 안내). */
-const ROLE_JOB: Record<MeetingRoleId, string> = {
-  planner: "사용자 안내 초안·출시 범위를 준비합니다. 회의 진행도 맡습니다.",
-  designer: "화면 상태와 사용자 흐름 시안을 정리합니다.",
-  operations: "이용 안내와 문제가 생겼을 때의 대응을 준비합니다.",
-};
-
-/** 파트 순서: 끝난 파트는 ✓, 지금 파트는 굵게. */
-function PartOrder({ parts, index, done, active }: { parts: SharePart[]; index: number; done: boolean; active: boolean }) {
-  return (
-    <ol className="small muted" aria-label="발표 파트" style={{ margin: 0, paddingLeft: 20 }}>
-      {parts.map((p, i) => {
-        const finished = done || i < index;
-        const now = active && !done && i === index;
-        return (
-          <li key={`${p.taskId ?? "day"}-${i}`} style={now ? { fontWeight: 700, color: "var(--ink, inherit)" } : undefined}>
-            {`${p.title} → ${MEETING_ROLE_NAME[p.role].department}`}
-            {finished ? " ✓" : now ? " · 지금" : ""}
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
-/** 대화 기록. 파트가 바뀌는 곳에 어느 파트를 어느 부서가 듣는지 줄을 넣는다. */
-function Transcript({ turns, parts, turnPart }: { turns: ShareTurn[]; parts: SharePart[]; turnPart: number[] }) {
+function Transcript({ turns, share }: { turns: MeetingTurn[]; share: ShareView }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }} aria-live="polite">
-      {turns.map((t, i) => {
-        const part = turnPart[i];
-        const divider =
-          i === 0 || part !== turnPart[i - 1] ? (
-            <PartDivider key={`part-${part}`} index={part} part={parts[part]} total={parts.length} />
-          ) : null;
-        const body =
-          t.role === "user" ? (
-            <UserBubble key={t.id} text={t.text ?? ""} />
-          ) : t.reply ? (
-            <PlannerBubble key={t.id} reply={t.reply} speaker={t.speaker ?? "planner"} manual={isManual(t.source)} sample={isSample(t.source)} />
-          ) : null;
-        return divider ? [divider, body] : body;
-      })}
+      {turns.map((t) =>
+        t.role === "user" ? (
+          <div key={t.id} style={{ alignSelf: "flex-end", maxWidth: "85%", background: "var(--green-soft)", borderRadius: 12, padding: "10px 14px" }}>
+            <div className="small muted">나</div>
+            <div className="pre">{t.text}</div>
+          </div>
+        ) : t.role === "system" ? (
+          <div key={t.id} className="small pre" style={{ color: "var(--ink-soft)", borderLeft: "3px solid var(--line)", paddingLeft: 10 }}>
+            {t.dept ? `${speakerOf(share, t.dept).title} · ` : ""}
+            {t.text}
+          </div>
+        ) : t.reply ? (
+          <ColleagueCard key={t.id} turn={t} share={share} />
+        ) : null,
+      )}
     </div>
   );
 }
 
-function PartDivider({ index, part, total }: { index: number; part: SharePart | undefined; total: number }) {
-  if (!part) return null;
+function Steps({ stage }: { stage: ShareView["stage"] }) {
+  const at = stage === "review" || stage === "confirm" ? 0 : stage === "meeting" ? 1 : stage === "closed" ? 2 : -1;
+  const items = ["① 개발팀장 사전 보고", "② 부서 회의", "③ 회의록"];
   return (
-    <div className="small muted" style={{ borderTop: "1px solid var(--line, #ddd)", paddingTop: 6 }}>
-      {`파트 ${index + 1}/${total} · ${part.title} · ${MEETING_ROLE_NAME[part.role].department}`}
+    <div className="row" aria-label="공유 단계">
+      {items.map((label, i) => (
+        <span key={label} className={`badge ${i === at ? "l3" : i < at ? "l1" : "tag"}`} aria-current={i === at ? "step" : undefined}>
+          {label}
+        </span>
+      ))}
     </div>
+  );
+}
+
+function download(name: string, markdown: string) {
+  const url = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function Minutes({ minutes }: { minutes: NonNullable<ShareView["minutes"]> }) {
+  const [open, setOpen] = useState(minutes.files[0]?.name ?? "");
+  const file = minutes.files.find((f) => f.name === open);
+  return (
+    <Card title="회의록" aside={<span className="badge tag">{minutes.folder}</span>}>
+      <p className="small muted pre" style={{ margin: 0 }}>
+        {minutes.aiSummarized
+          ? "AI가 대화 기록을 바탕으로 정리한 회의록입니다. 원문은 '99_전체 대화 기록'에서 확인하세요."
+          : "AI 정리 없음 · 대화 기록만으로 만든 회의록입니다."}
+      </p>
+      <div className="row" role="tablist" aria-label="회의록 파일">
+        {minutes.files.map((f) => (
+          <button
+            key={f.name}
+            role="tab"
+            aria-selected={f.name === open}
+            className={`btn small ${f.name === open ? "" : "secondary"}`}
+            onClick={() => setOpen(f.name)}
+          >
+            {f.name.replace(/\.md$/, "")}
+          </button>
+        ))}
+      </div>
+      {file ? (
+        <>
+          <div
+            className="pre small"
+            style={{ maxHeight: 360, overflow: "auto", background: "var(--paper)", border: "1px solid var(--line)", borderRadius: 8, padding: 12 }}
+          >
+            {file.markdown}
+          </div>
+          <div className="row">
+            <button className="btn secondary small" onClick={() => download(file.name, file.markdown)}>
+              이 파일 내려받기
+            </button>
+            <button className="btn plain small" onClick={() => minutes.files.forEach((f) => download(f.name, f.markdown))}>
+              모두 내려받기 ({minutes.files.length}개)
+            </button>
+          </div>
+        </>
+      ) : null}
+      <p className="small muted" style={{ margin: 0 }}>
+        회의록은 이 브라우저의 내 기록에만 남습니다. 다른 사람과 공유되지 않습니다.
+      </p>
+    </Card>
   );
 }
 
 export function Share({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: PlaceId) => void }) {
   const phase = view.phase.value;
-  const share = view.day.share;
-  const turns = share.turns;
-  const last = [...turns].reverse().find((t) => t.role === "planner");
+  const share = shareOf(view);
+  const stage = share.stage;
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
+  const [waited, setWaited] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
 
-  // 중괄호로 감싸 아무것도 돌려주지 않는다. 최근 브라우저의 scrollIntoView는 Promise를 돌려주는데,
-  // 그대로 돌려주면 React가 정리 함수로 부르다 'destroy is not a function'으로 멈춘다.
+  // 동료 발언이 여러 번 이어지고 회의록까지 만들면 5~30초쯤 걸린다. 기다린 시간을 보여 준다.
+  useEffect(() => {
+    if (!sending) return;
+    setWaited(0);
+    const t = setInterval(() => setWaited((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [sending]);
+
+  const stageTurns = stage === "meeting" || stage === "closed" ? (share.meeting?.turns ?? []) : (share.review?.turns ?? []);
+
+  // 중괄호로 감싸 아무것도 돌려주지 않는다(최근 브라우저의 scrollIntoView는 Promise를 돌려준다).
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
-  }, [turns.length]);
-
-  const header = (
-    <PanelHeader
-      place="회의실 · 타 부서 공유"
-      title="오늘 한 일 발표"
-      detail={"오늘 확정한 과제마다 그 일을 이어받을 부서 한 곳과 이야기합니다.\n한 부서와 대화가 끝나면 다음 과제를 맡은 부서로 넘어갑니다."}
-    />
-  );
-
-  const [manual, setManual] = useState(false);
+  }, [stageTurns.length]);
 
   const send = async (text: string) => {
     const body = text.trim();
     if (!body) return;
     setSending(true);
-    if (manual) {
-      // AI 미연결: 내 설명만 기록한다(AI 응답을 만들지 않는다).
-      const res = await office.act("recordShareTurn", { role: "user", text: body });
-      setSending(false);
-      if (res != null) setMessage("");
-      return;
-    }
-    let failed = false;
+    let replied = 0;
     await office.run(async () => {
-      const r = await api.share(body);
-      if (!r.reply) failed = true;
+      const r = (await api.share(body)) as { replies?: MeetingTurn[]; office?: OfficeView };
+      replied = r.replies?.length ?? 0;
       return { office: r.office ?? view };
     });
     setSending(false);
-    if (failed) {
-      // 서버는 실패한 말을 기록하지 않는다. 적은 글은 그대로 두고 직접 기록 방식으로 바꾼다.
-      setManual(true);
-      office.notify("AI 동료에 연결하지 못했습니다.\n적은 글은 그대로 있습니다. 직접 기록으로 남길 수 있습니다.");
-      return;
-    }
-    setMessage("");
+    // 실패하면 서버가 내 말을 기록하지 않으므로, 적은 글은 지우지 않고 그대로 둔다.
+    if (replied > 0) setMessage("");
   };
 
-  const finish = async (reason: "done" | "userStopped") => {
-    if ((await office.act("endSharing", { reason })) != null) {
+  const act = async (type: string, payload: Record<string, unknown> = {}, notice?: string) => {
+    if ((await office.act(type, payload)) != null && notice) office.notify(notice);
+  };
+
+  const finish = async () => {
+    if ((await office.act("endSharing", { reason: stage === "closed" ? "done" : "userStopped" })) != null) {
       office.notify("공유를 마쳤습니다.\n내 책상에서 하루 마감을 해 주세요.");
       onGo("desk");
     }
   };
 
-  if (phase === "beforeCheckIn" || phase === "morningPT" || (phase === "working" && turns.length === 0)) {
+  const inReview = stage === "review" || stage === "confirm";
+  const header = (
+    <PanelHeader
+      place={inReview ? "팀장 자리 · 사전 보고" : "회의실 · 부서 회의"}
+      title={inReview ? "개발팀장에게 먼저 보고" : stage === "closed" ? "회의를 마쳤습니다" : "오늘 한 일 공유 회의"}
+      detail={
+        inReview
+          ? "회의에 들어가기 전에 개발팀장에게 오늘 한 일을 먼저 설명합니다.\n팀장이 최대 두 번 묻고, 회의 전에 챙길 것을 알려 줍니다."
+          : "디자인·마케팅·기획팀 담당자가 회의실에 와 있습니다(진행: 기획팀).\n한 분씩 돌아가며 자기 업무에 필요한 것을 묻습니다."
+      }
+    />
+  );
+
+  // 공유를 시작하기 전
+  if (stage == null) {
     return (
       <div className="panel">
-        {header}
-        <Notice kind="info" title="결과물을 남긴 뒤 발표합니다">
-          {"내 책상에서 과제를 제출하거나 못 끝낸 것으로 정한 다음\n'회의실에서 발표하기'를 눌러 주세요."}
-          <div style={{ marginTop: 8 }}>
-            <button className="btn secondary small" onClick={() => onGo("desk")}>
-              내 책상으로
-            </button>
-          </div>
-        </Notice>
+        <PanelHeader place="회의실 · 타 부서 공유" title="오늘 한 일 공유" detail="개발팀장 사전 보고 → 디자인·마케팅·기획팀 회의 → 회의록 순서로 진행합니다." />
+        <Steps stage={null} />
+        {phase === "working" ? (
+          <Notice kind="info" title="결과물을 남겼다면 공유를 시작해 주세요">
+            {"내 책상에서 '공유 시작 · 팀장 사전 보고부터'를 누르면\n개발팀장 사전 보고부터 시작합니다."}
+            <div style={{ marginTop: 8 }}>
+              <button className="btn secondary small" onClick={() => onGo("desk")}>
+                내 책상으로
+              </button>
+            </div>
+          </Notice>
+        ) : (
+          <Notice kind="info" title="아직 공유할 때가 아닙니다">
+            내 책상에서 과제를 제출하거나 못 끝낸 것으로 정한 다음 공유를 시작합니다.
+          </Notice>
+        )}
       </div>
     );
   }
 
-  const active = phase === "sharing";
+  const active = phase === "sharing" && (stage === "review" || stage === "meeting") && view.can.talkInShare;
   const subs = view.day.submissions;
-  const parts = share.parts ?? sharePartsOf(view.day.tasks);
-  const { index: partIndex, done: allDone, turnPart } = sharePartState(parts, turns);
-  const current = parts[partIndex];
-  const currentDept = MEETING_ROLE_NAME[current.role].department;
-  // 지금 파트에서 아직 내가 말하지 않았으면, 이 파트를 설명할 차례다.
-  const partStarted = turns.some((t, i) => t.role === "user" && turnPart[i] === partIndex);
-  const roles = parts.map((p) => p.role).filter((r, i, a) => a.indexOf(r) === i);
+  const confirm = share.review?.confirm ?? null;
+  const meeting = share.meeting;
+  const total = meeting ? meeting.stats.clear + meeting.stats.partial + meeting.stats.unclear : 0;
+
   return (
     <div className="panel">
       {header}
+      <Steps stage={stage} />
 
-      <Card title="발표 순서와 듣는 부서 (가상 역할)">
-        <PartOrder parts={parts} index={partIndex} done={allDone} active={active} />
-        <ul className="small" style={{ margin: 0, paddingLeft: 18 }}>
-          {roles.map((r) => (
-            <li key={r}>{`${MEETING_ROLE_NAME[r].title}: ${ROLE_JOB[r]}`}</li>
-          ))}
-        </ul>
-        <p className="small muted" style={{ margin: 0 }}>
-          과제마다 맡은 부서가 자기 업무에 필요한 것만 한두 가지 묻습니다. 기술 퀴즈나 채점은 하지 않습니다.
-        </p>
-      </Card>
+      {inReview ? (
+        <Card title="이번에 듣는 사람">
+          <div className="row">
+            <span className="badge l3">AI 팀장 · 개발팀</span>
+            {share.review?.lead.personaLabel ? <span className="badge tag">{share.review.lead.personaLabel}</span> : null}
+            <span className="chip">{`질문 ${share.review?.questionCount ?? 0} / 최대 ${share.review?.maxQuestions ?? 2}`}</span>
+          </div>
+          <p className="small muted" style={{ margin: 0 }}>
+            팀장은 회의에서 할 말을 대신 써 주지 않습니다. 확인한 것과 추측을 나눠 설명하면 됩니다.
+          </p>
+        </Card>
+      ) : meeting ? (
+        <Card title={`회의 참석 (${meeting.round}바퀴째)`}>
+          <div className="row">
+            {meeting.participants.map((p) => (
+              <span key={p.dept} className="row" style={{ gap: 4 }}>
+                <span className={`badge ${p.dept === meeting.host ? "l3" : "l2"}`}>
+                  {p.team}
+                  {p.dept === meeting.host ? " · 진행" : ""}
+                </span>
+                <span className="badge tag">{p.personaLabel}</span>
+              </span>
+            ))}
+          </div>
+          <p className="small muted" style={{ margin: 0 }}>
+            모두 가상 인물입니다. 회의 참석자는 팀장 사전 보고 대화를 보지 못했습니다.
+          </p>
+        </Card>
+      ) : null}
 
-      <Card title="AI 동료들이 받는 내용">
+      <Card title="동료가 받는 내용">
         <p className="small muted pre" style={{ margin: 0 }}>
-          {"아래 설명과 오늘 남긴 결과물이 AI 동료들에게 전송됩니다.\n링크는 내용을 읽지 않으므로 설명을 기준으로 이야기합니다."}
+          {"내 설명과 오늘 남긴 결과물이 AI 동료에게 전송됩니다.\n링크는 내용을 읽지 않으므로 설명을 기준으로 이야기합니다."}
         </p>
         {subs.length === 0 ? (
           <div className="small muted">남긴 결과물이 없습니다. 설명만으로 대화합니다(설명 기준).</div>
@@ -253,60 +350,122 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
         )}
       </Card>
 
-      <Card
-        title="대화"
-        aside={<span className="chip">{`질문 ${share.questionCount} / 최대 ${share.maxQuestions}`}</span>}
-      >
-        {turns.length > 0 ? <Transcript turns={turns} parts={parts} turnPart={turnPart} /> : null}
-        {active && !allDone && !partStarted ? (
-          <Notice kind="info" title={`파트 ${partIndex + 1} · '${current.title}'을(를) ${currentDept}에 설명해 주세요`}>
-            {turns.length === 0 ? "한두 문장이면 됩니다. 예: 도시를 입력하면 날씨를 보여 주는 화면을 만들었습니다." : "앞 파트는 마쳤습니다. 이 과제에서 한 일과 결과를 이야기해 주세요."}
+      <Card title={inReview ? "사전 보고" : "회의"}>
+        {stageTurns.length === 0 ? <p className="muted" style={{ margin: 0 }}>대화를 준비하는 중입니다.</p> : <Transcript turns={stageTurns} share={share} />}
+        <div ref={endRef} />
+
+        {stage === "confirm" && confirm ? (
+          <div className="card" style={{ gap: 8, padding: 12, background: "var(--paper)" }}>
+            <Notice kind={DECISION_KIND[confirm.decision]} title={confirm.decisionLabel}>
+              {confirm.decision === "revise" ? "그래도 회의에 들어갈 수 있습니다. 아래 것을 회의에서 '확인 중'이라고 말하면 됩니다." : undefined}
+            </Notice>
+            <div>
+              <div className="small" style={{ fontWeight: 700 }}>
+                팀장이 이해한 내용
+              </div>
+              <div className="pre">{confirm.summary}</div>
+            </div>
+            {confirm.notes.length > 0 ? (
+              <div>
+                <div className="small" style={{ fontWeight: 700 }}>
+                  회의 전에 챙길 것
+                </div>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                  {confirm.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            <button
+              className="btn"
+              onClick={() => act("enterMeeting", {}, "회의실로 이동합니다.\n디자인·마케팅·기획팀이 기다리고 있습니다.")}
+              disabled={office.busy || !view.can.enterMeeting}
+            >
+              회의실로 가기
+            </button>
+          </div>
+        ) : null}
+
+        {stage === "closed" && meeting ? (
+          <div className="card" style={{ gap: 8, padding: 12, background: "var(--paper)" }}>
+            {meeting.close ? (
+              <>
+                <div>
+                  <div className="small" style={{ fontWeight: 700 }}>
+                    진행자 정리
+                  </div>
+                  <div className="pre">{meeting.close.recap}</div>
+                </div>
+                {meeting.close.openByDept.length > 0 ? (
+                  <div>
+                    <div className="small" style={{ fontWeight: 700 }}>
+                      부서별로 아직 확인할 것
+                    </div>
+                    <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
+                      {meeting.close.openByDept.map((o) => (
+                        <li key={o}>{o}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {meeting.close.tryNext ? (
+                  <div>
+                    <span className="small" style={{ fontWeight: 700 }}>
+                      다음 행동
+                    </span>{" "}
+                    {meeting.close.tryNext}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+            {total > 0 ? (
+              <div className="row" aria-label="설명 확인 통계">
+                <span className="badge l3">{`${STATUS_NAME.clear} ${meeting.stats.clear}`}</span>
+                <span className="badge l2">{`${STATUS_NAME.partial} ${meeting.stats.partial}`}</span>
+                <span className="badge none">{`${STATUS_NAME.unclear} ${meeting.stats.unclear}`}</span>
+              </div>
+            ) : null}
+            <div className="row">
+              {share.canAnotherRound ? (
+                <button className="btn secondary" onClick={() => act("anotherRound", {}, "한 바퀴 더 돌아가며 묻습니다.")} disabled={office.busy || !view.can.anotherRound}>
+                  한 바퀴 더
+                </button>
+              ) : null}
+              <button className="btn" onClick={finish} disabled={office.busy || !view.can.endSharing}>
+                공유 마치고 하루 마감으로
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {sending ? (
+          <Notice kind="info" title={`동료들이 차례로 답하는 중입니다 · ${waited}초`}>
+            {stage === "meeting" ? "부서마다 순서대로 답하고, 한 바퀴가 끝나면 회의록까지 정리합니다.\n30초쯤 걸릴 수 있습니다." : "팀장이 읽고 답하는 중입니다. 잠시만 기다려 주세요."}
           </Notice>
         ) : null}
-        <div ref={endRef} />
 
         {active ? (
           <>
-            {manual ? (
-              <Notice kind="info" title="직접 기록 · AI 미연결">
-                {"AI 동료에게 연결하지 못해, 내 설명만 기록합니다.\n과제를 맡은 부서가 알고 싶어 할 것을 생각하며 적어 보세요.\n· 기획: 누가 무엇을 할 수 있게 됐나요?\n· 디자인: 화면은 어떤 순서로, 불러오는 중·실패 때는 어떻게 보이나요?\n· 운영: 쓰다가 막히면 무엇을 보고, 알려진 문제는 무엇인가요?"}
-                <div style={{ marginTop: 8 }}>
-                  <button className="btn secondary small" onClick={() => setManual(false)} disabled={sending}>
-                    AI 동료에 다시 연결해 보기
-                  </button>
+            <VoiceInput onText={(t) => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${t}` : t))} disabled={office.busy || sending} />
+            {stage === "meeting" ? (
+              <details>
+                <summary className="small">설명할 때 놓치기 쉬운 상황</summary>
+                <div className="row" style={{ marginTop: 6 }}>
+                  {MISSED_CASES.map(([label, lead]) => (
+                    <button key={label} className="btn plain small" onClick={() => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${lead}` : lead))}>
+                      {label}
+                    </button>
+                  ))}
                 </div>
-              </Notice>
+              </details>
             ) : null}
-            {share.state === "ready_to_summarize" ? (
-              <Notice kind="ok" title="모든 파트를 공유했습니다">
-                더 덧붙일 말이 없으면 공유를 마쳐도 됩니다.
-              </Notice>
-            ) : null}
-            {/* 말로 하면 적어 둔 글 뒤에 덧붙인다. 보내기 전에 고칠 수 있다. */}
-            <VoiceInput
-              onText={(t) => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${t}` : t))}
-              disabled={office.busy || sending}
-            />
-            <details>
-              <summary className="small">설명할 때 놓치기 쉬운 상황</summary>
-              <div className="row" style={{ marginTop: 6 }}>
-                {MISSED_CASES.map(([label, lead]) => (
-                  <button
-                    key={label}
-                    className="btn plain small"
-                    onClick={() => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${lead}` : lead))}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </details>
             <textarea
               className="field"
-              aria-label="AI 동료들에게 보낼 말"
+              aria-label="동료에게 보낼 말"
               rows={3}
               value={message}
-              placeholder={!partStarted && !allDone ? `'${current.title}'에서 한 일과 결과를 설명해 주세요.` : "질문에 답하거나 덧붙일 말을 적어 주세요."}
+              placeholder={stageTurns.some((t) => t.role === "user") ? "질문에 답하거나 덧붙일 말을 적어 주세요. 모르는 용어는 '○○가 뭐예요?'라고 물어도 됩니다." : "오늘 무엇을 했는지, 어떻게 했고 왜 그렇게 했는지 설명해 주세요."}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.nativeEvent.isComposing) void send(message);
@@ -314,59 +473,20 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
             />
             <div className="row">
               <button className="btn" onClick={() => send(message)} disabled={office.busy || sending || !message.trim()}>
-                {sending ? (manual ? "기록하는 중" : "AI 동료가 읽는 중") : manual ? "기록하기" : "보내기"}
+                {sending ? "동료가 읽는 중" : "보내기"}
               </button>
-              {!manual && last?.reply?.question ? (
-                <button className="btn secondary" onClick={() => send(SKIP_TEXT)} disabled={office.busy || sending}>
-                  이 질문 건너뛰기
-                </button>
-              ) : null}
-              <button
-                className="btn plain"
-                onClick={() => finish(share.state === "ready_to_summarize" ? "done" : "userStopped")}
-                disabled={office.busy || sending || !view.can.endSharing}
-              >
-                공유 마치기
+              <button className="btn plain" onClick={finish} disabled={office.busy || sending || !view.can.endSharing}>
+                여기서 공유 그만하기
               </button>
             </div>
           </>
-        ) : (
-          <Notice kind="ok" title="공유를 마쳤습니다">
-            <button className="btn secondary small" onClick={() => onGo("desk")}>
-              하루 마감으로
-            </button>
-          </Notice>
-        )}
+        ) : null}
       </Card>
 
-      {share.knownFacts.length > 0 || share.openQuestions.length > 0 ? (
-        <Card title="AI 동료들이 정리한 것">
-          {share.knownFacts.length > 0 ? (
-            <div>
-              <div style={{ fontWeight: 700 }}>전달받은 내용</div>
-              <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-                {share.knownFacts.map((f) => (
-                  <li key={f}>{f}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          {share.openQuestions.length > 0 ? (
-            <div>
-              <div style={{ fontWeight: 700 }}>아직 모르는 것</div>
-              <ul style={{ margin: "4px 0 0", paddingLeft: 20 }}>
-                {share.openQuestions.map((q) => (
-                  <li key={q}>{q}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-          <div className="small muted">사용자가 설명한 내용을 정리한 것으로, 실제로 실행해 확인한 것은 아닙니다.</div>
-        </Card>
-      ) : null}
+      {stage === "closed" && share.minutes ? <Minutes minutes={share.minutes} /> : null}
 
       <p className="small muted pre" style={{ margin: 0 }}>
-        {"질문은 공개 가이드(GOV.UK 서비스팀 역할 안내, NN/g 디자인 크리틱, W3C 오류·성공 알림)를\n바탕으로 구성한 시나리오이며, 실제 담당자의 발언이 아닙니다."}
+        {"질문은 공개 직무 자료·가이드·실무 자료를 바탕으로 구성한 시나리오이며,\n실제 동료나 현직자의 발언이 아닙니다."}
       </p>
     </div>
   );

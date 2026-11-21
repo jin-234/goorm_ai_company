@@ -1,7 +1,7 @@
 /**
  * 공유 장면(AI 동료 프롬프트 문서 1장 흐름).
  * ① 개발팀장 사전 보고(stage review): 내가 팀장 자리 앞으로 가서 서서 보고하고, 팀장은 앉아서 듣거나 설명한다.
- * ② 부서 회의(stage meeting): 기획·디자인·운영 담당자(부서당 1명)가 출입문으로 들어와 회의실 의자에 앉고,
+ * ② 부서 회의(stage meeting): 디자인·마케팅·기획 담당자(부서당 1명, 진행은 기획팀)가 출입문으로 들어와 회의실 의자에 앉고,
  *    나는 팀장 자리(또는 내 자리)에서 회의실 화면 옆으로 가서 발표한다(ready). 마지막으로 말한 부서 담당자가 설명하는 몸짓을 한다.
  * ③ 회의록 정리(stage minutes·done)나 공유가 끝나면: 손님은 일어나 인사하고 출입문으로 나가고, 나는 내 자리로 돌아와 앉는다.
  * 시각(t초)만 넣으면 모습이 정해지는 순수 함수라 시험으로 길과 시간을 검사한다.
@@ -12,23 +12,23 @@ import {
 } from "./layout";
 import type { Snapshot } from "./schedule";
 
-/** 부서 회의 참석자(부서당 1명, 문서 2장): 기획팀 AI 기획자, 디자인팀 AI 디자이너, 운영팀 운영 담당자(회의실 발표 순서와 같음). */
-export const GUESTS = ["planner", "designer", "operations"] as const;
+/** 부서 회의 참석자(부서당 1명, 문서 2장): 디자인팀 AI 디자이너, 마케팅팀 AI 마케터, 기획팀 AI 기획자(진행). */
+export const GUESTS = ["planner", "designer", "marketer"] as const;
 /** 회의 진행 부서. */
 export const HOST: GuestId = "planner";
 export type GuestId = (typeof GUESTS)[number];
 
 /** 손님이 앉는 회의실 의자(화면을 보는 줄 셋). 부서마다 담당자 1명씩만 온다. */
-const GUEST_CHAIR: Record<GuestId, number> = { planner: 1, designer: 2, operations: 0 };
+const GUEST_CHAIR: Record<GuestId, number> = { planner: 1, designer: 2, marketer: 0 };
 /** 손님 자리와 부서 이름(명패). 부서를 늘려도 부서당 1명. */
 export const GUEST_SEATS: { guest: GuestId; dept: string; chair: number }[] = [
   { guest: "planner", dept: "기획팀", chair: GUEST_CHAIR.planner },
   { guest: "designer", dept: "디자인팀", chair: GUEST_CHAIR.designer },
-  { guest: "operations", dept: "운영팀", chair: GUEST_CHAIR.operations },
+  { guest: "marketer", dept: "마케팅팀", chair: GUEST_CHAIR.marketer },
 ];
 /** 들어오는 순서: 문에서 먼 의자부터. 나갈 때는 반대(문 쪽 의자부터). */
 export const ENTRY_ORDER: GuestId[] = [...GUESTS].sort((a, b) => MEETING.chairs[GUEST_CHAIR[a]].at[0] - MEETING.chairs[GUEST_CHAIR[b]].at[0]);
-export const DEPT_OF: Record<GuestId, string> = { planner: "기획팀", designer: "디자인팀", operations: "운영팀" };
+export const DEPT_OF: Record<GuestId, string> = { planner: "기획팀", designer: "디자인팀", marketer: "마케팅팀" };
 
 /** 팀장 사전 보고 때 내가 서는 곳: 팀장 책상 앞(통로 쪽), 팀장을 본다. */
 export const REPORT_SPOT: Vec2 = [3.6, 2.25];

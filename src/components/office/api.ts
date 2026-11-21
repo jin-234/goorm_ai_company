@@ -16,7 +16,6 @@ export type TaskStatus = Task["status"];
 export type Submission = OfficeView["day"]["submissions"][number];
 export type ShareTurn = OfficeView["day"]["share"]["turns"][number];
 export type PlannerReply = NonNullable<ShareTurn["reply"]>;
-export type ShareState = NonNullable<OfficeView["day"]["share"]["state"]>;
 export type Review = NonNullable<OfficeView["day"]["review"]["draft"]>;
 export type CloseChoice = NonNullable<Task["outcome"]>;
 /** AI 응답 출처. sample = AI 연결 전 예시 생성기(실제처럼 이어지지만 AI가 아님을 꼬리표로 알린다). */
@@ -92,9 +91,9 @@ export const api = {
       "/api/office/draft",
       post({ goal, availableMinutes }),
     ),
-  /** 회의실: 내 설명 한 마디 → 차례인 타 부서 동료의 응답(부서마다 질문 하나씩). */
+  /** 공유 대화: 내 말 한 번에 동료 턴이 여러 개 올 수 있다(회의: 직전 부서 feedback + 다음 부서 ask, 마지막엔 close). */
   share: (message: string) =>
-    call<{ source: AiSource; reply?: PlannerReply; error?: unknown; office?: OfficeView }>("/api/office/share", post({ message })),
+    call<{ source: AiSource; replies?: unknown[]; error?: unknown; office?: OfficeView }>("/api/office/share", post({ message })),
   /** 마감 요약 초안. */
   reviewDraft: () =>
     call<{ source: AiSource; review: Review; office?: OfficeView; solarError?: { kind: string; message?: string } | null }>(

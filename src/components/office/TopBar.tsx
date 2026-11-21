@@ -8,6 +8,7 @@
  */
 import { hhmm, type OfficeView } from "./api";
 import type { OfficeHandle } from "./useOffice";
+import { shareOf } from "./panels/meetingTypes";
 import type { PlaceId } from "./ui";
 
 export interface NextStep {
@@ -27,8 +28,8 @@ export function nextStepOf(view: OfficeView): NextStep | null {
       return { label: "회의실로 · 아침보고", place: "meeting" };
     case "working": {
       const allHandled = tasks.length > 0 && tasks.every((t) => t.status === "submitted" || t.status === "incomplete");
-      // 발표 시작 버튼('회의실에서 발표하기')은 책상 패널에 있다. 회의실 패널로 보내면 다시 책상으로 돌려보내는 막다른 길이 된다.
-      if (allHandled && view.can.startSharing) return { label: "내 책상 · 회의실에서 발표하기", place: "desk" };
+      // 공유 시작 버튼은 책상 패널에 있다. 공유 패널로 보내면 다시 책상으로 돌려보내는 막다른 길이 된다.
+      if (allHandled && view.can.startSharing) return { label: "내 책상 · 공유 시작(팀장 보고부터)", place: "desk" };
       return { label: "내 책상 · 결과물 제출", place: "desk" };
     }
     case "checkout":
@@ -40,12 +41,21 @@ export function nextStepOf(view: OfficeView): NextStep | null {
     case "overtimeReview":
       return { label: "내 책상 · 추가근무 점검", place: "desk" };
     case "sharing":
-      return { label: "회의실 · 발표 이어가기", place: "share" };
+      return sharingStep(view);
     case "checkoutReview":
       return { label: "내 책상 · 하루 마감", place: "desk" };
     case "off":
       return null;
   }
+}
+
+/** 공유 중: 사전 보고·컨펌이면 팀장 자리, 회의면 회의실. */
+function sharingStep(view: OfficeView): NextStep {
+  const stage = shareOf(view).stage;
+  if (stage === "review") return { label: "팀장 자리 · 사전 보고 이어가기", place: "share" };
+  if (stage === "confirm") return { label: "컨펌 확인하고 회의실로", place: "share" };
+  if (stage === "closed") return { label: "회의록 보고 공유 마치기", place: "share" };
+  return { label: "회의실 · 부서 회의 이어가기", place: "share" };
 }
 
 /** 단계 옆 작은 상태 칩. 보통·엄격 근무 중에는 착석 상태, 그 밖에는 오늘 과제 진행을 보여 준다. */

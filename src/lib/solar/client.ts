@@ -281,8 +281,9 @@ export class SolarClient {
   async completeJSON(args: {
     system: string;
     messages: { role: "user" | "assistant"; content: string }[];
-    schemaName: string;
-    schema: object;
+    /** 없으면 JSON 객체 하나만 받는다(json_object). AI 동료 v2는 형식을 서버에서 검사·재요청한다. */
+    schemaName?: string;
+    schema?: object;
     temperature: number;
     maxTokens: number;
   }): Promise<string> {
@@ -291,7 +292,10 @@ export class SolarClient {
       messages: [{ role: "system", content: args.system }, ...args.messages],
       temperature: args.temperature,
       max_tokens: args.maxTokens,
-      response_format: { type: "json_schema", json_schema: { name: args.schemaName, strict: true, schema: args.schema } },
+      response_format:
+        args.schema && args.schemaName
+          ? { type: "json_schema", json_schema: { name: args.schemaName, strict: true, schema: args.schema } }
+          : { type: "json_object" },
     });
     const choice = envelope.choices?.[0];
     if (!choice) throw new SolarError("malformed", { message: "응답에 선택지가 없습니다" });

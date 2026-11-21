@@ -105,9 +105,10 @@ describe("행동 API로 하루 보내기", () => {
     expect(office.day.submissions[0].readScope).toBe("notRead");
 
     await act({ type: "startSharing" });
-    await expect(act({ type: "recordShareTurn", role: "planner", reply: {} })).rejects.toBeInstanceOf(BadRequest);
-    office = await act({ type: "recordShareTurn", role: "user", text: "도시를 입력하면 날씨를 보여줍니다." });
-    expect(office.day.share.turns).toHaveLength(1);
+    await expect(act({ type: "recordShareTurn", role: "user", text: "x" })).rejects.toBeInstanceOf(BadRequest);
+    office = await act({ type: "enterMeeting" });
+    expect(office.day.share.stage).toBe("meeting");
+    expect(officeView(office).day.share.meeting!.participants.map((p) => p.team)).toEqual(["디자인팀", "마케팅팀", "서비스 기획팀"]);
     office = await act({ type: "endSharing", reason: "done" });
     expect(office.day.phase).toBe("checkoutReview");
 
