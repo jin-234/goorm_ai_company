@@ -12,6 +12,8 @@ import { MailBox } from "./panels/Mail";
 import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
 import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
+import { applySavedTextScale, Settings } from "./panels/Settings";
+import { Weekly } from "./panels/Weekly";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
 import { type OfficeHandle, useOffice } from "./useOffice";
@@ -48,6 +50,10 @@ export function OfficeApp() {
   const { view } = office;
   const [place, setPlace] = useState<PlaceId>("door");
   const lastPhase = useRef<string | null>(null);
+
+  useEffect(() => {
+    applySavedTextScale();
+  }, []);
 
   // 단계가 바뀌면 그 단계의 패널로(처음 불러올 때도).
   useEffect(() => {
@@ -120,6 +126,10 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
       return <CheckIn office={office} view={view} onDone={() => go("meeting")} />;
     case "meeting":
       return <MorningPT office={office} view={view} />;
+    case "weekly":
+      return <Weekly office={office} view={view} onGo={go} />;
+    case "settings":
+      return <Settings office={office} />;
     case "manager":
       return <MailBox office={office} view={view} onGo={go} />;
     case "desk":
