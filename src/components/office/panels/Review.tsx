@@ -39,7 +39,8 @@ const storeKey = (view: OfficeView) => `vision.review.${view.clock.date}`;
 
 export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: PlaceId) => void }) {
   const { review } = view.day;
-  const open = view.day.tasks.filter((t) => t.status !== "submitted" && t.status !== "reviewed");
+  // 서버가 정한 '처리를 골라야 할 과제'(제출하지 않은 과제)를 그대로 쓴다.
+  const open = view.day.tasks.filter((t) => view.day.unsubmittedTaskIds.includes(t.id));
   const [edit, setEdit] = useState<Review>(review.draft ?? EMPTY);
   const [choices, setChoices] = useState<Record<string, CloseChoice>>(review.choices ?? {});
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -103,7 +104,9 @@ export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: O
 
   const draft = review.draft;
   const isManual = review.draftSource === "manual" || (!draft && review.draftSource == null);
-  const edited = (key: TextField | "open_questions") => draft != null && valueOf(edit, key).trim() !== valueOf(draft, key).trim();
+  // '내가 고침'은 AI 원본 초안(aiDraft)과 비교한다. AI 원본이 없으면 표시하지 않는다.
+  const original = review.aiDraft;
+  const edited = (key: TextField | "open_questions") => original != null && valueOf(edit, key).trim() !== valueOf(original, key).trim();
 
   return (
     <div className="panel">

@@ -15,6 +15,11 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
   const submitted = tasks.filter((t) => t.status === "submitted").length;
   const handled = tasks.filter((t) => t.status === "submitted" || t.status === "incomplete").length;
 
+  const skipSharing = async () => {
+    if (!window.confirm("오늘은 기획팀 공유 없이 하루 마감으로 갈까요?")) return;
+    if ((await office.act("endSharing", { reason: "userStopped" })) != null) office.notify("공유를 건너뛰었습니다.\n하루 마감을 해 주세요.");
+  };
+
   const startSharing = async () => {
     if ((await office.act("startSharing")) != null) onGo("share");
   };
@@ -59,9 +64,19 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
               ? "모든 과제를 제출했거나 못 끝낸 것으로 정했습니다.\nAI 기획자에게 오늘 한 일을 설명해 주세요."
               : `아직 진행 중인 과제가 ${tasks.length - handled}건 있습니다.\n그래도 지금 공유를 시작할 수 있습니다.`}
           </p>
-          <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing}>
-            기획팀에 공유하러 가기
-          </button>
+          <div className="row">
+            <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing}>
+              기획팀에 공유하러 가기
+            </button>
+            <button
+              className="btn plain"
+              onClick={skipSharing}
+              disabled={office.busy || !view.can.endSharing}
+              title="공유가 맞지 않는 학습이었다면 공유 없이 하루 마감으로 갑니다."
+            >
+              공유 없이 바로 마감
+            </button>
+          </div>
         </Card>
       ) : phase === "sharing" ? (
         <Notice kind="info" title="기획팀과 공유하는 중입니다">

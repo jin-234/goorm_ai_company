@@ -5,138 +5,21 @@
  */
 
 // MARK: 상태 모양
+// 서버가 만드는 officeView 타입을 그대로 쓴다(타입만 가져오므로 서버 코드는 화면에 실리지 않는다).
+import type { OfficeView as ServerOfficeView } from "@/lib/server/view";
 
-export type DayKey = { year: number; month: number; day: number };
-export type Phase = "beforeCheckIn" | "morningPT" | "working" | "sharing" | "checkoutReview" | "off";
-export type TaskStatus = "confirmed" | "in_progress" | "submitted" | "incomplete" | "reviewed";
-export type CloseChoice = "adjust" | "carryOver" | "endToday";
+export type OfficeView = ServerOfficeView;
+export type Phase = OfficeView["phase"]["value"];
+export type Task = OfficeView["day"]["tasks"][number];
+export type TaskStatus = Task["status"];
+export type Submission = OfficeView["day"]["submissions"][number];
+export type ShareTurn = OfficeView["day"]["share"]["turns"][number];
+export type PlannerReply = NonNullable<ShareTurn["reply"]>;
+export type ShareState = NonNullable<OfficeView["day"]["share"]["state"]>;
+export type Review = NonNullable<OfficeView["day"]["review"]["draft"]>;
+export type CloseChoice = NonNullable<Task["outcome"]>;
 export type AiSource = "solar" | "manual";
-
-export interface Task {
-  id: string;
-  title: string;
-  completionCriteria: string;
-  shareForm: string;
-  status: TaskStatus;
-  carriedFrom: DayKey | null;
-  carryCount: number;
-  outcome: CloseChoice | null;
-}
-
-export interface Submission {
-  id: string;
-  taskId: string;
-  kind: "text" | "link" | "code";
-  content: string;
-  at: number;
-  /** link는 서버가 본문을 읽지 않으므로 "notRead". */
-  readScope: "read" | "notRead";
-}
-
-/** AI 기획자 응답(개정 기획서 4.3 E). 질문이 없으면 question은 빈 문자열. */
-export interface PlannerReply {
-  acknowledgement: string;
-  question: string;
-  question_reason: string;
-  known_facts: string[];
-  open_questions: string[];
-  evidence_refs: string[];
-  can_finish: boolean;
-}
-
-export interface ShareTurn {
-  id: string;
-  role: "user" | "planner";
-  at: number;
-  text?: string;
-  reply?: PlannerReply;
-  source?: AiSource;
-}
-
-/** 마감 요약(개정 기획서 4.3 E). */
-export interface Review {
-  reported_work: string;
-  explained_learning: string;
-  artifact_observations: string;
-  shared_scope_and_limits: string;
-  open_questions: string[];
-  job_connection: string;
-  next_action: string;
-  evidence_refs: string[];
-}
-
-export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
-
-export interface Mail {
-  id: string;
-  sentAt: number;
-  from: string;
-  to: string;
-  kind: string;
-  subject: string;
-  body: string;
-  isRead: boolean;
-  isWarm: boolean;
-  replySource: "solar" | "localTemplate" | null;
-  tag: string;
-  fromName: string;
-  toName: string;
-}
-
-export interface OfficeView {
-  onboarded: boolean;
-  profile: { name: string; targetRole: string; experience: string; activityStart: number; activityEnd: number };
-  clock: { now: number; hm: string; date: string; dateShort: string; dateLong: string; weekLabel: string; isFriday: boolean };
-  phase: { value: Phase; label: string; headline: string };
-  /** 사용자가 정한 마감 시각이 지났는지. 안내만 하고 강제로 넘기지 않는다. */
-  pastActivityEnd: boolean;
-  day: {
-    date: DayKey;
-    checkInAt: number | null;
-    goal: string;
-    tasks: Task[];
-    submissions: Submission[];
-    share: { state: ShareState | null; questionCount: number; maxQuestions: number; turns: ShareTurn[] };
-    review: {
-      draft: Review | null;
-      draftSource: AiSource | null;
-      confirmed: Review | null;
-      confirmedAt: number | null;
-      choices: Record<string, CloseChoice>;
-    };
-  };
-  pendingCarry: Task[];
-  can: {
-    checkIn: boolean;
-    /** 업무 상태 바꾸기·결과물 제출이 가능한지. */
-    editTasks: boolean;
-    confirmTasks: boolean;
-    startSharing: boolean;
-    endSharing: boolean;
-    confirmReview: boolean;
-    startNextWorkday: boolean;
-    jumpToFriday: boolean;
-    skipHour: boolean;
-    submitWeekly: boolean;
-  };
-  mail: { unreadCount: number; inbox: Mail[]; sent: Mail[] };
-  weekly: {
-    draft: { id: string; weekOf: DayKey; completed: string; incomplete: string; nextGoals: string };
-    awaitingReplyId: string | null;
-    /** 이번 주에 제출한 보고서(없으면 null). */
-    lastSubmitted: {
-      id: string;
-      weekOf: DayKey;
-      submittedAt: number;
-      completed: string;
-      incomplete: string;
-      nextGoals: string;
-      replyMailId: string | null;
-    } | null;
-  };
-  /** 지난 활동일 기록(있으면). */
-  history?: { date: DayKey; tasks: Task[]; review: Review | null }[];
-}
+export type DayKey = { year: number; month: number; day: number };
 
 /** AI 팀장 제안(분담표 3.4). AI 실패 시 source "manual"로 사용자의 글을 그대로 한 과제 초안으로 준다. */
 export interface LeaderProposal {
