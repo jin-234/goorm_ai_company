@@ -78,6 +78,7 @@ import {
   mondayOfWeek,
   nextWorkday,
   sameDay,
+  isWeekend,
 } from "./time";
 
 function makeDayFromString(key: string): DayKey {
@@ -282,6 +283,14 @@ export class Office implements OfficeState {
     return this.day.level ?? this.profile.enforcement;
   }
 
+  /**
+   * 오늘 지각·결근을 세는지. 보통·엄격이어도 토·일요일은 세지 않는다(활동은 할 수 있다).
+   * 다음 활동일은 원래 주말을 건너뛰지만, 시계가 실제 한국 시각이 되면서 첫날이 주말일 수 있다.
+   */
+  get countsAttendance(): boolean {
+    return this.rules.attendance && !isWeekend(this.day.date);
+  }
+
   get rules(): EnforcementInfo {
     return ENFORCEMENT[this.level];
   }
@@ -409,7 +418,7 @@ export class Office implements OfficeState {
     this.day.checkInMethod = method;
     this.day.phase = "morningPT";
     this.day.presence = "present";
-    const late = this.rules.attendance && !this.day.returning && minuteOfDay(this.now) > this.profile.activityStart;
+    const late = this.countsAttendance && !this.day.returning && minuteOfDay(this.now) > this.profile.activityStart;
     this.day.isLate = late;
     this.log("checkIn", `활동 시작 ${hm(this.now)}${method === "camera" ? " · 카메라 확인" : method === "noCamera" ? " · 카메라 없이" : ""}`);
     if (this.day.returning) this.log("returned", "다시 돌아옴 · 오늘은 지각으로 세지 않음");
@@ -1126,7 +1135,7 @@ export class Office implements OfficeState {
     const r = this.rules;
     const end = this.activityEndDate;
 
-    if (this.day.phase === "beforeCheckIn" && this.onboarded && r.attendance && !this.day.absentCandidate && !this.day.dayOff && this.now >= end) {
+    if (this.day.phase === "beforeCheckIn" && this.onboarded && this.countsAttendance && !this.day.absentCandidate && !this.day.dayOff && this.now >= end) {
       this.markAbsent(end);
     }
 
@@ -1172,7 +1181,7 @@ export class Office implements OfficeState {
   startNextWorkday(): void {
     if (!this.canStartNextWorkday) throw OfficeError.notAllowedNow("하루 마감을 확정한 뒤에 다음 활동일로 넘어갈 수 있습니다.");
     const missed = this.day.checkInAt == null;
-    if (missed && this.rules.attendance && !this.day.dayOff && !this.day.absentCandidate) this.markAbsent(this.now);
+    if (missed && this.countsAttendance && !this.day.dayOff && !this.day.absentCandidate) this.markAbsent(this.now);
     const real = this.realNow;
     // 며칠 앱을 열지 않았다가 돌아온 경우도 '돌아온 날'이다. 열지 않은 날은 결근 후보로 세지 않는다.
     const skippedDays = real != null && dayAfter(dayKeyOf(real), nextWorkday(this.day.date));

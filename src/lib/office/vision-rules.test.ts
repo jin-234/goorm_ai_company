@@ -259,3 +259,39 @@ describe("시연 도구", () => {
     expect(office.day.phase).toBe("working");
   });
 });
+
+describe("주말(토·일)", () => {
+  const saturday = makeDay(2026, 11, 21);
+
+  test("보통에서도 주말 늦은 출근은 지각으로 세지 않는다(평일은 그대로 센다)", () => {
+    const sat = makeOffice(10 * 60, saturday, "standard");
+    expect(sat.checkIn().late).toBe(false);
+    expect(sat.day.isLate).toBe(false);
+    const mon = makeOffice(10 * 60, monday, "standard");
+    expect(mon.checkIn().late).toBe(true);
+  });
+
+  test("주말에 출근하지 않고 마감 시각이 지나거나 다음 활동일로 넘겨도 결근 후보로 남기지 않는다", () => {
+    const sat = makeOffice(8 * 60, saturday, "standard");
+    sat.advance(at(saturday, 19 * 60));
+    expect(sat.day.absentCandidate).toBe(false);
+    sat.startNextWorkday();
+    expect(sat.history.some((r) => r.absentCandidate)).toBe(false);
+  });
+});
+
+describe("회의실 발표가 끝난 뒤", () => {
+  test("정리(closed)가 끝나면 더 말할 수 없고, 한 바퀴 더를 고르면 다시 말할 수 있다", () => {
+    const office = workingOffice();
+    office.startSharing("", () => 0);
+    office.recordColleagueTurn("dev_lead", "confirm", reply({ question: "", confirm: { decision: "approved", summary: "", notes: [] } }), "solar");
+    office.enterMeeting(() => 0);
+    office.recordUserTurn("설명");
+    office.recordColleagueTurn("planner", "close", reply({ department: "planner", question: "" }), "solar");
+    expect(office.day.share.stage).toBe("closed");
+    expect(office.canTalkInShare).toBe(false);
+    expect(() => office.recordUserTurn("더 할 말")).toThrow(OfficeError);
+    office.anotherRound(() => 0);
+    expect(office.canTalkInShare).toBe(true);
+  });
+});

@@ -73,6 +73,8 @@ Solar 키가 없거나 `OFFICE_AI_MODE=sample`이면 `source: "sample"`(AI 연�
 
 회의실 발표의 규칙·프롬프트·응답 형식은 `docs/ai-colleague/AI동료_프롬프트.md`가 기준이다. 동료 `reply`는 그 문서 10장 형식 그대로이고(`acknowledgement`, `feedback{strength,perspective,try_next}`, `question`, `question_reason`, `anchor_quote`, `lens_id`, `question_type`, `bank_id`, `basis{type,source_ids,note}`, `understanding_check{layer,status,gap}`, `difficulty`, `known_facts`, `open_questions`, `evidence_refs`, `term_explain`, `terms_used`, `can_finish`, confirm 턴만 `confirm{decision,summary,notes}`), 화면용으로 `basisLabel`(근거 한 줄)·`termFallback`(용어 뜻을 물었는데 풀이가 비었을 때 용어집 뜻)이 붙는다. 응답은 13.3 검사에 걸리면 1회 다시 요청한다.
 
+프롬프트·검사 규칙을 바꾼 뒤에는 실제 Solar로 11장 평가를 다시 돌린다(부록 A 가상 사용자로 시나리오 5개, 비용이 들어 평소 시험에서는 건너뜀): `EVAL_COLLEAGUE=1 UPSTAGE_API_KEY=… npx vitest run src/lib/colleague/v2/colleague-v2-eval.test.ts` → `docs/ai-colleague/평가결과.md`.
+
 Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `shared_scope_and_limits`, `open_questions[]`, `job_connection`, `next_action`, `evidence_refs[]`.
 
 ## 화면용 상태 (`officeView`)

@@ -79,6 +79,8 @@ export interface ShareStepResult {
   turns: ShareTurn[];
   source: ColleagueSource;
   solarError: SpeakResult["solarError"];
+  /** 발언마다 13.3 검사 결과(평가·로그용). */
+  checks: { dept: ColleagueDept; meetingRole: ColleagueMeetingRole; rejected: string[]; rejectedTwice: boolean }[];
 }
 
 /**
@@ -91,8 +93,10 @@ export async function advanceShare(office: Office, client: SolarClient, opts: { 
   const before = share.turns.length;
   let source: ColleagueSource = aiModeOf(client) === "sample" ? "sample" : "solar";
   let solarError: SpeakResult["solarError"] = null;
+  const checks: ShareStepResult["checks"] = [];
   const say = async (dept: ColleagueDept, persona: string, meetingRole: ColleagueMeetingRole, curveball = false) => {
     const r = await speak(office, client, { dept, persona, meetingRole, curveball, random });
+    checks.push({ dept, meetingRole, rejected: r.rejected, rejectedTwice: r.rejectedTwice });
     if (r.source !== "solar") source = r.source;
     solarError ??= r.solarError;
     office.recordColleagueTurn(dept, meetingRole, r.reply, r.source);
@@ -128,7 +132,7 @@ export async function advanceShare(office: Office, client: SolarClient, opts: { 
       office.setMinutes(await makeMinutes(office, client));
     }
   }
-  return { turns: share.turns.slice(before), source, solarError };
+  return { turns: share.turns.slice(before), source, solarError, checks };
 }
 
 /** 회의록: MINUTES 프롬프트로 요약하고, 실패하거나 AI가 없으면 기록만으로 만든다. */
