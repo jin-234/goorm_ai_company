@@ -1,6 +1,6 @@
 "use client";
 /**
- * 기획팀 · AI 기획자에게 오늘 한 일 공유(개정 기획서 3.1, 4.2, 4.3 B·E).
+ * 회의실 · 타 부서 공유(발표). 타 부서 AI 동료들이 회의실에 와 있고, 내가 오늘 한 일을 발표한다(개정 기획서 3.1, 4.2, 4.3 B·E).
  * AI 기획자는 자신의 후속 업무(사용자 안내 초안)에 필요한 것을 한 번에 하나씩 묻는다.
  * 사용자는 건너뛰거나 언제든 마칠 수 있다. AI 미연결이면 정해진 안내를 'AI가 말한 것'처럼 보이지 않게 따로 표시한다.
  */
@@ -12,6 +12,30 @@ import { SubmissionLine } from "./TaskList";
 import { VoiceInput } from "../voice/VoiceInput";
 
 const SKIP_TEXT = "이 질문은 건너뛸게요.";
+
+/** 질문 근거(서버 question_basis·basis_ref). 가이드로 만든 질문을 실제 기획자 발언처럼 보이지 않게 구분한다. */
+function basisText(reply: PlannerReply): string | null {
+  const r = reply as PlannerReply & { question_basis?: string; basis_ref?: string };
+  const ref = r.basis_ref?.trim();
+  switch (r.question_basis) {
+    case "role_need":
+      return "질문 근거: 역할상 필요 · 기획자 업무에 필요한 정보";
+    case "ux_guide":
+      return `질문 근거: 공개 가이드 기반 시나리오${ref ? ` · ${ref}` : ""}`;
+    case "collected_case":
+      return `질문 근거: 현직자 인터뷰 사례${ref ? ` · ${ref}` : ""}`;
+    default:
+      return null;
+  }
+}
+
+/** 설명할 때 놓치기 쉬운 상황. 누르면 입력창에 말머리를 넣는다. */
+const MISSED_CASES: [string, string][] = [
+  ["빈 화면", "처음 열어 아무것도 없을 때는 "],
+  ["오류가 났을 때", "오류가 나면 "],
+  ["기다리는 동안(로딩)", "결과를 기다리는 동안에는 "],
+  ["잘못 입력했을 때", "잘못 입력하면 "],
+];
 
 function PlannerBubble({ reply, manual, sample }: { reply: PlannerReply; manual: boolean; sample: boolean }) {
   if (manual) {
@@ -37,6 +61,7 @@ function PlannerBubble({ reply, manual, sample }: { reply: PlannerReply; manual:
             {reply.question}
           </div>
           {reply.question_reason ? <div className="small muted pre">필요한 이유: {reply.question_reason}</div> : null}
+          {basisText(reply) ? <div className="small muted">{basisText(reply)}</div> : null}
         </div>
       ) : null}
     </div>
@@ -83,9 +108,9 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
 
   const header = (
     <PanelHeader
-      place="기획팀"
-      title="오늘 한 일 공유"
-      detail={"서비스 기획팀의 AI 기획자가 사용자 안내를 쓰려고 합니다.\n오늘 한 일로 누가 무엇을 할 수 있게 됐는지 설명해 주세요."}
+      place="회의실 · 타 부서 공유"
+      title="오늘 한 일 발표"
+      detail={"기획팀·디자인팀 담당자가 회의실에 와 있습니다. 오늘 한 일을 발표해 주세요.\nAI 기획자는 사용자 안내를 쓰려고, 누가 무엇을 할 수 있게 됐는지 묻습니다."}
     />
   );
 
@@ -129,8 +154,8 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
     return (
       <div className="panel">
         {header}
-        <Notice kind="info" title="결과물을 남긴 뒤 공유합니다">
-          {"내 책상에서 과제를 제출하거나 못 끝낸 것으로 정한 다음\n'기획팀에 공유하러 가기'를 눌러 주세요."}
+        <Notice kind="info" title="결과물을 남긴 뒤 발표합니다">
+          {"내 책상에서 과제를 제출하거나 못 끝낸 것으로 정한 다음\n'회의실에서 발표하기'를 눌러 주세요."}
           <div style={{ marginTop: 8 }}>
             <button className="btn secondary small" onClick={() => onGo("desk")}>
               내 책상으로
@@ -146,6 +171,12 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
   return (
     <div className="panel">
       {header}
+
+      <Card title="AI 기획자는 이런 일을 합니다 (가상 역할)">
+        <p className="small pre" style={{ margin: 0 }}>
+          {"결정·책임지는 것: 사용자 안내 초안, 화면 흐름, 출시 범위.\n그래서 이것에 필요한 것만 묻습니다. 기술 퀴즈나 채점은 하지 않습니다.\n질문은 AI 기획자가 하고, AI 디자이너는 함께 듣기만 합니다."}
+        </p>
+      </Card>
 
       <Card title="AI 기획자가 받는 내용">
         <p className="small muted pre" style={{ margin: 0 }}>
@@ -200,6 +231,20 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
               onText={(t) => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${t}` : t))}
               disabled={office.busy || sending}
             />
+            <details>
+              <summary className="small">설명할 때 놓치기 쉬운 상황</summary>
+              <div className="row" style={{ marginTop: 6 }}>
+                {MISSED_CASES.map(([label, lead]) => (
+                  <button
+                    key={label}
+                    className="btn plain small"
+                    onClick={() => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${lead}` : lead))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </details>
             <textarea
               className="field"
               aria-label="AI 기획자에게 보낼 말"
@@ -263,6 +308,10 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
           <div className="small muted">사용자가 설명한 내용을 정리한 것으로, 실제로 실행해 확인한 것은 아닙니다.</div>
         </Card>
       ) : null}
+
+      <p className="small muted pre" style={{ margin: 0 }}>
+        {"질문은 공개 가이드(GOV.UK 서비스팀 역할 안내, NN/g 디자인 크리틱, W3C 오류·성공 알림)를\n바탕으로 구성한 시나리오이며, 실제 기획자의 발언이 아닙니다."}
+      </p>
     </div>
   );
 }

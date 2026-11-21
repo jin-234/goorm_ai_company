@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLOCKERS, route, SEATS, SPOTS, type Spot, type Vec2 } from "./layout";
-import { BADGE_READER, BADGE_READER_FACE_Z, DECOR, INTERIOR, OUTSIDE_MAT } from "./layout";
+import { BADGE_READER, BADGE_READER_FACE_Z, DECOR, INTERIOR, MEETING, MEETING_TABLE_BOX, OUTSIDE_MAT } from "./layout";
+import { arrivalTimes, GUEST_SEATS, GUESTS, guestInPath, guestOutPath, meBackPath, meToPresenterPath, shareArrivalAt, shareEndAt, shareSteady } from "./share";
 import { COWORKERS, coworkerAt, crewAt, dayStart, ENTRANCE, entranceAt, entrancePath, leavePath, meAt, planSummary } from "./schedule";
 
 // 2026-11-16(월)~20(금) 한국 시각 자정.
@@ -183,18 +184,6 @@ describe("동료의 하루", () => {
     }
   });
 
-  it("기획팀 공유 중엔 AI 기획자가 자리에 앉아 듣고, 나는 책상 앞에서 기획자를 보고 설명한다", () => {
-    for (const t of [at(DAYS[0], 14, 37), at(DAYS[0], 19, 30)]) {
-      const crew = crewAt(t, { kind: "seated" }, "sharing");
-      expect(crew.planner.snapshot.pose).toBe("sitListen");
-      const me = crew.me.snapshot;
-      expect(me.pose).toBe("present");
-      const p = crew.planner.snapshot.position;
-      expect(Math.abs(me.position[0] - p[0])).toBeLessThan(0.3);
-      expect(p[2] - me.position[2]).toBeGreaterThan(0.8); // 책상 너머
-      expect(p[2] - me.position[2]).toBeLessThan(1.6);
-    }
-  });
 });
 
 describe("나", () => {
@@ -299,4 +288,78 @@ describe("공간 겹침 검사(화분·나무)", () => {
       }
     });
   }
+});
+
+describe("타 부서 공유(회의실 발표)", () => {
+  const blocked = (p: Vec2) => {
+    const hit = insideBlocker(p, 0.08);
+    if (hit) return hit.name;
+    const [x0, z0, x1, z1] = MEETING_TABLE_BOX;
+    if (p[0] > x0 - 0.1 && p[0] < x1 + 0.1 && p[1] > z0 - 0.1 && p[1] < z1 + 0.1) return "회의실 탁자";
+    return undefined;
+  };
+  const checkPath = (name: string, path: Vec2[]) => {
+    for (let i = 1; i < path.length; i++) {
+      const [a, b] = [path[i - 1], path[i]];
+      const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.05));
+      for (let k = 0; k <= n; k++) {
+        const p: Vec2 = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n];
+        // 자리·의자 바로 옆(첫·끝 0.6m)은 책상과 맞닿으니 뺀다.
+        if (Math.hypot(p[0] - path[0][0], p[1] - path[0][1]) < 0.6 || Math.hypot(p[0] - path[path.length - 1][0], p[1] - path[path.length - 1][1]) < 0.6) continue;
+        expect(blocked(p), `${name} (${p[0].toFixed(2)}, ${p[1].toFixed(2)})`).toBeUndefined();
+      }
+    }
+  };
+
+  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀)", () => {
+    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀"]);
+    expect(new Set(GUEST_SEATS.map((g) => g.dept)).size).toBe(GUEST_SEATS.length);
+    expect(GUEST_SEATS.map((g) => g.guest)).toEqual([...GUESTS]);
+  });
+
+  it("손님과 내가 걷는 길은 벽·책상·회의실 탁자를 지나지 않는다", () => {
+    for (const g of GUESTS) { checkPath(`${g} 들어옴`, guestInPath(g)); checkPath(`${g} 나감`, guestOutPath(g)); }
+    checkPath("나 → 발표 자리", meToPresenterPath());
+    checkPath("발표 자리 → 나", meBackPath());
+  });
+
+  it("손님이 문 밖에서 들어와 앉은 뒤 내가 발표 자리에 선다. 12초(화면 틀 대체 시간) 안에 ready", () => {
+    const t = arrivalTimes();
+    for (const g of GUESTS) expect(t.guestSeat(g)).toBeLessThanOrEqual(t.ready);
+    expect(t.ready).toBeLessThan(12);
+    const start = shareArrivalAt(0.3);
+    expect(start.guests.planner.pose).toBe("walk");
+    expect(start.guests.planner.position[2]).toBeGreaterThan(5); // 문 밖
+    expect(start.guests.designer.visible).toBe(false); // 시차를 두고 뒤에
+    expect(start.me.pose).toBe("sitType"); // 아직 자리에서 일하는 중
+    const done = shareArrivalAt(t.ready + 0.1);
+    expect(done.ready).toBe(true);
+    expect(done.me.pose).toBe("present");
+    expect(done.me.position[0]).toBeCloseTo(MEETING.presenter[0], 3);
+    for (const g of GUESTS) expect(["sitListen", "sitExplain", "nod"]).toContain(done.guests[g].pose);
+  });
+
+  it("공유하는 동안 기획자는 묻기와 끄덕이기를 번갈아 한다", () => {
+    const poses = new Set<string>();
+    for (let t = 0; t < 20; t += 0.5) poses.add(shareSteady(t).guests.planner.pose);
+    expect(poses.has("sitExplain")).toBe(true);
+    expect(poses.has("nod")).toBe(true);
+    expect(shareSteady(3).me.pose).toBe("present");
+  });
+
+  it("공유가 끝나면 손님은 인사하고 문으로 나가고, 나는 자리로 돌아와 앉는다", () => {
+    expect(shareEndAt(1.0).guests.planner.pose).toBe("bow");
+    let t = 0;
+    while (!shareEndAt(t).done) { t += 0.1; if (t > 30) break; }
+    expect(t).toBeLessThan(15);
+    const end = shareEndAt(t);
+    for (const g of GUESTS) expect(end.guests[g].visible).toBe(false);
+    expect(end.me.pose).toBe("sitType");
+  });
+
+  it("공유 단계의 나(연출이 끝난 뒤)는 회의실 발표 자리에 있다", () => {
+    const me = meAt(at(DAYS[0], 15), { kind: "seated" }, "sharing").snapshot;
+    expect(me.pose).toBe("present");
+    expect(me.position[0]).toBeCloseTo(MEETING.presenter[0], 3);
+  });
 });

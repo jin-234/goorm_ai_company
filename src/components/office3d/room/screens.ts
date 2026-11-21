@@ -15,7 +15,6 @@ const ROLE_SCREENS: Record<SeatId, ScreenKind[]> = {
   kwajang: ["calendar", "doc", "mail"],
   manager: ["mail", "calendar", "doc"],
   director: ["doc", "mail", "calendar"],
-  planner: ["wireframe", "guide", "wireframe", "doc"],
   me: ["tasks"],
 };
 
@@ -129,15 +128,21 @@ export function drawScreen(ctx: CanvasRenderingContext2D, w: number, h: number, 
       break;
     }
     case "guide": {
+      // 기획자의 UX 점검표: 사용자 안내 초안에 필요한, 놓치기 쉬운 상황(공식 가이드 기반 시나리오).
       ctx.fillStyle = "#FFFDF8"; ctx.fillRect(0, 0, w, h);
-      ctx.fillStyle = "#E58B3A"; ctx.fillRect(0, 0, w, 24);
-      ctx.fillStyle = "#FFFFFF"; ctx.font = `600 14px ${FONT}`; ctx.fillText("사용자 안내", 10, 17);
-      for (let k = 0; k < 3; k++) {
-        const y = 36 + k * 56;
-        ctx.fillStyle = "#E58B3A"; ctx.beginPath(); ctx.arc(22, y + 10, 9, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = "#2C3032"; ctx.fillRect(40, y + 4, 120, 7);
-        for (let i = 0; i < 2 + (k === 2 ? Math.min(grow, 2) : 0); i++) { ctx.fillStyle = "#C9C2B4"; ctx.fillRect(40, y + 18 + i * 10, 180 + r() * 60, 5); }
-      }
+      ctx.fillStyle = "#E58B3A"; ctx.fillRect(0, 0, w, 26);
+      ctx.fillStyle = "#FFFFFF"; ctx.font = `700 14px ${FONT}`; ctx.fillText("사용자 안내 · 상황 점검", 10, 18);
+      const items = ["빈 화면", "오류가 났을 때", "기다리는 동안", "잘못 입력했을 때"];
+      items.forEach((label, k) => {
+        const y = 48 + k * 38;
+        const checked = k < (grow % (items.length + 1));
+        ctx.strokeStyle = "#5B6170"; ctx.lineWidth = 2; ctx.strokeRect(12, y - 12, 15, 15);
+        if (checked) { ctx.strokeStyle = "#E58B3A"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(15, y - 5); ctx.lineTo(19, y); ctx.lineTo(26, y - 10); ctx.stroke(); }
+        ctx.fillStyle = "#2C3032"; ctx.font = `600 14px ${FONT}`; ctx.fillText(label, 36, y + 1);
+        ctx.fillStyle = "#D6D2C8"; ctx.fillRect(36, y + 8, 150 + ((seed + k * 37) % 90), 5);
+      });
+      ctx.fillStyle = "#8A949B"; ctx.font = `500 11px ${FONT}`; ctx.fillText("공식 가이드 기반 시나리오", 12, h - 10);
+      if (blink) { ctx.fillStyle = "#3B78CC"; ctx.fillRect(190 + (grow % 3) * 10, 48 + (grow % 4) * 38 - 8, 2, 12); }
       break;
     }
     case "tasks": {

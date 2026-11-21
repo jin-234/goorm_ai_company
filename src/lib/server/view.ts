@@ -35,6 +35,7 @@ export function officeView(office: Office) {
     day: {
       date: dayString(day.date),
       checkInAt: day.checkInAt,
+      checkInMethod: day.checkInMethod ?? null,
       goal: day.goal,
       tasks: day.tasks.map(taskView),
       submissions: day.submissions,
@@ -53,19 +54,12 @@ export function officeView(office: Office) {
       endSharing: day.phase === "sharing" || office.canStartSharing,
       confirmReview: day.phase === "checkoutReview",
       startNextWorkday: office.canStartNextWorkday,
-      jumpToFriday: office.canJumpToFriday,
       skipHour: office.canSkipHour,
-      submitWeekly: office.canSubmitWeekly,
     },
     mail: {
       unreadCount: office.unreadCount,
       inbox: office.inbox.map(mailView),
       sent: office.sent.map(mailView),
-    },
-    weekly: {
-      draft: office.weeklyDraft,
-      awaitingReplyId: office.weeklyAwaitingReply?.id ?? null,
-      lastSubmitted: office.weeklyThisWeek,
     },
     history: office.history.map((r) => ({ date: dayString(r.date), dateShort: koreanShort(r.date), tasks: r.tasks, review: r.review, counted: r.counted })),
     /** 3D 사무실(e2) 호환: 내 캐릭터 위치. 카메라 판정이 없어 단계만 반영한다. */

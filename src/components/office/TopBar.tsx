@@ -3,7 +3,7 @@
  * 위 막대(맥 앱 TopBar 구성). 3D 화면에서는 장소 목록 대신 이 막대가 길잡이를 맡는다.
  * 왼쪽: 팀·이름 / 날짜, 큰 시계, 지금 단계 + 상태 칩
  * 가운데: 지금 할 일(지금 열린 패널과 같은 곳이면 숨김)
- * 오른쪽: 메일함 · 안 읽음 N, 금요일이면 주간보고, 점선 '시연' 묶음, 설정 톱니
+ * 오른쪽: 메일함 · 안 읽음 N, 점선 '시연' 묶음, 설정 톱니
  * 개정판: 지각 점수·지각비·착석 상태는 보여 주지 않는다. 마감 시각이 지나면 안내만 한다.
  */
 import { hhmm, type OfficeView } from "./api";
@@ -26,15 +26,14 @@ export function nextStepOf(view: OfficeView): NextStep | null {
       return { label: "회의실로 · 아침보고", place: "meeting" };
     case "working": {
       const allHandled = tasks.length > 0 && tasks.every((t) => t.status === "submitted" || t.status === "incomplete");
-      if (allHandled && view.can.startSharing) return { label: "기획팀 · 오늘 한 일 공유", place: "share" };
+      if (allHandled && view.can.startSharing) return { label: "회의실 · 오늘 한 일 발표", place: "share" };
       return { label: "내 책상 · 결과물 제출", place: "desk" };
     }
     case "sharing":
-      return { label: "기획팀 · 공유 이어가기", place: "share" };
+      return { label: "회의실 · 발표 이어가기", place: "share" };
     case "checkoutReview":
       return { label: "내 책상 · 하루 마감", place: "desk" };
     case "off":
-      if (view.can.submitWeekly) return { label: "주간보고서 쓰기", place: "weekly" };
       return null;
   }
 }
@@ -87,12 +86,6 @@ export function TopBar({
     const res = await office.act<{ skip: { stoppedFor: string | null } }>("skipHour");
     if (res?.skip?.stoppedFor) office.notify(`${res.skip.stoppedFor}에서 멈췄습니다.`);
   };
-  const friday = async () => {
-    if ((await office.act("jumpToFriday")) != null) {
-      office.notify("금요일 아침으로 이동했습니다.\n오늘은 주간보고서를 제출하는 날입니다.");
-      onGo("door");
-    }
-  };
   const nextDay = async () => {
     if ((await office.act("startNextWorkday")) != null) onGo("door");
   };
@@ -137,12 +130,6 @@ export function TopBar({
         {unread > 0 ? `메일함 · 안 읽음 ${unread}` : "메일함"}
       </button>
 
-      {view.clock.isFriday ? (
-        <button className="btn secondary" onClick={() => onGo("weekly")}>
-          주간보고
-        </button>
-      ) : null}
-
       {view.onboarded ? (
         <div className="demo-group" aria-label="시연용 조작">
           <span className="label">시연</span>
@@ -160,16 +147,6 @@ export function TopBar({
               다음 정각
             </button>
           )}
-          {!view.clock.isFriday ? (
-            <button
-              className="btn secondary small"
-              onClick={friday}
-              disabled={office.busy || !view.can.jumpToFriday}
-              title="시연용: 오늘을 마감하고 이번 주 금요일 아침으로 갑니다."
-            >
-              금요일 장면
-            </button>
-          ) : null}
         </div>
       ) : null}
 

@@ -76,14 +76,16 @@ export function OfficeBackdrop({
   view,
   onGo,
   onEntranceEnd,
+  onShareReady,
   onLeaveEnd,
 }: {
   view: OfficeView;
   onGo: (place: PlaceId) => void;
   onEntranceEnd?: () => void;
+  onShareReady?: () => void;
   onLeaveEnd?: () => void;
 }) {
-  return <Office3D view={view} onPlace={(p) => onGo(p)} onEntranceEnd={onEntranceEnd} onLeaveEnd={onLeaveEnd} />;
+  return <Office3D view={view} onPlace={(p) => onGo(p)} onEntranceEnd={onEntranceEnd} onShareReady={onShareReady} onLeaveEnd={onLeaveEnd} />;
 }
 
 /** 2D 배치 위에 놓는 3D 사무실 띠(좁은 화면) 또는 3D 다시 보기 버튼(3D를 숨긴 넓은 화면). */

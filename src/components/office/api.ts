@@ -111,11 +111,6 @@ export const api = {
       "/api/office/review-draft",
       post({}),
     ),
-  weeklyFeedback: (fallback: boolean) =>
-    call<{ result: { source?: string; solarError: SolarErrorInfo | null }; office: OfficeView }>(
-      "/api/office/weekly-feedback",
-      post({ fallback }),
-    ),
   /** 음성 인식이 서버에서 켜져 있는지(OPENAI_API_KEY). */
   sttStatus: () => call<{ enabled: boolean; model: string; maxBytes: number }>("/api/stt"),
   /** 녹음 → 글. 녹음은 서버에 남지 않는다. */

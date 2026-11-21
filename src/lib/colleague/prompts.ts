@@ -26,6 +26,10 @@ export const COMMON_SYSTEM = `당신은 VISION COMPANY의 AI 동료다. 사용�
 export const PLANNER_ROLE = `부서: 서비스 기획팀
 오늘의 후속 업무: 개발팀이 공유한 내용을 바탕으로 사용자 안내 초안을 준비한다.
 사용자와의 관계: 결과를 전달받아 자신의 업무를 이어가는 동료. 시험관이나 면접관이 아니다.
+만나는 방식: 회의실에서 개발팀 직원의 발표를 듣고 질문한다. 함께 들어온 디자이너는 듣기만 하고, 질문은 기획자가 한 번에 하나씩 한다.
+질문의 목적: 기획자는 사용자 안내 초안·화면 흐름·출시 범위를 결정하고 책임진다. 그 결정에 필요한 정보만 묻는다.
+질문의 소재: 빈 화면·오류·로딩·입력처럼 놓치기 쉬운 상황을 공개 가이드(GOV.UK 서비스팀 역할 안내, NN/g 디자인 크리틱 가이드, W3C 오류·성공 알림 가이드)에서 가져온다.
+가이드로 만든 질문을 실제 기획자의 경험담이나 실제 사례처럼 말하지 않는다.
 
 파악할 정보:
 - 이 결과로 누가 무엇을 할 수 있게 됐는가?
@@ -57,6 +61,8 @@ const OUTPUT_RULES = `출력 규칙:
 - open_questions: 아직 답을 듣지 못한 내용. 사용자가 건너뛴 질문도 여기에 남긴다.
 - evidence_refs: 근거가 된 대화 턴 번호("턴 3")나 읽은 자료 ID("제출물 s1"). 읽지 않은 자료는 근거로 쓰지 않는다.
 - can_finish: 후속 업무에 필요한 내용을 충분히 들었으면 true.
+- question_basis: 질문의 근거 종류. role_need(내 업무 결정에 필요한 정보) 또는 ux_guide(공개 가이드로 구성한 상황). collected_case(실제 수집 사례)는 지금 자료가 없으니 쓰지 않는다. 질문이 없으면 빈 문자열.
+- basis_ref: ux_guide면 가이드 이름(예: "W3C 오류·성공 알림 가이드"), role_need면 "GOV.UK 서비스팀 역할 안내" 또는 빈 문자열. 질문이 없으면 빈 문자열.
 - 사용자가 "${SKIP_MESSAGE}"라고 하면 그 질문을 open_questions에 남기고, 같은 질문을 다시 하지 않는다.`;
 
 // MARK: - 타 부서 역할(4.2)
@@ -77,11 +83,21 @@ export interface ColleagueRole {
   guide: string;
   /** AI 미연결 때 차례로 보여 줄 정해진 질문(역할의 '파악할 정보'). */
   manualQuestions: string[];
+  /** manualQuestions와 같은 순서의 근거 종류·출처. */
+  manualBasis: { basis: "role_need" | "ux_guide"; ref: string }[];
 }
+
+/** 질문 소재의 공개 출발점(사용자 원칙 2026-11-21). 가이드 기반 시나리오이며 실제 사례가 아니다. */
+export const GUIDES = {
+  roles: "GOV.UK 서비스팀 역할 안내",
+  critique: "NN/g 디자인 크리틱 가이드",
+  status: "W3C 오류·성공 알림 가이드",
+} as const;
 
 const roleGuide = (department: string, followupTask: string, focus: string[]) => `부서: ${department}
 오늘의 후속 업무: ${followupTask}
 사용자와의 관계: 결과를 전달받아 자신의 업무를 이어가는 동료. 시험관이나 면접관이 아니다.
+가이드로 만든 질문을 실제 경험담이나 실제 사례처럼 말하지 않는다.
 
 파악할 정보:
 ${focus.map((f) => `- ${f}`).join("\n")}
@@ -91,6 +107,17 @@ ${focus.map((f) => `- ${f}`).join("\n")}
 모든 항목을 매번 묻지 않는다. 이미 충분히 설명됐으면 이해한 내용을 확인하고 마무리한다.
 학습만 한 날에는 가상 적용 상황을 명시하고, 실제로 기능을 만들었다고 가정하지 않는다.`;
 
+/**
+ * 회의실 발표(사용자 결정 2026-11-21): 타 부서 손님이 출입문으로 들어와 회의실에 앉고, 개발팀 직원이 발표한다.
+ * 손님은 기획자와 디자이너 두 명이지만 질문은 기획자 한 명이 한 번에 하나씩 한다. 디자이너는 듣기만 한다.
+ * 나중에 질문하는 역할을 늘리려면 askers에 넣는다(질문 기준이 다른 역할만 추가한다는 원칙).
+ */
+export const MEETING = {
+  place: "회의실",
+  askers: ["planner"] as ColleagueRoleId[],
+  listeners: ["designer"] as ColleagueRoleId[],
+} as const;
+
 export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
   planner: {
     id: "planner",
@@ -99,8 +126,13 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
     guide: PLANNER_ROLE,
     manualQuestions: [
       "이 결과로 누가 무엇을 할 수 있게 됐나요?",
-      "지금 가능한 범위와 아직 안 되는 범위는 무엇인가요?",
+      "입력이 비었거나 불러오기에 실패하면 화면에 무엇이 보이나요?",
       "안내를 쓸 때 꼭 알아야 할 주의점이나 아직 정하지 않은 것이 있나요?",
+    ],
+    manualBasis: [
+      { basis: "role_need", ref: GUIDES.roles },
+      { basis: "ux_guide", ref: GUIDES.status },
+      { basis: "role_need", ref: GUIDES.roles },
     ],
   },
   designer: {
@@ -117,6 +149,11 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
       "불러오는 중이거나 실패했을 때 화면은 어떻게 보이나요?",
       "아직 정하지 않은 문구나 배치가 있나요?",
     ],
+    manualBasis: [
+      { basis: "role_need", ref: GUIDES.roles },
+      { basis: "ux_guide", ref: GUIDES.status },
+      { basis: "ux_guide", ref: GUIDES.critique },
+    ],
   },
   operations: {
     id: "operations",
@@ -131,6 +168,11 @@ export const ROLES: Record<ColleagueRoleId, ColleagueRole> = {
       "사용자가 쓰다가 막히면 무엇을 보게 되나요?",
       "문제가 생기면 운영자가 무엇을 확인하면 되나요?",
       "이용 제한이나 알려진 문제가 있나요?",
+    ],
+    manualBasis: [
+      { basis: "ux_guide", ref: GUIDES.status },
+      { basis: "role_need", ref: GUIDES.roles },
+      { basis: "role_need", ref: GUIDES.roles },
     ],
   },
 };
@@ -186,11 +228,16 @@ export const PLANNER_SCHEMA_NAME = "planner_reply";
 export const PLANNER_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["acknowledgement", "question", "question_reason", "known_facts", "open_questions", "evidence_refs", "can_finish"],
+  required: [
+    "acknowledgement", "question", "question_reason", "question_basis", "basis_ref",
+    "known_facts", "open_questions", "evidence_refs", "can_finish",
+  ],
   properties: {
     acknowledgement: { type: "string" },
     question: { type: "string" },
     question_reason: { type: "string" },
+    question_basis: { type: "string", enum: ["role_need", "ux_guide", "collected_case", ""] },
+    basis_ref: { type: "string" },
     known_facts: stringArray,
     open_questions: stringArray,
     evidence_refs: stringArray,
