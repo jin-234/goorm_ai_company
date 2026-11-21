@@ -1,7 +1,10 @@
 "use client";
 /**
- * 위 막대. 가상 시각·단계, 지금 할 일과 실행 버튼, 그리고 실제 기능과 구분한 점선 '시연' 묶음.
- * 개정판: 지각 점수·착석 상태는 보여 주지 않는다. 마감 시각이 지나면 안내만 한다(강제 이동 없음).
+ * 위 막대(맥 앱 TopBar 구성). 3D 화면에서는 장소 목록 대신 이 막대가 길잡이를 맡는다.
+ * 왼쪽: 팀·이름 / 날짜, 큰 시계, 지금 단계 + 상태 칩
+ * 가운데: 지금 할 일(지금 열린 패널과 같은 곳이면 숨김)
+ * 오른쪽: 메일함 · 안 읽음 N, 금요일이면 주간보고, 점선 '시연' 묶음, 설정 톱니
+ * 개정판: 지각 점수·지각비·착석 상태는 보여 주지 않는다. 마감 시각이 지나면 안내만 한다.
  */
 import { hhmm, type OfficeView } from "./api";
 import type { OfficeHandle } from "./useOffice";
@@ -18,9 +21,9 @@ export function nextStepOf(view: OfficeView): NextStep | null {
   const tasks = view.day.tasks;
   switch (view.phase.value) {
     case "beforeCheckIn":
-      return { label: "출입문 · 활동 시작", place: "door" };
+      return { label: "출입문 · 사원증 찍고 출근", place: "door" };
     case "morningPT":
-      return { label: "회의실 · 아침보고", place: "meeting" };
+      return { label: "회의실로 · 아침보고", place: "meeting" };
     case "working": {
       const allHandled = tasks.length > 0 && tasks.every((t) => t.status === "submitted" || t.status === "incomplete");
       if (allHandled && view.can.startSharing) return { label: "기획팀 · 오늘 한 일 공유", place: "share" };
@@ -32,21 +35,54 @@ export function nextStepOf(view: OfficeView): NextStep | null {
       return { label: "내 책상 · 하루 마감", place: "desk" };
     case "off":
       if (view.can.submitWeekly) return { label: "주간보고서 쓰기", place: "weekly" };
-      return { label: "오늘 기록 보기", place: "desk" };
+      return null;
   }
+}
+
+/** 단계 옆 작은 상태 칩. 착석 대신 오늘 과제 진행을 보여 준다. */
+function statusChip(view: OfficeView): { text: string; warn: boolean } {
+  const tasks = view.day.tasks;
+  switch (view.phase.value) {
+    case "beforeCheckIn":
+      return { text: `활동 ${hhmm(view.profile.activityStart)}~${hhmm(view.profile.activityEnd)}`, warn: false };
+    case "morningPT":
+      return { text: "범위 정하는 중", warn: false };
+    case "working":
+    case "sharing": {
+      const sub = tasks.filter((t) => t.status === "submitted").length;
+      return { text: `제출 ${sub} / ${tasks.length}`, warn: false };
+    }
+    case "checkoutReview":
+      return { text: "마감 확인 중", warn: false };
+    case "off":
+      return { text: "오늘 활동 마침", warn: false };
+  }
+}
+
+function GearIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.6 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </svg>
+  );
 }
 
 export function TopBar({
   office,
   view,
   onGo,
+  place,
 }: {
   office: OfficeHandle;
   view: OfficeView;
   onGo: (place: PlaceId) => void;
+  /** 지금 열린 패널. 지금 할 일과 같은 곳이면 버튼을 숨긴다. 패널이 닫혀 있으면 null. */
+  place?: PlaceId | null;
 }) {
   const step = nextStepOf(view);
-  const { profile } = view;
+  const chip = statusChip(view);
+  const unread = view.mail.unreadCount;
   const skip = async () => {
     const res = await office.act<{ skip: { stoppedFor: string | null } }>("skipHour");
     if (res?.skip?.stoppedFor) office.notify(`${res.skip.stoppedFor}에서 멈췄습니다.`);
@@ -66,17 +102,15 @@ export function TopBar({
     <div className="topbar" role="banner">
       <div>
         <div className="small muted">
-          VISION COMPANY · 개발팀 {profile.name} (가상 역할) · {view.clock.dateShort}
+          개발팀 · {view.profile.name} 사원 (가상 역할) · {view.clock.dateShort}
         </div>
-        <div className="row" style={{ gap: 12 }}>
+        <div className="row" style={{ gap: 12, flexWrap: "nowrap" }}>
           <span className="clock" aria-label={`지금 시각 ${view.clock.hm}`}>
             {view.clock.hm}
           </span>
           <div>
             <div className="phase">{view.phase.headline}</div>
-            <span className="chip" title="입사할 때 정한 활동 시간입니다. 바꾸려면 설정에서 고칩니다.">
-              활동 {hhmm(profile.activityStart)}~{hhmm(profile.activityEnd)}
-            </span>
+            <span className={`chip ${chip.warn ? "warn" : ""}`}>{chip.text}</span>
           </div>
         </div>
       </div>
@@ -89,13 +123,24 @@ export function TopBar({
 
       <div className="spacer" />
 
-      {step ? (
-        <div className="row topbar-now">
-          <span className="small muted">지금 할 일</span>
-          <button className="btn" onClick={() => onGo(step.place)}>
-            {step.label}
-          </button>
-        </div>
+      {step && step.place !== place ? (
+        <button className="btn topbar-now" onClick={() => onGo(step.place)} title="지금 할 일">
+          {step.label}
+        </button>
+      ) : null}
+
+      <button
+        className={`btn ${unread > 0 ? "secondary" : "plain"}`}
+        onClick={() => onGo("manager")}
+        aria-label={unread > 0 ? `메일함, 안 읽은 메일 ${unread}통` : "메일함"}
+      >
+        {unread > 0 ? `메일함 · 안 읽음 ${unread}` : "메일함"}
+      </button>
+
+      {view.clock.isFriday ? (
+        <button className="btn secondary" onClick={() => onGo("weekly")}>
+          주간보고
+        </button>
       ) : null}
 
       {view.onboarded ? (
@@ -127,6 +172,10 @@ export function TopBar({
           ) : null}
         </div>
       ) : null}
+
+      <button className="btn plain" onClick={() => onGo("settings")} aria-label="설정" title="설정" style={{ padding: "0 10px" }}>
+        <GearIcon />
+      </button>
     </div>
   );
 }
