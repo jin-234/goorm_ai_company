@@ -735,7 +735,11 @@ label.stack {
 .o3-panel-body {
   flex: 1;
   overflow-y: auto;
-  padding: 18px 18px 24px;
+  padding: 18px 18px 28px;
+  /* 아래로 더 있는 내용이 칼로 자른 듯 잘려 보이지 않게, 맨 아래 24px을 흐리게 사라지게 한다.
+     아래 여백(28px)이 흐림보다 커서 끝까지 내리면 마지막 내용은 또렷하다. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
 }
 
 .o3-close {
@@ -818,8 +822,13 @@ label.stack {
 }
 
 /* 무대 안 토스트는 무대 기준으로 놓는다. */
+/* 알림은 3D 장면의 왼쪽 아래 구석에 띄운다. 가운데 아래에 두면 출근 클로즈업에서 문 앞 캐릭터를 가린다. */
 .o3 .toast {
   position: absolute;
+  left: calc(var(--o3-gap) + 8px);
+  bottom: calc(var(--o3-gap) + 8px);
+  transform: none;
+  max-width: 380px;
 }
 
 /* 근무 중 착석 확인 카메라(SeatMonitor). 화면 오른쪽 아래 작은 창. */
