@@ -9,7 +9,6 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { Onboarding } from "./panels/Onboarding";
-import { applySavedTextScale } from "./panels/Settings";
 import { placeForPhase, renderPanel } from "./panels";
 import { NowPanel } from "./NowPanel";
 import { OfficeBackdrop, OfficeStage, type StageMode, useStageMode } from "./OfficeStage";
@@ -60,9 +59,6 @@ export function OfficeApp() {
     return () => window.removeEventListener("keydown", onKey);
   }, [stage.full, place]);
 
-  useEffect(() => {
-    applySavedTextScale();
-  }, []);
 
   // 출근·퇴근 연출(3D) 동안은 패널을 닫아 둔다. 그동안 열려던 패널은 연출이 끝나면 연다(맥 앱 입장·퇴근 장면).
   // 3D가 끝났다고 알리지 못하는 경우를 대비해 정해진 시간 뒤에는 연다.
