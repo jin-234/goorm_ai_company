@@ -7,7 +7,7 @@
  * 회사 상태(offices)와 같은 연결 주소를 쓴다. 주소가 없으면 프로세스 메모리(로컬 개발용).
  */
 import postgres from "postgres";
-import { cleanUrl, databaseUrl } from "@/lib/server/store";
+import { cleanUrl, databaseUrl, getStore, PostgresStore } from "@/lib/server/store";
 import type { PersonaId } from "./personas";
 
 export type TurnSource = "solar" | "sample" | "manual" | "user";
@@ -161,9 +161,14 @@ export class PostgresConversationStore implements ConversationStore {
   private sql: postgres.Sql;
   private ready: Promise<unknown> | null = null;
 
-  constructor(url: string) {
-    const host = new URL(url).hostname;
-    this.sql = postgres(cleanUrl(url), {
+  /** 연결 주소 대신 이미 열린 연결을 받으면 그것을 같이 쓴다(회사 상태 저장소와 연결 하나). */
+  constructor(urlOrSql: string | postgres.Sql) {
+    if (typeof urlOrSql !== "string") {
+      this.sql = urlOrSql;
+      return;
+    }
+    const host = new URL(urlOrSql).hostname;
+    this.sql = postgres(cleanUrl(urlOrSql), {
       prepare: false,
       ssl: host === "localhost" || host === "127.0.0.1" ? false : "require",
       max: 1,
@@ -258,8 +263,9 @@ const globalStore = globalThis as unknown as { __conversationStore?: Conversatio
 
 export function getConversationStore(): ConversationStore {
   if (!globalStore.__conversationStore) {
-    const url = databaseUrl();
-    globalStore.__conversationStore = url ? new PostgresConversationStore(url) : new MemoryConversationStore();
+    const office = getStore();
+    globalStore.__conversationStore =
+      office instanceof PostgresStore ? new PostgresConversationStore(office.sql) : databaseUrl() ? new PostgresConversationStore(databaseUrl()!) : new MemoryConversationStore();
   }
   return globalStore.__conversationStore;
 }

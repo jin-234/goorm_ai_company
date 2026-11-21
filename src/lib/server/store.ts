@@ -66,7 +66,8 @@ function sslFor(url: string): false | "require" {
 }
 
 export class PostgresStore implements OfficeStore {
-  private sql: postgres.Sql;
+  /** 같은 함수 안의 다른 저장소(동료 대화 기록)도 이 연결 하나를 같이 쓴다. */
+  readonly sql: postgres.Sql;
   private ready: Promise<unknown> | null = null;
 
   constructor(url: string) {
