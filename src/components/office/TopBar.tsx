@@ -27,7 +27,8 @@ export function nextStepOf(view: OfficeView): NextStep | null {
       return { label: "회의실로 · 아침보고", place: "meeting" };
     case "working": {
       const allHandled = tasks.length > 0 && tasks.every((t) => t.status === "submitted" || t.status === "incomplete");
-      if (allHandled && view.can.startSharing) return { label: "회의실 · 오늘 한 일 발표", place: "share" };
+      // 발표 시작 버튼('회의실에서 발표하기')은 책상 패널에 있다. 회의실 패널로 보내면 다시 책상으로 돌려보내는 막다른 길이 된다.
+      if (allHandled && view.can.startSharing) return { label: "내 책상 · 회의실에서 발표하기", place: "desk" };
       return { label: "내 책상 · 결과물 제출", place: "desk" };
     }
     case "checkout":
