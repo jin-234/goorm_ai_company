@@ -6,7 +6,7 @@
  * 그래서 마실 때 자기 컵이 다른 색 컵으로 바뀌지 않는다. 흰 머그는 쓰지 않는다(종이컵·남의 컵처럼 보인다).
  */
 
-export type PersonId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "courier";
+export type PersonId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner" | "courier";
 
 export type HairStyle =
   /** 정수리 똥머리. 김서울. */
@@ -26,12 +26,18 @@ export type HairStyle =
   /** 앞머리를 세워 올린 짧은 머리. 대리. */
   | "quiff"
   /** 긴 머리를 낮게 묶음. 선배. */
-  | "lowTail";
+  | "lowTail"
+  /** 짧은 곱슬머리. AI 기획자(서비스 기획팀). */
+  | "curly";
 
 export type BagKind = "backpack" | "tote" | "briefcase";
 
 /** 옷 위에 얹는 것들. */
-export type Extra = "cardigan" | "tieSuit" | "tieShirt" | "glasses" | "hoodiePocket" | "hoodDown" | "vest" | "folder";
+export type Extra = "cardigan" | "tieSuit" | "tieShirt" | "glasses" | "hoodiePocket" | "hoodDown" | "vest" | "folder"
+  /** 셔츠 깃(넥타이 없이). */
+  | "collar"
+  /** 왼손 메모장과 펜. 듣고 질문할 때 든다. */
+  | "notepad";
 
 export interface CrewLook {
   id: PersonId;
@@ -46,6 +52,8 @@ export interface CrewLook {
   bagColor: string;
   bagKind: BagKind;
   hasBadge: boolean;
+  /** 사원증 줄 색. 다른 부서는 색으로 구분한다(개발팀 노랑, 기획팀 주황). */
+  lanyard?: string;
   /** 사원증 카드 높이(몸통 기준). 넥타이·단추와 겹치지 않게 사람마다 다르다. */
   badgeY: number;
   /** 눈썹 기울기(도). +면 바깥 끝이 내려가 순해 보이고, −면 올라가 또렷해 보인다. */
@@ -111,6 +119,12 @@ export const CREW: Record<PersonId, CrewLook> = {
     mugColor: "#E5603F", bagColor: "#2B3A67", bagKind: "backpack", hasBadge: true, badgeY: 0.2,
     browTilt: 3, browWeight: 0.95, eyeWidth: 1, rate: 1, phase: 0,
   },
+  planner: {
+    id: "planner", name: "AI 기획자", skin: SKIN, hair: "#5A3A2A", hairStyle: "curly",
+    top: "#F1E6CC", pants: "#4A5A4F", extras: ["collar", "notepad"],
+    mugColor: "#E07A3F", bagColor: "#6B7F5A", bagKind: "tote", hasBadge: true, badgeY: 0.2, lanyard: "#E07A3F",
+    browTilt: 2, browWeight: 1, eyeWidth: 1, rate: 1.01, phase: 3.7,
+  },
   courier: {
     id: "courier", name: "택배 기사", skin: "#EFC2A6", hair: "#2A2522", hairStyle: "cap",
     top: "#3E7C8C", pants: "#4A4A50", extras: ["vest"],
@@ -120,4 +134,4 @@ export const CREW: Record<PersonId, CrewLook> = {
 };
 
 /** 조직도 순서(부장, 팀장, 과장, 대리, 선배, 동기 둘, 나)와 택배 기사. */
-export const LINEUP: PersonId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "courier"];
+export const LINEUP: PersonId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "courier"];
