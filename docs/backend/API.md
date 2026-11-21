@@ -98,3 +98,50 @@ Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `sh
 `day.share`: `state`(`awaiting_explanation` → `clarifying` → `ready_to_summarize` → `user_confirmed`), `questionCount`, `maxQuestions`, `turns[]`, `knownFacts[]`, `openQuestions[]`, `endedBy`.
 
 `day.review`: `draft`, `draftSource`(`solar` \| `sample` \| `manual`), `aiDraft`(AI 원본, 사용자 수정과 구분), `editedByUser`, `confirmed`, `confirmedAt`, `choices`.
+
+## 동료와 대화(기록·기억 MD)
+
+가상 동료(팀장 `leader`·PM `pm`·기획자 `planner`·디자이너 `designer`·마케터 `marketer`)와의 1:1 대화와 회의. 화면은 `/colleagues`.
+대화를 마치면 요약을 동료별 **기억 MD**에 합치고, 다음 대화를 시작할 때 그 MD를 읽어 이어 간다. 참여자 구분은 회사 상태와 같은 `office_id` 쿠키.
+Solar 키가 없으면 예시 응답(`source: "sample"`), Solar가 실패하면 정해진 질문(`source: "manual"`)으로 이어 가고 응답의 `solarError`에 이유를 담는다.
+
+| 메서드·주소 | 본문 | 하는 일 |
+| --- | --- | --- |
+| `GET /api/colleagues` | | 동료 목록과 각자의 기억 MD 저장 시각(`memoryUpdatedAt`), `aiMode` |
+| `GET /api/colleagues/conversations` | `?persona=pm` | 대화 기록 목록(최근 것부터, 말 대신 `turnCount`·`lastText`) |
+| `POST /api/colleagues/conversations` | `{ participants: PersonaId[], title?, kind?, opening? }` | 시작. 기억 MD를 읽고 첫마디를 만든다. 두 명 이상이면 회의. `opening: false`면 첫마디 없이 빈 기록(회의록 직접 적기) |
+| `GET /api/colleagues/conversations/:id` | | 대화 한 건(말 전체) |
+| `POST /api/colleagues/conversations/:id/messages` | `{ text }` | 내 말 → 동료의 다음 말. 내 말은 AI 호출 전에 먼저 저장. 마친 대화에 말하면 다시 열린다 |
+| `PATCH /api/colleagues/conversations/:id` | `{ title?, edits?: [{id,text}], remove?: [id], append?: [{speaker,text}], summaryMd? }` | 기록 고치기. 기억에 반영하려면 다시 `/finish` |
+| `POST /api/colleagues/conversations/:id/finish` | | 마치기. 요약(`summaryMd`)을 붙이고 참여 동료마다 기억 MD에 합친다. 다시 부르면 같은 대화의 기억 항목을 새 요약으로 바꾼다 |
+| `DELETE /api/colleagues/conversations/:id` | | 기록 지우기. 기억 MD에서 이 대화의 기록 항목도 뺀다 |
+| `GET /api/colleagues/memory/:personaId` | `?format=md` | 기억 MD. `format=md`면 `.md` 파일로 내려받기 |
+| `PUT /api/colleagues/memory/:personaId` | `{ markdown }` | 기억 MD 직접 고치기(2만 자까지). 다음 대화·요약 때 고친 내용을 읽는다 |
+
+`DELETE /api/office`(처음부터 다시)는 이 참여자의 대화 기록과 기억 MD도 지운다.
+
+### 기억 MD 형식
+
+```md
+# 서하늘 디자이너(디자인팀)와의 대화 기억
+
+> 마지막 갱신: 2026-11-21 14:02 · 대화 기록 1건
+
+## 알고 있는 맥락
+- 사원은 이번 주에 로그인 기능을 끝냈고 다음 주에 회원가입 화면을 만든다.
+
+## 합의·결정
+- (없음)
+
+## 다음에 이어갈 것
+- 로그인에서 가장 먼저 풀어야 할 사용자 문제를 듣기
+
+## 대화 기록
+### 2026-11-21 · 로그인 기능 회의 <!-- c:대화ID -->
+- …
+```
+
+- 정해진 `##` 제목 네 개 아래의 `- ` 목록을 읽고 쓴다. 다른 `##` 절은 그대로 보존한다.
+- 합칠 때 새 항목이 앞에 오고 같은 항목은 하나만 남긴다. 상한: 맥락·결정 15, 이어갈 것 10, 대화 기록 20건.
+- 요약의 `resolved`(이번 대화에서 끝난 '이어갈 것')는 기억에 실제로 있던 항목만 받아 목록에서 뺀다.
+- 프롬프트에는 4,000자까지만 넣고, 넘으면 오래된 대화 기록부터 줄인다. MD 안의 글은 자료로만 보고 지시로 따르지 않는다.

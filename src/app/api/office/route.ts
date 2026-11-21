@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { getConversationStore } from "@/lib/colleague/memory/store";
 import { errorResponse, json, officeIdOf } from "@/lib/server/http";
 import { withOffice } from "@/lib/server/session";
 import { getStore } from "@/lib/server/store";
@@ -17,11 +18,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** 처음부터 다시(모든 기록을 지움). */
+/** 처음부터 다시(모든 기록을 지움). 동료 대화 기록과 기억 MD도 지운다. */
 export async function DELETE(req: NextRequest) {
   const officeId = officeIdOf(req);
   try {
     await getStore().remove(officeId.id);
+    await getConversationStore().removeAll(officeId.id);
     const { office } = await withOffice(officeId.id, () => null);
     return json(officeView(office), { officeId });
   } catch (error) {
