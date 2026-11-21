@@ -379,7 +379,7 @@ function MeetingRoom({ night, mode, onClick }: { night: number; mode: MeetingMod
     ctx.fillRect(0, 0, w, 70);
     ctx.fillStyle = "#fff";
     ctx.font = `700 34px ${FONT}`;
-    ctx.fillText("개발팀 → 디자인 · 마케팅 · 기획팀 공유", 28, 48);
+    ctx.fillText("개발팀 → 기획 · 디자인 · 운영팀 공유", 28, 48);
     const rows = ["오늘 한 일과 결과물", "사용자 안내에 필요한 것", "확인할 상황: 빈 화면 · 오류 · 로딩 · 입력"];
     rows.forEach((text, i) => {
       const y = 110 + i * 62;
