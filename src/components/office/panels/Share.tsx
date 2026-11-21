@@ -275,7 +275,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
         <Steps stage={null} />
         {phase === "working" ? (
           <Notice kind="info" title="결과물을 남겼다면 공유를 시작해 주세요">
-            {"내 책상에서 '회의실에서 발표하기'를 누르면\n개발팀장 사전 보고부터 시작합니다."}
+            {"내 책상에서 '공유 시작 · 팀장 사전 보고부터'를 누르면\n개발팀장 사전 보고부터 시작합니다."}
             <div style={{ marginTop: 8 }}>
               <button className="btn secondary small" onClick={() => onGo("desk")}>
                 내 책상으로
