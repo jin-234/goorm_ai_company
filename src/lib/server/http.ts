@@ -1,7 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { OfficeError } from "../office/rules";
 import { SolarError } from "../solar/client";
-import { SttError } from "../stt/client";
 import { BadRequest } from "./actions";
 
 /** 참여자 구분. 로그인 없이 브라우저 쿠키 하나로 회사 상태를 찾는다. */
@@ -39,9 +38,6 @@ export function errorResponse(error: unknown) {
   }
   if (error instanceof SolarError) {
     return json({ error: { type: "solar", ...error.toJSON() } }, { status: 502 });
-  }
-  if (error instanceof SttError) {
-    return json({ error: { type: "stt", ...error.toJSON() } }, { status: 502 });
   }
   console.error(error);
   return json({ error: { type: "server", message: "서버에서 처리하지 못했습니다.\n잠시 뒤 다시 시도해 주세요." } }, { status: 500 });
