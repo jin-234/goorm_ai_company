@@ -7,6 +7,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { CheckIn } from "./panels/CheckIn";
+import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
 import { nextStepOf, TopBar } from "./TopBar";
 import { type PlaceId, Notice } from "./ui";
@@ -114,6 +115,8 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
   switch (place) {
     case "door":
       return <CheckIn office={office} view={view} onDone={() => go("meeting")} />;
+    case "meeting":
+      return <MorningPT office={office} view={view} />;
     default:
       return (
         <Notice kind="info" title="준비 중인 화면입니다">
