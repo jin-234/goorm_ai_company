@@ -1,23 +1,38 @@
 /** 기록 내보내기: 고른 날짜·항목만 담기, 개인 사유 기본 제외, 입력을 HTML·수식으로 실행하지 않기. */
 import { describe, expect, test } from "vitest";
-import { emptyReview, type PlannerReply } from "../office/models";
+import { type ColleagueReply, emptyReview } from "../office/models";
+import type { Office } from "../office/office";
 import { workingOffice } from "../office/test-helpers";
 import { buildReport, defaultExportOptions, exportFileName, recordsPayloadOf } from "./records";
 import { reportHtml, safeUrl } from "./report-html";
 import { reportSheets, reportXlsx } from "./report-xlsx";
 import { columnName, crc32, xmlText } from "./xlsx";
 
-const reply = (question: string): PlannerReply => ({
+const reply = (question: string): ColleagueReply => ({
+  department: "designer",
+  persona_id: "P_des_B",
   acknowledgement: "고맙습니다.",
+  feedback: null,
   question,
   question_reason: question ? "사용자 안내 문구를 정해야 해서요." : "",
-  question_basis: question ? "role_need" : "",
-  basis_ref: "",
+  anchor_quote: "",
+  lens_id: "",
+  question_type: "",
+  bank_id: "",
+  basis: { type: "role_reasoning", source_ids: [], note: "" },
+  understanding_check: null,
+  difficulty: 2,
   known_facts: [],
   open_questions: [],
   evidence_refs: [],
+  term_explain: null,
+  terms_used: [],
   can_finish: !question,
 });
+
+/** v2: 사용자 말은 recordUserTurn, 동료 발언은 서버(/api/office/share)가 남기므로 시험에서는 직접 넣는다. */
+const colleagueSays = (office: Office, r: ColleagueReply) =>
+  office.day.share.turns.push({ id: crypto.randomUUID(), at: office.now, role: "colleague", stage: "meeting", dept: "designer", meetingRole: "ask", reply: r, source: "sample" });
 
 /** 첫날: 과제 1 제출(링크·글 두 번), 과제 2 이월(사유 적음), 질문 하나에 답, 마감 확정 → 둘째 날 출근. */
 function twoDays() {
@@ -27,10 +42,10 @@ function twoDays() {
   office.submitWork(a.id, "text", "=HYPERLINK(\"http://evil\")<script>alert(1)</script>");
   office.setTaskStatus(a.id, "submitted");
   office.startSharing();
-  office.recordShareTurn({ role: "user", text: "날씨 화면을 만들었습니다." });
-  office.recordShareTurn({ role: "planner", reply: reply("실패하면 무엇이 보이나요?"), source: "sample" });
-  office.recordShareTurn({ role: "user", text: "아직 안내 문구가 없습니다." });
-  office.recordShareTurn({ role: "planner", reply: reply(""), source: "sample" });
+  office.recordUserTurn("날씨 화면을 만들었습니다.");
+  colleagueSays(office, reply("실패하면 무엇이 보이나요?"));
+  office.recordUserTurn("아직 안내 문구가 없습니다.");
+  colleagueSays(office, reply(""));
   office.endSharing("done");
   office.confirmReview({ ...emptyReview(), reported_work: "날씨 화면", next_action: "실패 안내 추가" }, { [b.id]: "carryOver" }, { [b.id]: "몸이 안 좋았음" });
   office.startNextWorkday();

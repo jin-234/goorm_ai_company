@@ -4,12 +4,11 @@
  * - buildReport: 고른 날짜·항목만 남긴 리포트(화면 미리보기·PDF·엑셀이 같은 값을 쓴다).
  * 개인적인 미완료 사유는 기본으로 넣지 않는다. 링크 결과물은 서비스가 본문을 읽지 않았다고 표시한다.
  */
+import { DEPT_INFO } from "../colleague/v2/catalog";
 import {
-  MEETING_ROLE_NAME,
   type ColleagueSource,
   type Review,
   type SubmissionKind,
-  speakerOf,
   TASK_OUTCOME_LABEL,
   TASK_STATUS_LABEL,
   type DayRecord,
@@ -83,11 +82,12 @@ const isDone = (t: WorkTask) => t.status === "submitted" || t.status === "review
 function questionsOf(turns: ShareTurn[]): RecordQuestion[] {
   const out: RecordQuestion[] = [];
   turns.forEach((t, i) => {
-    const question = t.role === "planner" ? t.reply?.question?.trim() : "";
+    // v2: 동료 발언은 role "colleague", 부서는 dept로 온다.
+    const question = t.role === "colleague" ? t.reply?.question?.trim() : "";
     if (!question) return;
     const answer = turns.slice(i + 1).find((n) => n.role === "user")?.text?.trim() ?? "";
     out.push({
-      department: MEETING_ROLE_NAME[speakerOf(t)].department,
+      department: t.dept ? DEPT_INFO[t.dept].team : "동료",
       question,
       reason: t.reply?.question_reason?.trim() ?? "",
       answer,
