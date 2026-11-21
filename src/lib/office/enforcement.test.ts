@@ -215,6 +215,22 @@ describe("퇴근 점검과 추가근무(보통·엄격)", () => {
   });
 });
 
+describe("늦은 마감 시각", () => {
+  test("마감 시각이 늦어 추가근무가 자정을 넘으면 23:59에서 끊고, 끝까지 한 것으로 본다", () => {
+    const office = new Office(at(monday, 8 * 60));
+    office.completeOnboarding({ name: "김서울", activityStart: 9 * 60, activityEnd: 22 * 60 + 30, enforcement: "standard" });
+    office.checkIn();
+    office.confirmTasks({ tasks: leveled([2, 1]) });
+    office.advance(at(monday, 22 * 60 + 30));
+    office.submitCheckout();
+    expect(hm(office.dinnerEndDate)).toBe("23:30");
+    expect(hm(office.overtimeEndDate)).toBe("23:59");
+    office.advance(at(monday, 23 * 60 + 59));
+    expect(office.day.phase).toBe("overtimeReview");
+    expect(office.endOvertime()).toBe("ranToEnd");
+  });
+});
+
 describe("마감 시각 전 마감", () => {
   test("보통: 2·3단계가 남아 있으면 마감 시각 전에는 공유·마감으로 넘어갈 수 없다", () => {
     const office = standardWorking();

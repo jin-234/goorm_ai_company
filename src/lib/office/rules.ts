@@ -144,9 +144,6 @@ export type OfficeErrorCode =
   | "shareQuestionLimit"
   | "choiceMissing"
   | "invalidProfile"
-  | "weeklyNotFriday"
-  | "weeklyIncomplete"
-  | "weeklyAlreadySubmitted"
   | "lunchAlreadyUsed"
   | "allowanceActive"
   | "emptyReason"
@@ -157,7 +154,7 @@ export type OfficeErrorCode =
 export class OfficeError extends Error {
   constructor(
     public readonly code: OfficeErrorCode,
-    /** notAllowedNow: 이유 한 줄 / taskIncomplete: 과제별 빠진 칸 / choiceMissing: 과제명 / weeklyIncomplete: 칸 이름 */
+    /** notAllowedNow: 이유 한 줄 / taskIncomplete: 과제별 빠진 칸 / choiceMissing: 과제명 */
     public readonly details: string[] = [],
   ) {
     super(OfficeError.describe(code, details));
@@ -189,12 +186,6 @@ export class OfficeError extends Error {
         return "제출하지 못한 과제의 처리를 골라 주세요.\n(범위 조정 · 다음 활동일로 이월 · 오늘 종료)\n" + bullets;
       case "invalidProfile":
         return details[0] ?? "입사 정보를 확인해 주세요.";
-      case "weeklyNotFriday":
-        return "주간보고서는 금요일에 제출합니다.";
-      case "weeklyIncomplete":
-        return "아직 쓰지 않은 칸이 있습니다.\n" + bullets;
-      case "weeklyAlreadySubmitted":
-        return "이번 주 주간보고서는 이미 제출했습니다.";
       case "lunchAlreadyUsed":
         return "오늘 점심은 이미 사용했습니다.";
       case "allowanceActive":

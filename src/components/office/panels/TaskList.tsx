@@ -1,196 +1,130 @@
 "use client";
 /**
- * 확정한 과제 목록. 과제마다 완료 기준·공유 형태·제출물을 보여 주고,
- * 수행 중에는 결과물(글·코드·링크)을 제출하고 진행 상태를 바꾼다.
- * 제출과 완료는 다르다: 제출한 과제는 하루 마감을 확정할 때 '마감 확인'이 된다.
+ * 과제 하나의 수행·제출 카드(개정 기획서 3.1 수행·결과물 제출, 4.4).
+ * 제출(submitWork)과 '제출 완료'(setTaskStatus submitted)는 따로다. 제출과 완료를 같은 것으로 보지 않는다.
+ * 링크는 서버가 본문을 읽지 않으므로 '읽지 않음'으로 표시한다.
  */
 import { useState } from "react";
-import { hm } from "@/lib/office/time";
-import type { OfficeView } from "../api";
+import { dayKeyOf, hm } from "@/lib/office/time";
+import type { OfficeView, Submission, Task } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { StatusBadge } from "../ui";
 
-type Task = OfficeView["day"]["tasks"][number];
-type Submission = OfficeView["day"]["submissions"][number];
-type Kind = Submission["kind"];
+const KIND_NAME: Record<Submission["kind"], string> = { text: "글", link: "링크", code: "코드" };
+const PLACEHOLDER: Record<Submission["kind"], string> = {
+  text: "무엇을 했고 어디까지 됐는지 적어 주세요.",
+  link: "https:// 로 시작하는 주소",
+  code: "핵심 부분만 붙여 넣어 주세요(비밀키는 빼고).",
+};
 
-const KINDS: [Kind, string, string][] = [
-  ["text", "글", "한 일·배운 점·결과를 적어 주세요."],
-  ["code", "코드", "코드를 붙여 넣어 주세요."],
-  ["link", "링크", "https://로 시작하는 주소 하나"],
-];
-
-const KIND_LABEL: Record<Kind, string> = { text: "글", code: "코드", link: "링크" };
-
-export function TaskList({
-  office,
-  view,
-  tasks = view.day.tasks,
-  editable = view.can.editTasks,
-}: {
-  office: OfficeHandle;
-  view: OfficeView;
-  tasks?: Task[];
-  editable?: boolean;
-}) {
-  if (tasks.length === 0) return null;
+export function SubmissionLine({ s }: { s: Submission }) {
+  const d = dayKeyOf(s.at);
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      {tasks.map((t) => (
-        <TaskCard
-          key={t.id}
-          task={t}
-          submissions={view.day.submissions.filter((s) => s.taskId === t.id)}
-          office={office}
-          editable={editable}
-          showLevel={view.enforcement.rules.taskLevels}
-        />
-      ))}
+    <div className="small" style={{ borderLeft: "3px solid var(--line)", paddingLeft: 8 }}>
+      <div className="row" style={{ gap: 6 }}>
+        <span className="badge tag">{KIND_NAME[s.kind]}</span>
+        <span className="muted">
+          {d.month}/{d.day} {hm(s.at)}
+        </span>
+        {s.readScope === "notRead" ? (
+          <span className="badge none" title="주소만 저장했고 내용은 읽지 않았습니다. AI 동료는 설명을 기준으로 이야기합니다.">
+            읽지 않음 · 설명 기준
+          </span>
+        ) : null}
+      </div>
+      <div className={s.kind === "code" ? "pre" : "pre"} style={s.kind === "code" ? { fontFamily: "ui-monospace, monospace", fontSize: 13 } : undefined}>
+        {s.content}
+      </div>
     </div>
   );
 }
 
-function TaskCard({
-  task,
-  submissions,
-  office,
-  editable,
-  showLevel,
-}: {
-  task: Task;
-  submissions: Submission[];
-  office: OfficeHandle;
-  editable: boolean;
-  showLevel: boolean;
-}) {
-  const [kind, setKind] = useState<Kind>("text");
+export function TaskWork({ task, view, office }: { task: Task; view: OfficeView; office: OfficeHandle }) {
+  const [kind, setKind] = useState<Submission["kind"]>("text");
   const [content, setContent] = useState("");
-  const [open, setOpen] = useState(false);
-  const closed = task.status === "reviewed" || (task.status === "incomplete" && task.outcome != null);
-  const canEdit = editable && !closed;
+  const subs = view.day.submissions.filter((s) => s.taskId === task.id);
+  const editable = view.can.editTasks;
+  const done = task.status === "submitted" || task.status === "reviewed";
 
+  const setStatus = (status: "in_progress" | "submitted" | "incomplete") => office.act("setTaskStatus", { taskId: task.id, status });
   const submit = async () => {
-    if ((await office.act("submitWork", { taskId: task.id, kind, content })) != null) {
+    if ((await office.act("submitWork", { taskId: task.id, kind, content: content.trim() })) != null) {
       setContent("");
-      setOpen(false);
-      office.notify(kind === "link" ? "링크를 남겼습니다.\n링크 본문은 읽지 않은 것으로 기록합니다." : "결과물을 제출했습니다.");
+      office.notify("결과물을 남겼습니다.\n다 됐으면 '제출 완료'를 눌러 주세요.");
     }
   };
-  const setStatus = (status: "in_progress" | "submitted" | "incomplete") =>
-    office.act("setTaskStatus", { taskId: task.id, status });
 
   return (
-    <div
-      className="card"
-      style={{ background: task.status === "submitted" || task.status === "reviewed" ? "var(--green-soft)" : "var(--paper)", gap: 8, padding: 12 }}
-    >
-      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div style={{ minWidth: 0 }}>
-          <div className="row">
-            <StatusBadge status={task.status} label={task.statusLabel} />
-            {showLevel ? <span className={`badge ${task.level === 1 ? "tag" : "l" + task.level}`}>{task.level}단계</span> : null}
-            {task.carryCount > 0 ? <span className="badge tag">이월 {task.carryCount}회</span> : null}
-            {task.outcomeLabel ? <span className="badge tag">{task.outcomeLabel}</span> : null}
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginTop: 4 }}>{task.title}</div>
-          <div className="small muted">완료 기준: {task.completionCriteria}</div>
-          {task.shareForm ? <div className="small muted">공유 형태: {task.shareForm}</div> : null}
-          {task.outcomeReason ? <div className="small muted">사유: {task.outcomeReason}</div> : null}
-        </div>
+    <div className="card" style={{ background: done ? "var(--green-soft)" : "var(--paper)", gap: 10, padding: 12 }}>
+      <div className="row">
+        <StatusBadge status={task.status} />
+        {view.enforcement.rules.taskLevels ? (
+          <span className={`badge ${task.level === 1 ? "tag" : `l${task.level}`}`} title={task.levelLabel}>
+            {task.level}단계
+          </span>
+        ) : null}
+        {task.carryCount > 0 ? <span className="badge tag">넘어온 {task.carryCount}회</span> : null}
+      </div>
+      <div style={{ fontSize: 16, fontWeight: 600 }}>{task.title}</div>
+      <div className="small muted">
+        완료 기준: {task.completionCriteria}
+        <br />
+        공유 형태: {task.shareForm}
       </div>
 
-      {submissions.length > 0 ? (
-        <div style={{ display: "grid", gap: 4 }}>
-          {submissions.map((s) => (
-            <div key={s.id} className="small" style={{ borderLeft: "3px solid var(--green-soft)", paddingLeft: 8 }}>
-              <span className="muted">
-                {hm(s.at)} · {KIND_LABEL[s.kind]}
-                {s.readScope === "notRead" ? " · 본문은 읽지 않음" : ""}
-              </span>
-              <div
-                className="pre"
-                style={{
-                  fontFamily: s.kind === "code" ? "ui-monospace, Menlo, monospace" : undefined,
-                  maxHeight: 120,
-                  overflow: "auto",
-                  wordBreak: "break-all",
-                }}
-              >
-                {s.content}
-              </div>
-            </div>
-          ))}
-        </div>
+      {subs.length > 0 ? <div style={{ display: "grid", gap: 6 }}>{subs.map((s) => <SubmissionLine key={s.id} s={s} />)}</div> : null}
+
+      {editable && !done ? (
+        <>
+          {task.status === "confirmed" ? (
+            <button className="btn secondary" onClick={() => setStatus("in_progress")} disabled={office.busy}>
+              시작하기
+            </button>
+          ) : null}
+          <div className="row" role="group" aria-label="결과물 형식">
+            {(["text", "link", "code"] as const).map((k) => (
+              <button key={k} className={`btn small ${kind === k ? "" : "secondary"}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
+                {KIND_NAME[k]}
+              </button>
+            ))}
+          </div>
+          <textarea
+            className="field"
+            aria-label={`${task.title} 결과물`}
+            rows={kind === "link" ? 1 : 3}
+            value={content}
+            placeholder={PLACEHOLDER[kind]}
+            onChange={(e) => setContent(e.target.value)}
+            style={kind === "code" ? { fontFamily: "ui-monospace, monospace", fontSize: 13 } : undefined}
+          />
+          {kind === "link" ? (
+            <div className="small muted">링크는 주소만 저장하고 내용은 읽지 않습니다. 회의실 발표 때 무엇이 담겼는지 설명해 주세요.</div>
+          ) : null}
+          <div className="row">
+            <button className="btn secondary" onClick={submit} disabled={office.busy || !content.trim()}>
+              결과물 남기기
+            </button>
+            <button
+              className="btn"
+              onClick={() => setStatus("submitted")}
+              disabled={office.busy || subs.length === 0}
+              title={subs.length === 0 ? "결과물을 하나 이상 남긴 뒤 누를 수 있습니다." : undefined}
+            >
+              제출 완료
+            </button>
+            {task.status !== "incomplete" ? (
+              <button className="btn plain" onClick={() => setStatus("incomplete")} disabled={office.busy}>
+                오늘은 못 끝냄
+              </button>
+            ) : null}
+          </div>
+        </>
       ) : null}
 
-      {canEdit ? (
-        open ? (
-          <div className="stack" style={{ gap: 6 }}>
-            <div className="row" role="group" aria-label={`${task.title} 제출 형식`}>
-              {KINDS.map(([k, label]) => (
-                <button key={k} className={`btn small ${kind === k ? "" : "secondary"}`} aria-pressed={kind === k} onClick={() => setKind(k)}>
-                  {label}
-                </button>
-              ))}
-            </div>
-            {kind === "link" ? (
-              <input
-                className="field"
-                aria-label={`${task.title} 결과물`}
-                placeholder={KINDS[2][2]}
-                value={content}
-                inputMode="url"
-                onChange={(e) => setContent(e.target.value)}
-              />
-            ) : (
-              <textarea
-                className="field"
-                aria-label={`${task.title} 결과물`}
-                rows={kind === "code" ? 8 : 4}
-                placeholder={KINDS.find(([k]) => k === kind)![2]}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                style={kind === "code" ? { fontFamily: "ui-monospace, Menlo, monospace" } : undefined}
-              />
-            )}
-            {kind === "link" ? (
-              <div className="small muted">링크는 주소만 남깁니다. AI 동료는 링크 안의 내용을 읽지 않습니다.</div>
-            ) : null}
-            <div className="row">
-              <button className="btn small" onClick={submit} disabled={office.busy || !content.trim()}>
-                제출
-              </button>
-              <button className="btn plain small" onClick={() => setOpen(false)}>
-                닫기
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="row">
-            <button className="btn secondary small" onClick={() => setOpen(true)} disabled={office.busy}>
-              결과물 제출
-            </button>
-            {task.status === "confirmed" ? (
-              <button className="btn plain small" onClick={() => setStatus("in_progress")} disabled={office.busy}>
-                시작
-              </button>
-            ) : null}
-            {submissions.length > 0 && task.status !== "submitted" ? (
-              <button className="btn plain small" onClick={() => setStatus("submitted")} disabled={office.busy}>
-                제출 완료로 표시
-              </button>
-            ) : null}
-            {task.status === "submitted" || task.status === "incomplete" ? (
-              <button className="btn plain small" onClick={() => setStatus("in_progress")} disabled={office.busy}>
-                다시 진행 중으로
-              </button>
-            ) : (
-              <button className="btn plain small" onClick={() => setStatus("incomplete")} disabled={office.busy}>
-                미완료로 표시
-              </button>
-            )}
-          </div>
-        )
+      {editable && (task.status === "submitted" || task.status === "incomplete") ? (
+        <button className="btn plain small" onClick={() => setStatus("in_progress")} disabled={office.busy}>
+          다시 하는 중으로 바꾸기
+        </button>
       ) : null}
     </div>
   );

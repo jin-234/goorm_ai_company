@@ -18,7 +18,7 @@ type Angle = "front" | "side" | "back" | "above" | "close" | "closeSide" | "clos
 
 const POSES: Pose[] = [
   "stand", "walk", "wave", "bow", "nod", "present", "phone", "stretch", "standMug", "drink", "fillCup",
-  "reach", "packUp", "holdPaper", "offerPaper", "standBox", "offerBox", "sitListen", "sitEat", "sitReview", "sitExplain",
+  "reach", "packUp", "holdPaper", "offerPaper", "standBox", "offerBox", "tapBadge", "sitListen", "sitEat", "sitReview", "sitExplain",
 ];
 
 /** 확인용 책상: 섬 책상과 같은 치수(1.4×0.75, 상판 윗면 0.775). 키보드는 앞 가장자리에서 0.095, 마우스는 +0.32. */

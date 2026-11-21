@@ -143,6 +143,12 @@ export function Person({ who, pose, holding = {}, desk = null, time, onMugInHand
     const worn = bag != null && look.bagKind === "backpack";
     if (props.backpack) props.backpack.visible = worn;
     if (props.straps) props.straps.visible = worn;
+    // 사원증: 단말기에 찍는 동안은 가슴 카드 대신 손에 든다.
+    const tapping = p.pose === "tapBadge";
+    props.badgeHand.visible = tapping;
+    if (props.badgeChest) props.badgeChest.visible = !tapping;
+    // 메모장: 듣고 끄덕이거나 서 있을 때 왼손에 든다.
+    if (props.notepad) props.notepad.visible = ["sitListen", "nod", "stand", "sitExplain"].includes(p.pose);
     if (props.handBag) props.handBag.visible = carriesHandBag && !["sitType", "sitMug", "sitListen", "sitEat", "sitReview", "sitExplain"].includes(p.pose);
 
     // 컵·가방은 팔이 어떻게 돌아도 똑바로 선 채로 든다(마실 때만 입 쪽으로 기울인다).
@@ -151,6 +157,7 @@ export function Person({ who, pose, holding = {}, desk = null, time, onMugInHand
     props.mug.quaternion.copy(upright);
     props.paperCup.quaternion.copy(upright).multiply(new THREE.Quaternion().setFromAxisAngle(X, 0.6 * sip));
     props.snack.quaternion.copy(upright);
+    props.badgeHand.quaternion.copy(upright);
     if (props.handBag) props.handBag.quaternion.copy(upright);
     // 서류철은 손에서 몸 쪽으로 세워 들고, 읽을 때는 얼굴 쪽으로 기울인다.
     props.paperFile.quaternion.copy(upright).multiply(new THREE.Quaternion().setFromAxisAngle(X, p.pose === "sitReview" ? 0.9 : 0.25));

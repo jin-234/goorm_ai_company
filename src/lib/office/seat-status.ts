@@ -18,7 +18,7 @@ export type SeatStatus =
   | { kind: "dinner"; until: Instant }
   | { kind: "unauthorizedAway"; since: Instant }
   | { kind: "cameraOff" }
-  /** 기획팀 공유 중(기획팀 자리 앞) */
+  /** 회의실 발표 중(기획팀·디자인팀 담당자가 듣는다) */
   | { kind: "sharing" }
   /** 퇴근 점검·추가근무 점검·하루 마감 작성 중 */
   | { kind: "review" }
@@ -34,7 +34,7 @@ const TITLES: Record<SeatStatus["kind"], string> = {
   dinner: "저녁시간",
   unauthorizedAway: "자리 비움",
   cameraOff: "카메라 꺼짐",
-  sharing: "기획팀 공유 중",
+  sharing: "회의실 발표 중",
   review: "점검 중",
   off: "마감 완료",
 };
@@ -99,7 +99,7 @@ export function seatDetail(s: SeatStatus, now: Instant): string {
     case "cameraOff":
       return "카메라가 꺼진 시간은 자리 비움으로 세지 않습니다.";
     case "sharing":
-      return "기획팀에 오늘 한 일을 설명하고 있습니다.";
+      return "회의실에서 기획팀·디자인팀 담당자에게 오늘 한 일을 발표하고 있습니다.";
     case "review":
       return "남은 과제와 오늘 한 일을 확인하고 있습니다.";
     case "off":
@@ -130,7 +130,7 @@ export function phaseHeadline(office: Office): string {
     case "morningPT":
       return "아침보고 · 오늘 끝낼 범위 정하기";
     case "working":
-      if (office.day.checkoutAt != null) return "퇴근 점검 완료 · 기획팀 공유와 하루 마감";
+      if (office.day.checkoutAt != null) return "퇴근 점검 완료 · 회의실 발표와 하루 마감";
       if (office.rules.checkoutAndOvertime) return `수행 중 · ${end} 퇴근 점검`;
       return late ? `수행 중 · 마감 시각 ${end}이 지났습니다` : `수행 중 · 마감 ${end}`;
     case "checkout":
@@ -142,7 +142,7 @@ export function phaseHeadline(office: Office): string {
     case "overtimeReview":
       return "추가근무 점검 · 남은 과제 확인";
     case "sharing":
-      return "기획팀 공유 · 오늘 한 일 설명하기";
+      return "회의실 발표 · 오늘 한 일 발표하기";
     case "checkoutReview":
       return "하루 마감 · 해낸 일과 다음 행동 확인";
     case "off":

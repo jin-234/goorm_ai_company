@@ -1,34 +1,59 @@
 import { describe, expect, test } from "vitest";
 import { at, hm, makeDay } from "../office/time";
 import { applyAction, BadRequest } from "./actions";
-import { CLOCK_PAUSE_AFTER_MS, withOffice } from "./session";
+import { withOffice } from "./session";
 import { MemoryStore } from "./store";
 import { officeView } from "./view";
 
-const monday = makeDay(2026, 11, 16);
-const realStart = at(makeDay(2026, 11, 18), 14 * 60); // 수요일에 처음 켬 → 그 주 월요일 08:55에서 시작
+const wednesday = makeDay(2026, 11, 18);
+const realStart = at(wednesday, 14 * 60); // 실제 시각: 2026-11-18(수) 14:00 KST
 
-describe("서버 세션과 가상 시계", () => {
-  test("처음 열면 이번 주 월요일 08:55에서 시작하고 저장된다", async () => {
+describe("서버 세션과 회사 시계(한국 표준시)", () => {
+  test("새 회사는 실제 지금 시각(KST)에서 시작하고 저장된다", async () => {
     const store = new MemoryStore();
     const { office } = await withOffice("a", () => null, { store, realNow: realStart });
-    expect(office.today).toEqual(monday);
-    expect(hm(office.now)).toBe("08:55");
+    expect(office.today).toEqual(wednesday);
+    expect(hm(office.now)).toBe("14:00");
     expect((await store.load("a"))?.clockAnchor).toBe(realStart);
   });
 
-  test("요청 사이 흐른 실제 시간만큼 시계가 간다", async () => {
+  test("서버 시간대와 무관하게 한국 시각으로 표시한다(UTC 자정 직전 = KST 아침 9시 직전)", async () => {
     const store = new MemoryStore();
-    await withOffice("a", (o) => o.completeOnboarding("김서울"), { store, realNow: realStart });
-    const { office } = await withOffice("a", () => null, { store, realNow: realStart + 90_000 });
-    expect(hm(office.now)).toBe("08:56"); // 08:55 + 1분 30초
+    const utcLate = Date.UTC(2026, 10, 19, 23, 59); // UTC 11/19 23:59 = KST 11/20(금) 08:59
+    const { office } = await withOffice("a", () => null, { store, realNow: utcLate });
+    const view = officeView(office);
+    expect(view.clock).toMatchObject({ hm: "08:59", dateShort: "11월 20일(금)", isFriday: true });
   });
 
-  test("오래 요청이 없으면 시계를 멈춰 둔 것으로 본다", async () => {
+  test("요청 사이 흐른 실제 시간만큼 시계가 가고, 입사해도 시각을 바꾸지 않는다", async () => {
+    const store = new MemoryStore();
+    await withOffice("a", (o) => o.completeOnboarding({ name: "김서울", activityStart: 9 * 60 }), { store, realNow: realStart });
+    const { office } = await withOffice("a", () => null, { store, realNow: realStart + 90_000 });
+    expect(hm(office.now)).toBe("14:01"); // 14:00 + 1분 30초
+  });
+
+  test("오래 비워 둬도 멈추지 않고 실제 시각을 따른다", async () => {
     const store = new MemoryStore();
     await withOffice("a", () => null, { store, realNow: realStart });
-    const { office } = await withOffice("a", () => null, { store, realNow: realStart + CLOCK_PAUSE_AFTER_MS + 1 });
-    expect(hm(office.now)).toBe("08:55");
+    const { office } = await withOffice("a", () => null, { store, realNow: realStart + 3 * 60 * 60 * 1000 });
+    expect(hm(office.now)).toBe("17:00");
+  });
+
+  test("[다음 정각]으로 건너뛴 만큼만 실제보다 앞서 간다", async () => {
+    const store = new MemoryStore();
+    await withOffice("a", (o) => o.completeOnboarding("김서울"), { store, realNow: realStart });
+    await withOffice("a", (o) => applyAction(o, { type: "skipHour" }), { store, realNow: realStart }); // 14:00 → 15:00
+    const { office } = await withOffice("a", () => null, { store, realNow: realStart + 10 * 60 * 1000 });
+    expect(hm(office.now)).toBe("15:10");
+  });
+
+  test("날짜가 바뀐 뒤 다음 활동일을 시작하면 실제 오늘·지금 시각으로 간다", async () => {
+    const store = new MemoryStore();
+    await withOffice("a", (o) => o.completeOnboarding("김서울"), { store, realNow: realStart });
+    const nextMorning = at(makeDay(2026, 11, 19), 8 * 60 + 30);
+    const { office } = await withOffice("a", (o) => applyAction(o, { type: "startNextWorkday" }), { store, realNow: nextMorning });
+    expect(office.today).toEqual(makeDay(2026, 11, 19));
+    expect(hm(office.now)).toBe("08:30");
   });
 
   test("규칙 위반이면 저장하지 않는다", async () => {
@@ -60,7 +85,7 @@ describe("행동 API로 하루 보내기", () => {
       enforcement: "light",
     });
     expect(office.profile.enforcement).toBe("light");
-    expect(hm(office.now)).toBe("09:55");
+    expect(hm(office.now)).toBe("14:00"); // 입사해도 실제 시각 그대로
     office = await act({ type: "checkIn" });
     expect(office.day.phase).toBe("morningPT");
 
@@ -97,8 +122,18 @@ describe("행동 API로 하루 보내기", () => {
     expect(view.day.review.confirmed?.next_action).toBe("에러 안내 만들기");
 
     office = await act({ type: "startNextWorkday" });
-    expect(officeView(office).mail.inbox[0].subject).toContain("11월 17일(화)");
+    expect(officeView(office).mail.inbox[0].subject).toContain("11월 19일(목)");
     expect(officeView(office).history[0]).toMatchObject({ counted: true });
+  });
+
+  test("출근 방식(camera·noCamera)은 기록만 하고, 다른 값은 BadRequest", async () => {
+    const store = new MemoryStore();
+    await withOffice("a", (o) => applyAction(o, { type: "onboard", name: "김서울" }), { store });
+    await expect(withOffice("a", (o) => applyAction(o, { type: "checkIn", method: "face" }), { store })).rejects.toBeInstanceOf(BadRequest);
+    const { office } = await withOffice("a", (o) => applyAction(o, { type: "checkIn", method: "noCamera" }), { store });
+    expect(officeView(office).day.checkInMethod).toBe("noCamera");
+    expect(office.day.events[0].text).toContain("카메라 없이");
+    expect(office.day.phase).toBe("morningPT");
   });
 
   test("알 수 없는 행동과 잘못된 값은 BadRequest", async () => {
@@ -130,8 +165,9 @@ describe("행동 API로 하루 보내기", () => {
     expect(view.seat.kind).toBe("beforeCheckIn");
     expect(view.can).toMatchObject({ checkIn: true, confirmTasks: false, startNextWorkday: true });
     expect(view.mail.unreadCount).toBe(2);
-    expect(view.weekly.lastSubmitted).toBeNull();
+    expect("weekly" in view).toBe(false);
     expect(JSON.parse(JSON.stringify(view)).profile.name).toBe("김서울");
     expect(view.attendance.month).toMatchObject({ late: 0, absent: 0, points: 0, estimatedFee: 0 });
+    expect(JSON.stringify(view)).not.toMatch(/submitWeekly|jumpToFriday/);
   });
 });

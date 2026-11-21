@@ -1,7 +1,7 @@
 /**
  * VISION COMPANY의 상태와 규칙(개정 기획서 3.1·4.5·6장 1단계).
  *
- * 하루: 입사 → 출근 → 아침보고(과제 확정) → 수행·제출 → 기획팀 공유 → 하루 마감 → (다음 활동일)
+ * 하루: 입사 → 출근 → 아침보고(과제 확정) → 수행·제출 → 회의실 발표 → 하루 마감 → (다음 활동일)
  *
  * 관리 강도(참여자가 고름, 기본 보통):
  * - 가볍게: 단계는 사용자 행동으로만 넘어간다. 지각·착석 확인·추가근무가 없다.
@@ -25,20 +25,17 @@ import {
   isTaskLevel,
   type OvertimeOutcome,
   type PresenceState,
+  type CheckInMethod,
   type ColleagueSource,
   type DayRecord,
   defaultProfile,
   type EmployeeProfile,
   isIncoming,
   type Mail,
-  missingSections,
-  newMail,
   newTask,
-  newWeeklyReport,
   newWorkDay,
   type PlannerReply,
   readScopeOf,
-  type ReplySource,
   type Review,
   STATE_VERSION,
   type Submission,
@@ -47,7 +44,6 @@ import {
   type TaskInput,
   type TaskOutcome,
   type TaskStatus,
-  type WeeklyReport,
   type WorkDay,
   type WorkTask,
 } from "./models";
@@ -73,7 +69,6 @@ import {
   dayKeyOf,
   dayString,
   hm,
-  isFriday,
   minuteOfDay,
   minutesBetween,
   mondayOfWeek,
@@ -98,8 +93,6 @@ export interface OfficeState {
   mails: Mail[];
   /** 마감에서 이월을 고른 과제. 다음 활동일 아침보고 확정 때 목록 앞에 붙는다. */
   pendingCarry: WorkTask[];
-  weeklyReports: WeeklyReport[];
-  weeklyDraft: WeeklyReport;
   /** 미리 알린 쉬는 날("YYYY-MM-DD"). 결근 후보로 세지 않는다. */
   daysOff: string[];
 }
@@ -141,6 +134,9 @@ export interface CloseOutcome {
   ended: number;
 }
 
+/** a가 b보다 뒤 날짜인지. */
+const dayAfter = (a: DayKey, b: DayKey) => at(a, 0) > at(b, 0);
+
 /** 진행 중으로 보는 과제 상태(아직 마감 처리를 하지 않음). */
 const OPEN_STATUSES: TaskStatus[] = ["confirmed", "in_progress", "submitted", "incomplete"];
 
@@ -158,8 +154,6 @@ export class Office implements OfficeState {
   history: DayRecord[];
   mails: Mail[];
   pendingCarry: WorkTask[];
-  weeklyReports: WeeklyReport[];
-  weeklyDraft: WeeklyReport;
   daysOff: string[];
 
   constructor(startingAt: Instant, profile: EmployeeProfile = defaultProfile()) {
@@ -171,8 +165,6 @@ export class Office implements OfficeState {
     this.history = [];
     this.mails = [];
     this.pendingCarry = [];
-    this.weeklyReports = [];
-    this.weeklyDraft = newWeeklyReport(mondayOfWeek(dayKeyOf(startingAt)));
     this.daysOff = [];
   }
 
@@ -185,6 +177,7 @@ export class Office implements OfficeState {
     const office = Object.create(Office.prototype) as Office;
     Object.assign(office, structuredClone(state));
     office.fillMissing();
+    office.realNow = null;
     return office;
   }
 
@@ -209,16 +202,15 @@ export class Office implements OfficeState {
       history: this.history,
       mails: this.mails,
       pendingCarry: this.pendingCarry,
-      weeklyReports: this.weeklyReports,
-      weeklyDraft: this.weeklyDraft,
       daysOff: this.daysOff,
     };
   }
 
-  /** 시연을 시작하는 시각. 실제 오늘이 속한 주의 월요일, 기본 활동 시작 5분 전. */
-  static demoStart(realNow: Instant = Date.now()): Instant {
-    return at(mondayOfWeek(dayKeyOf(realNow)), WorkRules.defaultActivityStart - WorkRules.minutesBeforeStart);
-  }
+  /**
+   * 이번 요청의 실제 시각(저장하지 않음). 세션이 요청마다 넣어 준다.
+   * 다음 활동일로 넘어갈 때 실제 날짜가 이미 바뀌었는지 보는 데 쓴다.
+   */
+  realNow: Instant | null = null;
 
   // MARK: 시각
 
@@ -235,12 +227,17 @@ export class Office implements OfficeState {
     return this.day.phase !== "off" && this.day.phase !== "beforeCheckIn" && this.now >= this.activityEndDate;
   }
 
+  /** 하루 시계가 멈추는 마지막 분(23:59). 저녁시간·추가근무는 자정을 넘기지 않는다. */
+  private get lastMinuteDate(): Instant {
+    return at(this.day.date, 24 * 60 - 1);
+  }
+
   get dinnerEndDate(): Instant {
-    return addMinutes(this.activityEndDate, WorkRules.dinnerMinutes);
+    return Math.min(addMinutes(this.activityEndDate, WorkRules.dinnerMinutes), this.lastMinuteDate);
   }
 
   get overtimeEndDate(): Instant {
-    return addMinutes(this.dinnerEndDate, WorkRules.overtimeMinutes);
+    return Math.min(addMinutes(this.dinnerEndDate, WorkRules.overtimeMinutes), this.lastMinuteDate);
   }
 
   // MARK: 관리 강도
@@ -386,11 +383,6 @@ export class Office implements OfficeState {
     else this.profile.enforcement = nextLevel;
     if (this.onboarded) return;
     this.onboarded = true;
-    // 처음 시작한 날이면 시계를 사용자가 정한 시작 시각 5분 전으로 맞춘다(출근 전일 때만).
-    if (this.day.phase === "beforeCheckIn") {
-      const start = at(this.day.date, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart));
-      if (start > this.now) this.now = start;
-    }
     this.post(MailTemplates.welcome(this.profile, addMinutes(this.now, -1)));
     this.post(MailTemplates.morningNotice(this.day.date, this.profile, this.pendingCarry, this.now));
   }
@@ -402,27 +394,29 @@ export class Office implements OfficeState {
   }
 
   /**
-   * 버튼으로 활동을 시작한다. 보통·엄격에서는 시작 시각보다 늦으면 지각으로 기록한다.
-   * 쉰 날 다음에 돌아온 날은 지각으로 세지 않는다. 쉬는 날로 알렸어도 출근하면 알림을 거둔다.
+   * 출근한다. 출근 방식(camera·noCamera)은 기록만 한다.
+   * 보통·엄격에서는 시작 시각보다 늦으면 지각으로 기록한다. 쉰 날 다음에 돌아온 날은 지각으로 세지 않는다.
+   * 쉬는 날로 알렸어도 출근하면 알림을 거둔다.
    */
-  checkIn(): { checkInAt: Instant; late: boolean } {
+  checkIn(method: CheckInMethod | null = null): { checkInAt: Instant; method: CheckInMethod | null; late: boolean } {
     if (this.day.phase !== "beforeCheckIn") throw OfficeError.notAllowedNow("오늘은 이미 활동을 시작했습니다.");
     if (!this.onboarded) throw OfficeError.notAllowedNow("입사 정보를 먼저 확인해 주세요.");
     if (this.day.absentCandidate) throw OfficeError.notAllowedNow("오늘은 마감 시각까지 출근 기록이 없어 결근 후보로 남았습니다.\n다음 활동일에 출근해 주세요.");
     if (this.day.dayOff) this.setDayOff(false);
     this.day.level = this.profile.enforcement;
     this.day.checkInAt = this.now;
+    this.day.checkInMethod = method;
     this.day.phase = "morningPT";
     this.day.presence = "present";
     const late = this.rules.attendance && !this.day.returning && minuteOfDay(this.now) > this.profile.activityStart;
     this.day.isLate = late;
-    this.log("checkIn", `활동 시작 ${hm(this.now)}`);
+    this.log("checkIn", `활동 시작 ${hm(this.now)}${method === "camera" ? " · 카메라 확인" : method === "noCamera" ? " · 카메라 없이" : ""}`);
     if (this.day.returning) this.log("returned", "다시 돌아옴 · 오늘은 지각으로 세지 않음");
     if (late) {
       this.log("late", `지각 · 기준 ${Clock.hm(this.profile.activityStart)}`);
       if (this.rules.lateFee) this.post(MailTemplates.lateRecorded(this.now, this.profile, this.monthStats, this.now));
     }
-    return { checkInAt: this.now, late };
+    return { checkInAt: this.now, method, late };
   }
 
   // MARK: 아침보고
@@ -536,7 +530,7 @@ export class Office implements OfficeState {
     return submission;
   }
 
-  // MARK: 기획팀 공유
+  // MARK: 회의실 발표
 
   get canStartSharing(): boolean {
     return this.day.phase === "working" && this.day.tasks.length > 0;
@@ -571,12 +565,12 @@ export class Office implements OfficeState {
   }
 
   startSharing(earlyReason = ""): void {
-    if (!this.canStartSharing) throw OfficeError.notAllowedNow("기획팀 공유는 과제를 확정하고 수행한 뒤에 시작합니다.");
+    if (!this.canStartSharing) throw OfficeError.notAllowedNow("회의실 발표는 과제를 확정하고 수행한 뒤에 시작합니다.");
     this.leaveEarly(earlyReason);
     this.closeSpans(this.now);
     this.day.phase = "sharing";
     this.day.share.state = "awaiting_explanation";
-    this.log("shareStart", `기획팀 공유 시작 ${hm(this.now)}`);
+    this.log("shareStart", `회의실 발표 시작 ${hm(this.now)}`);
   }
 
   /**
@@ -584,14 +578,14 @@ export class Office implements OfficeState {
    * 사용자가 이미 답한 질문을 다시 묻지 않는 판단은 AI 쪽(f4)에서 하고, 여기서는 기록과 상한만 지킨다.
    */
   recordShareTurn(input: ShareTurnInput): void {
-    if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("공유 대화는 기획팀 공유 중에만 남깁니다.");
+    if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("발표 대화는 회의실 발표 중에만 남깁니다.");
     const share = this.day.share;
     if (input.role === "user") {
       const text = (input.text ?? "").trim();
       if (!text) throw OfficeError.notAllowedNow("설명할 내용을 적어 주세요.");
       share.turns.push({ id: crypto.randomUUID(), role: "user", at: this.now, text: text.slice(0, WorkRules.maxFieldLength) });
       if (share.state === "awaiting_explanation") share.state = "clarifying";
-      this.log("shareTurn", "기획팀에 설명");
+      this.log("shareTurn", "회의실에서 발표");
       return;
     }
     const reply = input.reply;
@@ -612,13 +606,13 @@ export class Office implements OfficeState {
       this.leaveEarly(earlyReason);
       this.closeSpans(this.now);
       share.endedBy = "skipped";
-      this.log("shareEnd", "기획팀 공유 건너뜀");
+      this.log("shareEnd", "회의실 발표 건너뜀");
     } else if (this.day.phase === "sharing") {
       share.endedBy = reason;
       if (share.turns.length > 0) share.state = "user_confirmed";
-      this.log("shareEnd", reason === "done" ? "기획팀 공유 마침" : "기획팀 공유를 사용자가 종료");
+      this.log("shareEnd", reason === "done" ? "회의실 발표 마침" : "회의실 발표를 사용자가 종료");
     } else {
-      throw OfficeError.notAllowedNow("기획팀 공유 중이 아닙니다.");
+      throw OfficeError.notAllowedNow("회의실 발표 중이 아닙니다.");
     }
     this.day.phase = "checkoutReview";
   }
@@ -883,7 +877,7 @@ export class Office implements OfficeState {
   }
 
   /**
-   * 퇴근 점검을 제출한다. 2·3단계가 남지 않았으면 기획팀 공유와 하루 마감으로,
+   * 퇴근 점검을 제출한다. 2·3단계가 남지 않았으면 회의실 발표와 하루 마감으로,
    * 남았으면 저녁시간(마감 시각부터 1시간) 뒤 추가근무(3시간)로 간다. 1단계는 하루 마감에서 처리를 고른다.
    */
   submitCheckout(): CheckoutResult {
@@ -910,7 +904,7 @@ export class Office implements OfficeState {
 
   /**
    * 추가근무를 끝낸다. 배정 과제를 다 냈으면 완료, 종료 시각이 지나 점검 중이면 종료 시각까지 한 것,
-   * 그 전에 그만두면 보충근무 미이행으로 기록한다. 끝나면 기획팀 공유·하루 마감으로 간다.
+   * 그 전에 그만두면 보충근무 미이행으로 기록한다. 끝나면 회의실 발표·하루 마감으로 간다.
    */
   endOvertime(): OvertimeOutcome {
     if (!this.canEndOvertime) throw OfficeError.notAllowedNow("추가근무 중이 아닙니다.");
@@ -1041,58 +1035,6 @@ export class Office implements OfficeState {
     if (this.rules.lateFee) this.post(MailTemplates.absentCandidate(this.day.date, this.profile, this.monthStats, time));
   }
 
-  // MARK: 주간보고
-
-  get canSubmitWeekly(): boolean {
-    return isFriday(this.day.date) && this.day.checkInAt != null && !this.day.weeklySubmitted;
-  }
-
-  saveWeeklyDraft(fields: Partial<Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">>): void {
-    if (this.weeklyDraft.submittedAt != null) return;
-    Object.assign(this.weeklyDraft, fields);
-  }
-
-  submitWeeklyReport(report: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): WeeklyReport {
-    if (!isFriday(this.day.date)) throw new OfficeError("weeklyNotFriday");
-    if (this.day.checkInAt == null) throw OfficeError.notAllowedNow("주간보고서는 출근한 뒤에 제출할 수 있습니다.");
-    if (this.day.weeklySubmitted) throw new OfficeError("weeklyAlreadySubmitted");
-    const missing = missingSections(report);
-    if (missing.length > 0) throw new OfficeError("weeklyIncomplete", missing);
-    const submitted: WeeklyReport = { ...this.weeklyDraft, ...report, submittedAt: this.now, weekOf: mondayOfWeek(this.day.date) };
-    this.weeklyReports.push(submitted);
-    this.weeklyDraft = structuredClone(submitted);
-    this.day.weeklySubmitted = true;
-    this.post(MailTemplates.weeklyReport(this.profile.name, submitted, this.day.date, this.now));
-    this.log("weeklyReport", `주간보고서 제출 ${hm(this.now)}`);
-    return submitted;
-  }
-
-  /** 이번 주에 제출한 주간보고서. 없으면 null. */
-  get weeklyThisWeek(): WeeklyReport | null {
-    const monday = mondayOfWeek(this.day.date);
-    for (let i = this.weeklyReports.length - 1; i >= 0; i--) {
-      const r = this.weeklyReports[i];
-      if (r.submittedAt != null && sameDay(r.weekOf, monday)) return r;
-    }
-    return null;
-  }
-
-  get weeklyAwaitingReply(): WeeklyReport | null {
-    for (let i = this.weeklyReports.length - 1; i >= 0; i--) {
-      const r = this.weeklyReports[i];
-      if (r.submittedAt != null && r.replyMailId == null) return r;
-    }
-    return null;
-  }
-
-  receiveWeeklyFeedback(reportId: string, subject: string, body: string, source: ReplySource): void {
-    const report = this.weeklyReports.find((r) => r.id === reportId);
-    if (!report || report.replyMailId != null) return;
-    const mail = newMail({ sentAt: this.now, from: "manager", to: "me", kind: "weeklyFeedback", subject, body, isWarm: true, replySource: source });
-    report.replyMailId = mail.id;
-    this.post(mail);
-  }
-
   // MARK: 다음 활동일
 
   /** 마감했거나, 오늘 활동을 시작하지 않았으면(휴식일) 다음 활동일로 넘어갈 수 있다. */
@@ -1108,40 +1050,20 @@ export class Office implements OfficeState {
     if (!this.canStartNextWorkday) throw OfficeError.notAllowedNow("하루 마감을 확정한 뒤에 다음 활동일로 넘어갈 수 있습니다.");
     const missed = this.day.checkInAt == null;
     if (missed && this.rules.attendance && !this.day.dayOff && !this.day.absentCandidate) this.markAbsent(this.now);
-    const returning = missed && (this.history.some((r) => r.checkInAt != null) || this.day.returning);
+    const real = this.realNow;
+    // 며칠 앱을 열지 않았다가 돌아온 경우도 '돌아온 날'이다. 열지 않은 날은 결근 후보로 세지 않는다.
+    const skippedDays = real != null && dayAfter(dayKeyOf(real), nextWorkday(this.day.date));
+    const everCheckedIn = this.day.checkInAt != null || this.history.some((r) => r.checkInAt != null);
+    const returning = (missed && (everCheckedIn || this.day.returning)) || (skippedDays && everCheckedIn);
     this.archiveDay();
-    this.beginDay(nextWorkday(this.day.date), returning);
-  }
-
-  get canJumpToFriday(): boolean {
-    return this.onboarded && !isFriday(this.day.date);
-  }
-
-  /** 시연용. 진행 중인 하루를 불이익 없이 닫고 이번 주 금요일로 간다. 마감하지 못한 과제는 이월한다. */
-  jumpToFriday(): void {
-    if (!this.canJumpToFriday) throw OfficeError.notAllowedNow("이미 금요일입니다.");
-    if (this.day.phase !== "off") {
-      this.endActiveAllowance(this.now);
-      this.closeSpans(this.now);
-      for (const task of this.day.tasks) {
-        if (!OPEN_STATUSES.includes(task.status) || task.status === "submitted") continue;
-        task.status = "incomplete";
-        task.outcome = "carryOver";
-        this.pendingCarry.push({
-          ...task,
-          id: crypto.randomUUID(),
-          status: "confirmed",
-          outcome: null,
-          carriedFrom: task.carriedFrom ?? this.day.date,
-          carriedFromTaskId: task.carriedFromTaskId ?? task.id,
-          carryCount: task.carryCount + 1,
-        });
-      }
+    // 실제 날짜(한국 시각)가 이미 지났으면 실제 오늘·지금 시각으로 시작한다.
+    // 같은 날 시연으로 누르면 다음 근무일 활동 시작 5분 전으로 건너뛴다(그만큼 실제보다 앞서 간다).
+    if (real != null && dayAfter(dayKeyOf(real), this.day.date)) {
+      this.beginDay(dayKeyOf(real), Math.max(real, this.now), returning);
+    } else {
+      const next = nextWorkday(this.day.date);
+      this.beginDay(next, at(next, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart)), returning);
     }
-    this.archiveDay();
-    let friday = addDays(this.day.date, 1);
-    while (!isFriday(friday)) friday = addDays(friday, 1);
-    this.beginDay(friday);
   }
 
   private archiveDay(): void {
@@ -1168,15 +1090,12 @@ export class Office implements OfficeState {
     this.history.push(record);
   }
 
-  private beginDay(date: DayKey, returning = false): void {
+  private beginDay(date: DayKey, now: Instant, returning = false): void {
     this.day = newWorkDay(date);
     this.day.dayOff = this.isDayOff(date);
     this.day.returning = returning;
     this.daysOff = this.daysOff.filter((d) => at(makeDayFromString(d), 0) >= at(date, 0));
-    this.now = at(date, Math.max(0, this.profile.activityStart - WorkRules.minutesBeforeStart));
-    if (this.weeklyDraft.submittedAt != null || !sameDay(this.weeklyDraft.weekOf, mondayOfWeek(date))) {
-      this.weeklyDraft = newWeeklyReport(mondayOfWeek(date));
-    }
+    this.now = now;
     this.post(
       returning
         ? MailTemplates.returnWelcome(date, this.profile, this.pendingCarry, this.now)

@@ -79,6 +79,7 @@ export function officeView(office: Office) {
     day: {
       date: dayString(day.date),
       checkInAt: day.checkInAt,
+      checkInMethod: day.checkInMethod ?? null,
       goal: day.goal,
       tasks: day.tasks.map(taskView),
       submissions: day.submissions,
@@ -97,9 +98,7 @@ export function officeView(office: Office) {
       endSharing: day.phase === "sharing" || office.canStartSharing,
       confirmReview: day.phase === "checkoutReview",
       startNextWorkday: office.canStartNextWorkday,
-      jumpToFriday: office.canJumpToFriday,
       skipHour: office.canSkipHour,
-      submitWeekly: office.canSubmitWeekly,
       lowerToday: office.canLowerToday,
       setDayOff: day.phase === "beforeCheckIn" && !day.absentCandidate,
       observePresence: office.rules.seatCheck && office.canEditTasks,
@@ -119,11 +118,6 @@ export function officeView(office: Office) {
       unreadCount: office.unreadCount,
       inbox: office.inbox.map(mailView),
       sent: office.sent.map(mailView),
-    },
-    weekly: {
-      draft: office.weeklyDraft,
-      awaitingReplyId: office.weeklyAwaitingReply?.id ?? null,
-      lastSubmitted: office.weeklyThisWeek,
     },
     history: office.history.map((r) => ({
       date: dayString(r.date),

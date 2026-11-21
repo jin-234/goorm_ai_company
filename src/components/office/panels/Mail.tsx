@@ -4,7 +4,7 @@ import { useState } from "react";
 import { dayKeyOf, hm, koreanShort } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, Notice, PanelHeader, type PlaceId } from "../ui";
+import { Card, PanelHeader, type PlaceId } from "../ui";
 
 type Mail = OfficeView["mail"]["inbox"][number];
 
@@ -28,14 +28,7 @@ export function MailBox({ office, view, onGo }: { office: OfficeHandle; view: Of
 
   return (
     <div className="panel">
-      <PanelHeader place="팀장 자리" title="사내 메일함" detail="한정민 팀장 자리" />
-      <div className="row">
-        {view.can.submitWeekly ? (
-          <button className="btn" onClick={() => onGo("weekly")}>
-            금요일 주간보고서 쓰기
-          </button>
-        ) : null}
-      </div>
+      <PanelHeader place="팀장 자리" title="사내 메일함" detail="AI 팀장 자리 · 공지와 안내 메일이 옵니다." />
       <div className="row" role="tablist" aria-label="메일함">
         {(
           [
@@ -117,7 +110,6 @@ export function MailBox({ office, view, onGo }: { office: OfficeHandle; view: Of
 }
 
 function MailDetail({ mail, onBack }: { mail: Mail; onBack: () => void }) {
-  const isFeedback = mail.kind === "weeklyFeedback";
   return (
     <div className="panel">
       <div>
@@ -140,15 +132,6 @@ function MailDetail({ mail, onBack }: { mail: Mail; onBack: () => void }) {
             {koreanShort(dayKeyOf(mail.sentAt))} {hm(mail.sentAt)}
           </span>
         </div>
-        {isFeedback ? (
-          mail.replySource === "solar" ? (
-            <Notice kind="ok" title="Upstage Solar가 쓴 답장" />
-          ) : (
-            <Notice kind="info" title="Solar 미연결 · 정해진 문구의 기본 답장">
-              {"서버에 UPSTAGE_API_KEY를 넣으면\n보고서를 읽고 쓴 답장을 받습니다."}
-            </Notice>
-          )
-        ) : null}
         <div className="pre" style={{ fontSize: 16, lineHeight: 1.75, userSelect: "text" }}>
           {mail.body}
         </div>

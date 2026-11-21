@@ -13,7 +13,7 @@ import { Clock, hm } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
-import { TaskList } from "./TaskList";
+import { TaskWork } from "./TaskList";
 
 type Option = OfficeView["enforcement"]["options"][number];
 
@@ -213,14 +213,14 @@ export function OvertimePanel({ office, view }: { office: OfficeHandle; view: Of
     office.notify(
       res.checkout.kind === "overtime"
         ? `2·3단계 과제 ${res.checkout.count}건이 남아 추가근무를 배정했습니다.\n저녁시간 ${ot.dinnerHM} 뒤 ${ot.overtimeHM} 추가근무입니다.`
-        : "퇴근 점검을 마쳤습니다.\n기획팀 공유와 하루 마감으로 이어 가세요.",
+        : "퇴근 점검을 마쳤습니다.\n회의실 발표와 하루 마감으로 이어 가세요.",
     );
   };
   const end = async () => {
     const early = phase !== "overtimeReview" && assigned.some((t) => ot.targetIds.includes(t.id));
     if (early && !window.confirm("추가근무를 지금 끝낼까요?\n남은 과제가 있어 보충근무 미이행으로 기록됩니다.\n힘든 날이면 '오늘만 한 단계 낮추기'를 쓰면 기록 없이 끝낼 수 있습니다.")) return;
     const res = await office.act<{ overtime: string }>("endOvertime");
-    if (res) office.notify(res.overtime === "completed" ? "추가근무를 마쳤습니다.\n기획팀 공유와 하루 마감으로 가세요." : "추가근무를 끝냈습니다.\n남은 과제는 하루 마감에서 처리를 고릅니다.");
+    if (res) office.notify(res.overtime === "completed" ? "추가근무를 마쳤습니다.\n회의실 발표와 하루 마감으로 가세요." : "추가근무를 끝냈습니다.\n남은 과제는 하루 마감에서 처리를 고릅니다.");
   };
 
   const title = { checkout: "퇴근 점검", dinner: "저녁시간", overtime: "추가근무", overtimeReview: "추가근무 점검" }[phase as "checkout"];
@@ -263,7 +263,11 @@ export function OvertimePanel({ office, view }: { office: OfficeHandle; view: Of
         <LowerTodayButton office={office} view={view} />
       </div>
       <Card title={phase === "checkout" ? "오늘 과제" : "추가근무 과제"}>
-        <TaskList office={office} view={view} tasks={phase === "checkout" ? view.day.tasks : assigned} />
+        <div style={{ display: "grid", gap: 10 }}>
+          {(phase === "checkout" ? view.day.tasks : assigned).map((t) => (
+            <TaskWork key={t.id} task={t} view={view} office={office} />
+          ))}
+        </div>
       </Card>
       {phase === "overtime" ? <AttendanceCard office={office} view={view} /> : null}
     </div>

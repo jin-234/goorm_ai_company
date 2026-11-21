@@ -1,8 +1,10 @@
 "use client";
 /** 사무실 가구와 소품. 외부 모델 없이 기본 도형으로 만든다(맥 앱 원칙). 원점은 바닥 가운데, 앞은 +Z(사람이 쓰는 쪽). */
 import { RoundedBox } from "@react-three/drei";
-import { type ReactNode, useMemo } from "react";
-import { CanvasTexture, SRGBColorSpace } from "three";
+import { useFrame } from "@react-three/fiber";
+import { type ReactNode, useEffect, useMemo, useRef } from "react";
+import { AdditiveBlending, CanvasTexture, SRGBColorSpace } from "three";
+import { drawScreen, type ScreenKind, type TaskLine } from "./screens";
 import type { BagKind } from "../person";
 
 export const PALETTE = {
@@ -74,35 +76,71 @@ export function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w
   ctx.roundRect(x, y, w, h, r);
 }
 
-/** 모니터 화면 그림: 문서 줄 몇 개. seed로 사람마다 조금씩 다르게. */
-function useScreenTexture(seed: number, checklist: boolean) {
-  return useTextTexture((ctx, w, h) => {
-    ctx.fillStyle = "#F6FBF8";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = PALETTE.green;
-    ctx.fillRect(0, 0, w, 34);
-    ctx.fillStyle = "#fff";
-    ctx.font = `600 20px ${FONT}`;
-    ctx.fillText(checklist ? "오늘의 체크리스트" : "문서", 14, 24);
-    let s = seed * 9301 + 49297;
-    const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
-    for (let i = 0; i < 7; i++) {
-      const y = 56 + i * 24;
-      if (checklist && i < 3) {
-        ctx.strokeStyle = PALETTE.graphite;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(16, y - 12, 14, 14);
-        if (i === 0) { ctx.fillStyle = PALETTE.green; ctx.fillRect(19, y - 9, 8, 8); }
-      }
-      ctx.fillStyle = i % 3 === 0 ? "#9DB5AA" : "#C9D6CF";
-      ctx.fillRect(checklist && i < 3 ? 40 : 16, y - 8, (w - 60) * (0.45 + rnd() * 0.5), 9);
-    }
-  }, 320, 220, [seed, checklist]);
+/** 모니터 받침·화면 테두리 없이 화면 그림만 갱신하는 캔버스. 0.8초마다 다시 그리면 타자 치는 것처럼 보인다. */
+function useLiveScreen(kind: ScreenKind, seed: number, animate: boolean, tasks: TaskLine[]) {
+  const canvas = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = 320;
+    c.height = 220;
+    return c;
+  }, []);
+  const texture = useMemo(() => {
+    if (!canvas) return null;
+    const t = new CanvasTexture(canvas);
+    t.colorSpace = SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  }, [canvas]);
+  const frame = useRef(0);
+  const last = useRef(0);
+  const taskKey = tasks.map((t) => `${t.title}:${+t.done}`).join("|");
+  const draw = () => {
+    const ctx = canvas?.getContext("2d");
+    if (!ctx || !texture) return;
+    drawScreen(ctx, 320, 220, kind, seed, frame.current, tasks);
+    texture.needsUpdate = true;
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(draw, [kind, seed, taskKey, texture]);
+  useFrame((state) => {
+    if (!animate) return;
+    const t = state.clock.elapsedTime;
+    if (t - last.current < 0.8) return;
+    last.current = t;
+    frame.current += 1;
+    draw();
+  });
+  return texture;
 }
 
-/** 모니터. 원점은 받침 바닥. 앞(화면)은 +Z. */
-export function Monitor({ on, seed, checklist = false, night }: { on: boolean; seed: number; checklist?: boolean; night: number }) {
-  const texture = useScreenTexture(seed, checklist);
+let glowTexture: CanvasTexture | null = null;
+/** 화면 앞 책상에 은은히 번지는 빛(둥근 그라데이션). 모든 모니터가 같이 쓴다. */
+function screenGlow() {
+  if (glowTexture || typeof document === "undefined") return glowTexture;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  if (!ctx) return null;
+  const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+  g.addColorStop(0, "rgba(210,240,228,1)");
+  g.addColorStop(1, "rgba(210,240,228,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  glowTexture = new CanvasTexture(c);
+  glowTexture.colorSpace = SRGBColorSpace;
+  return glowTexture;
+}
+
+/**
+ * 모니터. 원점은 받침 바닥, 화면은 +Z. 켜져 있으면 그 사람의 일(코드·메일·일정·설계·과제)이 보이고,
+ * 타자 치는 중이면 0.8초마다 줄이 늘고 커서가 깜빡인다. 밤에는 화면 빛이 책상에 번진다.
+ */
+export function Monitor({ on, kind, seed, typing = false, night, tasks = [] }: {
+  on: boolean; kind: ScreenKind; seed: number; typing?: boolean; night: number; tasks?: TaskLine[];
+}) {
+  const texture = useLiveScreen(kind, seed, on && typing, tasks);
+  const glow = screenGlow();
   return (
     <group>
       <Cylinder r={0.11} h={0.015} at={[0, 0.008, 0]} color={PALETTE.charcoal} rough={0.5} top={0.12} />
@@ -111,11 +149,17 @@ export function Monitor({ on, seed, checklist = false, night }: { on: boolean; s
       <mesh position={[0, 0.42, 0.0185]}>
         <planeGeometry args={[0.56, 0.34]} />
         {on && texture ? (
-          <meshStandardMaterial map={texture} emissiveMap={texture} emissive="#ffffff" emissiveIntensity={0.35 + 0.5 * night} roughness={0.4} />
+          <meshStandardMaterial map={texture} emissiveMap={texture} emissive="#ffffff" emissiveIntensity={0.35 + 0.55 * night} roughness={0.4} />
         ) : (
           <meshStandardMaterial color="#25292B" roughness={0.3} />
         )}
       </mesh>
+      {on && glow && night > 0.15 && (
+        <mesh position={[0, 0.004, 0.24]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.8, 0.5]} />
+          <meshBasicMaterial map={glow} transparent opacity={0.45 * night} depthWrite={false} blending={AdditiveBlending} toneMapped={false} />
+        </mesh>
+      )}
     </group>
   );
 }

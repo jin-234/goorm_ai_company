@@ -1,7 +1,7 @@
 /**
  * 시각별 빛(맥 앱 기획서 4장 표를 three.js 세기로 옮김). 사이 시각은 선형으로 섞는다.
  * 노을색은 햇빛에만 두고 그늘(주변광·채움광)은 거의 무채색: 그늘까지 주황이면 화면 전체가 바랜 사진처럼 탁하다.
- * SceneKit 세기 → three.js: 해 ÷700, 주변광 ÷380, 채움광 ÷520.
+ * SceneKit 세기 → three.js: 해 ÷300, 주변광 ÷420(+밤 보정), 채움광 ÷600. 맥 앱 기준 그림과 나란히 맞춘 값.
  */
 import { Color } from "three";
 
@@ -65,12 +65,14 @@ export function lightAt(minute: number): Light {
   const azimuth = (mix(a.azimuth, b.azimuth, t) * Math.PI) / 180;
   const ambient = mix(a.ambient, b.ambient, t);
   return {
-    sunIntensity: mix(a.sun, b.sun, t) / 700,
+    sunIntensity: mix(a.sun, b.sun, t) / 300,
     sunDirection: [-Math.cos(elevation) * Math.cos(azimuth), -Math.sin(elevation), -Math.cos(elevation) * Math.sin(azimuth)],
     sunColor: mixColor(a.sunColor, b.sunColor, t),
-    ambientIntensity: ambient / 380,
-    ambientColor: mixColor(a.ambientColor, b.ambientColor, t),
-    fillIntensity: mix(a.fill, b.fill, t) / 520,
+    // 밤에도 방 안이 읽히도록(맥 앱 20:00 기준 그림) 어두울수록 주변광을 조금 보탠다.
+    ambientIntensity: ambient / 420 + 0.75 * (1 - Math.min(1, ambient / 340)),
+    // 밤 주변광의 푸른빛은 절반만(맥 앱 20:00 그림은 바닥이 여전히 따뜻한 베이지다).
+    ambientColor: mixColor(a.ambientColor, b.ambientColor, t).lerp(new Color("#E9E4DA"), 0.5 * (1 - Math.min(1, ambient / 340))),
+    fillIntensity: mix(a.fill, b.fill, t) / 600,
     fillColor: mixColor(a.fillColor, b.fillColor, t),
     ceiling: mix(a.ceiling, b.ceiling, t),
     hall: mix(a.hall, b.hall, t),

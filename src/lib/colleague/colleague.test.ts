@@ -10,6 +10,8 @@ const reply = (over: Partial<PlannerReply> = {}): PlannerReply => ({
   acknowledgement: "설명 고맙습니다.",
   question: "이 화면으로 사용자는 무엇을 할 수 있나요?",
   question_reason: "안내 첫 문장에 필요합니다.",
+  question_basis: "role_need",
+  basis_ref: "",
   known_facts: ["도시를 입력하면 날씨가 나온다"],
   open_questions: [],
   evidence_refs: ["턴 1"],
