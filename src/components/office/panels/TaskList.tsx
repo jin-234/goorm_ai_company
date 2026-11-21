@@ -72,7 +72,7 @@ function TaskRow({ task, office, editable }: { task: Task; office: OfficeHandle;
           placeholder="결과물 (메모, 링크, 파일 이름)"
           value={deliverable}
           onChange={(e) => setDeliverable(e.target.value)}
-          onBlur={() => deliverable !== (task.deliverable ?? "") && office.act("setDeliverable", { id: task.id, text: deliverable })}
+          onBlur={() => deliverable !== (task.deliverable ?? "") && office.save("setDeliverable", { id: task.id, text: deliverable })}
         />
       ) : task.deliverable ? (
         <div className="small">결과물: {task.deliverable}</div>

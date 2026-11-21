@@ -19,6 +19,11 @@ export interface OfficeHandle {
   notify: (message: string) => void;
   /** 행동 하나. 성공하면 결과(result)를, 실패하면 null을 돌려준다(오류는 알림으로 보여 준다). */
   act: <T = unknown>(type: string, payload?: Record<string, unknown>) => Promise<T | null>;
+  /**
+   * 입력을 마칠 때(blur) 하는 저장. busy를 켜지 않는다.
+   * busy를 켜면 칸을 벗어나며 누른 버튼이 클릭 도중 비활성이 되어 클릭이 사라진다.
+   */
+  save: (type: string, payload?: Record<string, unknown>) => Promise<void>;
   /** 서버를 부르는 다른 일(초안 만들기 등)을 같은 방식으로 감싼다. */
   run: <T extends { office: OfficeView }>(work: () => Promise<T>) => Promise<T | null>;
   refresh: () => Promise<void>;
@@ -59,12 +64,17 @@ export function useOffice(): OfficeHandle {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  const run = useCallback(
-    async <T extends { office: OfficeView }>(work: () => Promise<T>): Promise<T | null> => {
+  // 행동은 보낸 순서대로 처리한다(조용한 저장이 뒤이은 제출보다 늦게 도착하지 않게).
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+
+  const send = useCallback(
+    async <T extends { office: OfficeView }>(work: () => Promise<T>, quiet: boolean): Promise<T | null> => {
       inFlight.current += 1;
-      setBusy(true);
+      if (!quiet) setBusy(true);
+      const task = queue.current.then(work, work);
+      queue.current = task.catch(() => null);
       try {
-        const res = await work();
+        const res = await task;
         setView(res.office);
         return res;
       } catch (error) {
@@ -78,6 +88,15 @@ export function useOffice(): OfficeHandle {
     [notify],
   );
 
+  const run = useCallback(<T extends { office: OfficeView }>(work: () => Promise<T>) => send(work, false), [send]);
+
+  const save = useCallback(
+    async (type: string, payload: Record<string, unknown> = {}) => {
+      await send(() => api.act(type, payload), true);
+    },
+    [send],
+  );
+
   const act = useCallback(
     async <T = unknown>(type: string, payload: Record<string, unknown> = {}): Promise<T | null> => {
       const res = await run(() => api.act(type, payload));
@@ -86,5 +105,5 @@ export function useOffice(): OfficeHandle {
     [run],
   );
 
-  return { view, loadError, busy, toast, notify, act, run, refresh, setView };
+  return { view, loadError, busy, toast, notify, act, save, run, refresh, setView };
 }
