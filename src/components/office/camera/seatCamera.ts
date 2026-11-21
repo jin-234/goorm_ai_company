@@ -145,11 +145,38 @@ function stopTracks(stream: MediaStream): void {
 
 // MARK: - 브라우저 기본값
 
+/** MediaPipe 파일 위치(같은 사이트). 모델은 public/mediapipe에 커밋, wasm은 dev·build 직전에 복사된다. */
+export const MEDIAPIPE_WASM_PATH = "/mediapipe/wasm";
+export const FACE_MODEL_PATH = "/mediapipe/blaze_face_short_range.tflite";
+
 /**
- * 기본 검출기: 브라우저 내장 얼굴 검출(Shape Detection API의 FaceDetector).
- * 지원하지 않는 브라우저면 DetectorUnavailable로 실패하고, 화면은 '카메라 없이 출근'을 보여 준다.
- * MediaPipe FaceDetector(blaze_face_short_range)로 바꾸려면 이 함수만 교체하면 된다.
+ * MediaPipe FaceDetector(blaze_face_short_range, @mediapipe/tasks-vision 1.2.2).
+ * 얼굴이 있는지만 본다. GPU로 먼저 열고, 안 되면 CPU로 연다. 시간 값은 늘 커지게 맞춘다(VIDEO 모드 규칙).
  */
+export async function loadMediaPipeFaceDetector(): Promise<FaceDetectorLike> {
+  const { FaceDetector, FilesetResolver } = await import("@mediapipe/tasks-vision");
+  const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_PATH);
+  const open = (delegate: "GPU" | "CPU") =>
+    FaceDetector.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath: FACE_MODEL_PATH, delegate },
+      runningMode: "VIDEO",
+      minDetectionConfidence: 0.6,
+    });
+  const detector = await open("GPU").catch(() => open("CPU"));
+  let last = 0;
+  return {
+    hasFace(video, now) {
+      const ts = Math.max(now, last + 1);
+      last = ts;
+      return detector.detectForVideo(video, ts).detections.length > 0;
+    },
+    close() {
+      detector.close();
+    },
+  };
+}
+
+/** 브라우저 내장 얼굴 검출(Shape Detection API). 일부 Chrome에서만 있다. MediaPipe를 못 열 때의 대체. */
 export async function loadBrowserFaceDetector(): Promise<FaceDetectorLike> {
   type NativeDetector = { detect(source: CanvasImageSource): Promise<unknown[]> };
   const Native = (globalThis as { FaceDetector?: new (o: { fastMode: boolean; maxDetectedFaces: number }) => NativeDetector }).FaceDetector;
@@ -163,11 +190,20 @@ export async function loadBrowserFaceDetector(): Promise<FaceDetectorLike> {
   };
 }
 
+/** MediaPipe → 브라우저 내장 순서로 연다. 둘 다 안 되면 DetectorUnavailable(화면은 '카메라 없이 출근'). */
+export async function loadFaceDetector(): Promise<FaceDetectorLike> {
+  try {
+    return await loadMediaPipeFaceDetector();
+  } catch {
+    return loadBrowserFaceDetector();
+  }
+}
+
 export function browserDeps(): SeatCameraDeps {
   const media = typeof navigator !== "undefined" ? navigator.mediaDevices : undefined;
   return {
     getUserMedia: media?.getUserMedia ? (c) => media.getUserMedia(c) : null,
-    loadDetector: loadBrowserFaceDetector,
+    loadDetector: loadFaceDetector,
     now: () => Date.now(),
     setInterval: (fn, ms) => window.setInterval(fn, ms),
     clearInterval: (id) => window.clearInterval(id as number),

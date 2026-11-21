@@ -3,13 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/copy-mediapipe-wasm.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/copy-mediapipe-wasm.mjs",
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "1.2.2",
     "@react-three/drei": "10.7.6",
     "@react-three/fiber": "9.3.0",
     "next": "^15.5.29",

@@ -21,14 +21,18 @@ describe("자리 판정(SeatJudge)", () => {
     expect(j.observe(false, 1800 + HOLD_MS)).toBe("noFace");
   });
 
-  it("얼굴이 안 보인 시간을 초로 세고, 보이면 0으로", () => {
+  it("앉은 얼굴이 확인되지 않은 시간을 세고, 한 번 스친 오검출로는 다시 세지 않는다", () => {
     const j = new SeatJudge(0);
     j.observe(false, 4000);
     expect(j.noFaceSeconds(10_500)).toBe(10);
-    j.observe(true, 11_000);
-    expect(j.noFaceSeconds(11_000)).toBe(0);
-    j.observe(false, 12_000);
-    expect(j.noFaceSeconds(15_000)).toBe(3);
+    j.observe(true, 11_000); // 한 번만 보임(가짜 카메라 무늬에서 실제로 나온 오검출)
+    j.observe(false, 11_250);
+    expect(j.noFaceSeconds(11_250)).toBe(11);
+    j.observe(true, 12_000);
+    j.observe(true, 12_250); // 두 번 연속 → seated
+    expect(j.noFaceSeconds(12_250)).toBe(0);
+    j.observe(false, 12_250 + HOLD_MS); // 1.5초 지나 풀림 → 그때부터 센다
+    expect(j.noFaceSeconds(12_250 + HOLD_MS + 3000)).toBe(3);
   });
 });
 

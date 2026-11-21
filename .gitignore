@@ -10,3 +10,6 @@ next-env.d.ts
 .env*.local
 .env*
 !.env.example
+
+# 출근 카메라 얼굴 검출 wasm(15MB): dev·build 직전에 node_modules에서 복사한다
+public/mediapipe/wasm/
