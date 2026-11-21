@@ -12,11 +12,12 @@ import { Html } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import type React from "react";
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { type DirectionalLight, NeutralToneMapping, Object3D, PerspectiveCamera, Vector3 } from "three";
+import { type AmbientLight, Color, type DirectionalLight, type HemisphereLight, NeutralToneMapping, Object3D, PerspectiveCamera, Vector3 } from "three";
 import { CrewLayer, type CrewFrame } from "./crew/CrewLayer";
 import { DOOR_X, PLANNER_X, ROOM, type SeatId } from "./crew/layout";
 import { type ActivityWindow, crewAt, DEFAULT_WINDOW, type DeskProps, ENTRANCE, entranceAt, leaveAt, type SeatKind } from "./crew/schedule";
-import { lightAt } from "./room/daylight";
+import { type Light, lightAt } from "./room/daylight";
+import type { TaskLine } from "./room/screens";
 import { type ClickPlace, Room, useDeskDefaults } from "./room/Room";
 
 export type OfficePlace = "door" | "desk" | "manager" | "meeting" | "share";
@@ -139,16 +140,25 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
   const nowOf = () => anchor.current.base + (performance.now() - anchor.current.at) * speedRef.current;
 
   const seat = read.seat;
+  const tasksKey = JSON.stringify(read.tasks);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const myTasks = useMemo(() => read.tasks, [tasksKey]);
   const phase = read.phase;
   const window = read.window;
   const frame = useRef<CrewFrame | null>(null);
-  const [minute, setMinute] = useState(() => Math.round(minuteOf(read.now) * 4) / 4);
+  // 화면에 보이는 시각(분, 실수). 서버 시각을 그대로 따르되, '다음 정각'처럼 크게 건너뛰면 2~3초에 걸쳐 따라간다.
+  const shown = useRef(minuteOf(read.now));
+  const lightRef = useRef<Light>(lightAt(shown.current));
+  // 시계 바늘·복도등·화면 밝기처럼 분 단위면 충분한 값은 React로(바뀔 때만 다시 그림).
+  const [minute, setMinute] = useState(() => Math.floor(shown.current));
+  const lastMinuteSet = useRef(0);
   const defaults = useDeskDefaults();
   const [desks, setDesks] = useState<Record<SeatId, DeskProps>>(defaults);
   const deskKey = useRef("");
   const [doors, setDoors] = useState({ entrance: 0, restroom: 0 });
   const [reader, setReader] = useState(0);
   const [facade, setFacade] = useState(phase === "beforeCheckIn" ? 1 : 0);
+  const [frosted, setFrosted] = useState(phase === "beforeCheckIn" ? 1 : 0);
   const [cinematic, setCinematic] = useState(false);
 
   // 출근 전에는 문 앞 클로즈업. 출근(단계가 beforeCheckIn에서 바뀜)하면 입장 연출을 시작한다.
@@ -175,8 +185,20 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
   }, [phase]);
   const aim = useRef<CameraAim>({ shot: waiting ? "doorWait" : focus, rate: 4 });
 
-  useFrame(() => {
+  useFrame((_, dt) => {
     const now = nowOf();
+    // 빛: 반올림 없이 연속 시각으로 매 프레임. 크게 건너뛰면 감쇠 보간.
+    let diff = minuteOf(now) - shown.current;
+    if (diff > 720) diff -= 1440;
+    if (diff < -720) diff += 1440;
+    shown.current = Math.abs(diff) > 5 ? shown.current + diff * (1 - Math.exp(-dt * 1.6)) : shown.current + diff;
+    shown.current = ((shown.current % 1440) + 1440) % 1440;
+    lightRef.current = lightAt(shown.current);
+    const whole = Math.floor(shown.current);
+    if (whole !== minute && performance.now() - lastMinuteSet.current > 120) {
+      lastMinuteSet.current = performance.now();
+      setMinute(whole);
+    }
     const crew = crewAt(now, seat, phase, window);
     let entranceDoor = false;
     let flash = 0;
@@ -188,9 +210,12 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       flash = e.readerFlash;
       // 문이 열리기 시작하면 클로즈업이 천천히 풀리며 전체 샷으로 간다.
       aim.current = t < ENTRANCE.tap ? { shot: "doorWait", rate: 4 } : { shot: "overview", rate: 0.75 };
-      // 문 앞에서는 건물 정면(앞벽을 올림). 카메라가 물러나기 시작하면 벽을 내려 안이 보이게 한다.
-      const f = t < ENTRANCE.tap + ENTRANCE.open + 0.4 ? 1 : 0;
+      // 문 앞에서는 건물 정면(앞벽을 올림). 문이 열려 걸어 들어가기 시작하면 카메라가 풀리는 것과 함께 벽이 스르륵 내려간다.
+      const f = t < ENTRANCE.tap + ENTRANCE.open ? 1 : 0;
       if (f !== facade) setFacade(f);
+      // 유리는 문이 열리는 순간 맑아진다.
+      const g = t < ENTRANCE.tap ? 1 : 0;
+      if (g !== frosted) setFrosted(g);
       if (e.done) {
         entrance.current = null;
         endRef.current?.();
@@ -209,18 +234,17 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       aim.current = waiting ? { shot: "doorWait", rate: 4 } : { shot: focus, rate: 4 };
       const f = waiting ? 1 : 0;
       if (f !== facade) setFacade(f);
+      if (f !== frosted) setFrosted(f);
     }
     const nowCinematic = waiting || entrance.current != null || leaving.current != null;
     if (nowCinematic !== cinematic) setCinematic(nowCinematic);
     if (flash !== reader) setReader(flash);
     frame.current = crew;
-    const m = Math.round(minuteOf(now) * 4) / 4;
-    if (m !== minute) setMinute(m);
     const nextDesks = {} as Record<SeatId, DeskProps>;
     let key = "";
     for (const id of Object.keys(crew) as SeatId[]) {
       nextDesks[id] = crew[id].desk;
-      key += `${id}:${+crew[id].desk.mugOnDesk}${+crew[id].desk.bagAtDesk}${+crew[id].desk.screenOn};`;
+      key += `${id}:${+crew[id].desk.mugOnDesk}${+crew[id].desk.bagAtDesk}${+crew[id].desk.screenOn}${+!!crew[id].desk.typing};`;
     }
     if (key !== deskKey.current) {
       deskKey.current = key;
@@ -241,10 +265,9 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
   const light = useMemo(() => lightAt(minute), [minute]);
   return (
     <>
-      <color attach="background" args={[light.background]} />
-      <Lights light={light} />
+      <Lights lightRef={lightRef} />
       <CameraRig aim={aim} />
-      <Room light={light} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} onClick={onClick} />
+      <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} myTasks={myTasks} onClick={onClick} />
       <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : id === "planner" ? onClick("share") : undefined)} />
       {!cinematic && <Labels onClick={onClick} />}
     </>
@@ -252,7 +275,7 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
 }
 
 /** 화면 상태에서 3D가 쓰는 값만 꺼낸다. 옛 모양과 새 모양을 둘 다 읽는다. */
-export function readView(v: Office3DView): { now: number; phase: string; seat: { kind: SeatKind; reason?: string }; window: ActivityWindow } {
+export function readView(v: Office3DView): { now: number; phase: string; seat: { kind: SeatKind; reason?: string }; window: ActivityWindow; tasks: TaskLine[] } {
   const now = v.clock?.now ?? v.state?.now ?? Date.now();
   const phase = v.phase?.value ?? "working";
   const profile = (v.profile ?? v.state?.profile ?? undefined) as Window2 | undefined;
@@ -265,11 +288,27 @@ export function readView(v: Office3DView): { now: number; phase: string; seat: {
   else if (phase === "beforeCheckIn") seat = { kind: "beforeCheckIn" };
   else if (phase === "off") seat = { kind: "off" };
   else seat = { kind: "seated" };
-  return { now, phase, seat, window: end > start ? { start, end } : DEFAULT_WINDOW };
+  // 오늘의 과제(view.day.tasks): 제목과 상태. 제출(submitted)·검토(reviewed)·완료면 체크.
+  const rawTasks = (v.day as { tasks?: unknown } | null | undefined)?.tasks;
+  const tasks: TaskLine[] = Array.isArray(rawTasks)
+    ? rawTasks.flatMap((t) => {
+        const o = t as { title?: unknown; status?: unknown; done?: unknown };
+        if (typeof o?.title !== "string") return [];
+        const done = o.done === true || o.status === "submitted" || o.status === "reviewed" || o.status === "done";
+        return [{ title: o.title, done }];
+      })
+    : [];
+  return { now, phase, seat, window: end > start ? { start, end } : DEFAULT_WINDOW, tasks };
 }
 
-function Lights({ light }: { light: ReturnType<typeof lightAt> }) {
+/** 조명·배경색을 매 프레임 lightRef(연속 시각의 빛)로 맞춘다. React를 다시 그리지 않아 가볍다. */
+function Lights({ lightRef }: { lightRef: React.MutableRefObject<Light> }) {
+  const scene = useThree((s) => s.scene);
   const sun = useRef<DirectionalLight>(null);
+  const fill = useRef<DirectionalLight>(null);
+  const ceiling = useRef<DirectionalLight>(null);
+  const ambient = useRef<AmbientLight>(null);
+  const hemi = useRef<HemisphereLight>(null);
   const target = useMemo(() => {
     const o = new Object3D();
     o.position.set(0.3, 1.0, 0.6);
@@ -285,36 +324,47 @@ function Lights({ light }: { light: ReturnType<typeof lightAt> }) {
     o.position.set(0.3, 0, 0.3);
     return o;
   }, []);
-  const d = new Vector3(...light.sunDirection).normalize();
-  const sunPos = target.position.clone().addScaledVector(d, -34);
+  const dir = useMemo(() => new Vector3(), []);
+  useFrame(() => {
+    const light = lightRef.current;
+    if (!(scene.background instanceof Color)) scene.background = new Color();
+    (scene.background as Color).copy(light.background);
+    if (ambient.current) { ambient.current.intensity = light.ambientIntensity; ambient.current.color.copy(light.ambientColor); }
+    if (hemi.current) hemi.current.intensity = 0.3 + 0.3 * light.night;
+    if (sun.current) {
+      // 해는 늘 같은 자리에서 방 가운데를 34m 밖에서 비춘다(기획서 4장). 방향·세기·색이 시각에 따라 이어서 바뀐다.
+      dir.set(...light.sunDirection).normalize();
+      sun.current.position.copy(target.position).addScaledVector(dir, -34);
+      sun.current.intensity = light.sunIntensity;
+      sun.current.color.copy(light.sunColor);
+      sun.current.castShadow = light.sunIntensity > 0.01;
+    }
+    if (fill.current) { fill.current.intensity = light.fillIntensity; fill.current.color.copy(light.fillColor); }
+    if (ceiling.current) ceiling.current.intensity = light.ceiling * 0.9;
+  });
   return (
     <>
       <primitive object={target} />
       <primitive object={fillTarget} />
       <primitive object={ceilingTarget} />
-      <ambientLight intensity={light.ambientIntensity} color={light.ambientColor} />
-      <hemisphereLight args={["#FFF8EC", "#C9C2B4", 0.3 + 0.3 * light.night]} />
-      {light.sunIntensity > 0.01 && (
-        <directionalLight
-          ref={sun}
-          position={sunPos.toArray()}
-          target={target}
-          intensity={light.sunIntensity}
-          color={light.sunColor}
-          castShadow
-          shadow-mapSize={[4096, 4096]}
-          shadow-bias={-0.0004}
-          shadow-normalBias={0.02}
-          shadow-camera-left={-12}
-          shadow-camera-right={12}
-          shadow-camera-top={12}
-          shadow-camera-bottom={-12}
-          shadow-camera-near={1}
-          shadow-camera-far={90}
-        />
-      )}
-      <directionalLight position={[-12, 7.5, 14]} target={fillTarget} intensity={light.fillIntensity} color={light.fillColor} />
-      {light.ceiling > 0.01 && <directionalLight position={[2, 20, 4]} target={ceilingTarget} intensity={light.ceiling * 0.9} color="#FFF3DE" />}
+      <ambientLight ref={ambient} />
+      <hemisphereLight ref={hemi} args={["#FFF8EC", "#C9C2B4", 0.3]} />
+      <directionalLight
+        ref={sun}
+        target={target}
+        castShadow
+        shadow-mapSize={[4096, 4096]}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
+        shadow-camera-left={-12}
+        shadow-camera-right={12}
+        shadow-camera-top={12}
+        shadow-camera-bottom={-12}
+        shadow-camera-near={1}
+        shadow-camera-far={90}
+      />
+      <directionalLight ref={fill} position={[-12, 7.5, 14]} target={fillTarget} />
+      <directionalLight ref={ceiling} position={[2, 20, 4]} target={ceilingTarget} color="#FFF3DE" />
     </>
   );
 }

@@ -43,7 +43,14 @@ function Lab() {
     () => ({
       clock: { now: toInstant(day, time) },
       profile: { name: "김서울", activityStart: toMin(start), activityEnd: toMin(end) },
-      day: { checkInAt: phase === "beforeCheckIn" ? null : toInstant(day, time) },
+      day: {
+        checkInAt: phase === "beforeCheckIn" ? null : toInstant(day, time),
+        tasks: q.get("notasks") ? [] : [
+          { title: "로그인 화면 오류 메시지 정리", status: "submitted" },
+          { title: "회원가입 폼 검증 붙이기", status: "in_progress" },
+          { title: "README 실행 방법 보강", status: "confirmed" },
+        ],
+      },
       phase: { value: phase },
     }) satisfies Office3DView,
     // eslint-disable-next-line react-hooks/exhaustive-deps

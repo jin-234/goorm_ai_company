@@ -55,6 +55,8 @@ export interface DeskProps {
   bagAtDesk: boolean;
   /** 모니터·스탠드가 켜졌는지(자리에 있거나 잠깐 비운 동안). */
   screenOn: boolean;
+  /** 앉아서 일하는 중(화면에 줄이 늘고 커서가 깜빡인다). */
+  typing?: boolean;
 }
 
 type Segment =
@@ -288,7 +290,7 @@ export function coworkerAt(id: CoworkerId, now: number, options: CrewOptions = {
       const p = along(seg.path, ((now - seg.t0) / SEC) * WALK_SPEED);
       return { snapshot: { id, visible: true, position: [p.at[0], 0, p.at[1]], heading: headingOf(p.facing), pose: "walk", holding, doing: seg.doing }, desk };
     }
-    if (seg.seated) return { snapshot: seatedSnapshot(id, seg.pose, holding, seg.doing), desk };
+    if (seg.seated) return { snapshot: seatedSnapshot(id, seg.pose, holding, seg.doing), desk: { ...desk, typing: true } };
     return { snapshot: { id, visible: true, position: [seg.at[0], 0, seg.at[1]], heading: headingOf(seg.facing), pose: seg.pose, holding, doing: seg.doing }, desk };
   }
 
@@ -299,7 +301,7 @@ export function coworkerAt(id: CoworkerId, now: number, options: CrewOptions = {
   const sip = sipping(id, now);
   return {
     snapshot: seatedSnapshot(id, sip ? "sitMug" : "sitType", sip ? { cup: "mug" } : {}, sip ? "한 모금" : "일하는 중"),
-    desk: { mugOnDesk: !sip, bagAtDesk, screenOn: true },
+    desk: { mugOnDesk: !sip, bagAtDesk, screenOn: true, typing: true },
   };
 }
 
@@ -350,7 +352,7 @@ export function meAt(now: number, seat: { kind: SeatKind; reason?: string }, pha
     case "sharing": // 단계가 sharing이면 위에서 기획팀 앞에 세운다. 여기 오는 건 단계가 앞서 바뀐 경우뿐이라 자리에 둔다.
     case "review": {
       const sip = sipping("me", now);
-      return { snapshot: seatedSnapshot("me", sip ? "sitMug" : "sitType", sip ? { cup: "mug" } : {}, "일하는 중"), desk: { ...desk, mugOnDesk: !sip } };
+      return { snapshot: seatedSnapshot("me", sip ? "sitMug" : "sitType", sip ? { cup: "mug" } : {}, "일하는 중"), desk: { ...desk, mugOnDesk: !sip, typing: true } };
     }
     case "away": {
       const plan = awayPlan(seat.reason ?? "");

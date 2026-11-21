@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLOCKERS, route, SEATS, SPOTS, type Spot, type Vec2 } from "./layout";
-import { BADGE_READER, BADGE_READER_FACE_Z, OUTSIDE_MAT } from "./layout";
-import { COWORKERS, coworkerAt, crewAt, dayStart, ENTRANCE, entranceAt, entrancePath, meAt, planSummary } from "./schedule";
+import { BADGE_READER, BADGE_READER_FACE_Z, DECOR, INTERIOR, OUTSIDE_MAT } from "./layout";
+import { COWORKERS, coworkerAt, crewAt, dayStart, ENTRANCE, entranceAt, entrancePath, leavePath, meAt, planSummary } from "./schedule";
 
 // 2026-11-16(월)~20(금) 한국 시각 자정.
 const DAYS = [16, 17, 18, 19, 20].map((d) => Date.UTC(2026, 10, d) - 9 * 3600_000);
@@ -258,4 +258,45 @@ describe("출근 입장 연출", () => {
     while (!entranceAt(t).done) t += 0.1;
     expect(t).toBeLessThan(10);
   });
+});
+
+describe("공간 겹침 검사(화분·나무)", () => {
+  const routes: Vec2[][] = [];
+  for (const id of Object.keys(SEATS) as (keyof typeof SEATS)[]) for (const spot of Object.keys(SPOTS) as Spot[]) routes.push(route({ seat: id }, { spot }));
+  routes.push(entrancePath(), leavePath());
+  const segDist = (p: Vec2, a: Vec2, b: Vec2) => {
+    const [dx, dz] = [b[0] - a[0], b[1] - a[1]];
+    const len2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dz) / len2));
+    return Math.hypot(p[0] - (a[0] + dx * t), p[1] - (a[1] + dz * t));
+  };
+
+  for (const d of DECOR) {
+    it(`${d.name}: 잎 끝까지 바깥벽 안쪽에 있다`, () => {
+      const [x0, z0, x1, z1] = INTERIOR;
+      expect(d.at[0] - d.radius).toBeGreaterThan(x0);
+      expect(d.at[0] + d.radius).toBeLessThan(x1);
+      expect(d.at[1] - d.radius).toBeGreaterThan(z0);
+      expect(d.at[1] + d.radius).toBeLessThan(z1);
+    });
+    it(`${d.name}: 벽·책상과 겹치지 않는다`, () => {
+      const hit = BLOCKERS.find(({ box: [x0, z0, x1, z1] }) => {
+        const cx = Math.max(x0, Math.min(d.at[0], x1));
+        const cz = Math.max(z0, Math.min(d.at[1], z1));
+        return Math.hypot(d.at[0] - cx, d.at[1] - cz) < d.radius;
+      });
+      expect(hit?.name).toBeUndefined();
+    });
+    it(`${d.name}: 의자·일어서는 자리와 떨어져 있다`, () => {
+      for (const [id, seat] of Object.entries(SEATS)) {
+        expect(Math.hypot(d.at[0] - seat.chair[0], d.at[1] - seat.chair[1]), `${id} 의자`).toBeGreaterThan(d.radius + 0.35);
+        expect(Math.hypot(d.at[0] - seat.stand[0], d.at[1] - seat.stand[1]), `${id} 일어선 자리`).toBeGreaterThan(d.radius + 0.25);
+      }
+    });
+    it(`${d.name}: 사람이 걷는 길과 겹치지 않는다`, () => {
+      for (const path of routes) for (let i = 1; i < path.length; i++) {
+        expect(segDist(d.at, path[i - 1], path[i]), `${path[0]}→${path[path.length - 1]}`).toBeGreaterThan(d.radius + 0.2);
+      }
+    });
+  }
 });

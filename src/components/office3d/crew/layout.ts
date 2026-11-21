@@ -103,7 +103,8 @@ export const SEATS: Record<SeatId, Seat> = {
   planner: {
     chair: [PLANNER_X, 4.3], facing: [0, -1], deskOffset: 0.6, deskWidth: 1.4, deskDepth: 0.75,
     // 모니터는 기획자 왼편(창 반대쪽)으로 비켜 둔다. 가운데 두면 설명하는 나와 기획자 사이를 가린다.
-    stand: [PLANNER_X + 0.95, 4.3], aisle: "front", monitorShift: -0.45,
+    // 일어서면 책상 왼쪽(방 쪽)으로 나온다. 오른쪽 모서리는 큰 화분 자리.
+    stand: [PLANNER_X - 0.95, 4.3], aisle: "front", monitorShift: -0.45,
   },
 };
 
@@ -269,4 +270,37 @@ export const BLOCKERS: { name: string; box: [number, number, number, number] }[]
   { name: "화장실 앞벽(오른쪽)", box: [ROOM.restroomX + 0.5, ROOM.restroomZ1 - 0.06, ROOM.halfWidth, ROOM.restroomZ1 + 0.06] },
   { name: "앞벽(문 왼쪽)", box: [-ROOM.halfWidth, ROOM.halfDepth - 0.12, ROOM.doorX0, ROOM.halfDepth + 0.12] },
   { name: "앞벽(문 오른쪽)", box: [ROOM.doorX1, ROOM.halfDepth - 0.12, ROOM.halfWidth, ROOM.halfDepth + 0.12] },
+];
+
+// ─── 바닥에 놓인 화분·나무(사람이 지나가지 않는 곳) ──────────────────────
+
+/**
+ * 화분 잎이 퍼지는 가로 반지름. room/parts.tsx의 Plant 모양과 같은 식:
+ * 잎 덩어리 중심이 lean만큼 바깥에 있고, 잎(반지름 r, 세로 1.6배)이 최대 0.4rad 기울어 r·(1 + 1.6·sin0.4) ≈ 1.62r 만큼 더 나간다.
+ */
+export function plantRadius(height: number, scale = 1) {
+  const lean = 0.22;
+  const r = 0.16 * height;
+  return (lean + r * 1.62) * scale;
+}
+
+/** 둥근 나무(room/Room.tsx RoundTree)의 잎 덩어리 가로 반지름. */
+export const ROUND_TREE_RADIUS = 0.2 + 0.27;
+
+export interface Decor { name: string; kind: "plant" | "tree"; at: Vec2; height: number; scale: number; radius: number }
+
+const plant = (name: string, at: Vec2, height: number, scale = 1): Decor => ({ name, kind: "plant", at, height, scale, radius: plantRadius(height, scale) });
+
+/** 바닥 화분·나무. Room이 이 목록대로 놓고, 시험이 벽·가구·자리·걷는 길과 겹치지 않는지 본다. */
+export const DECOR: Decor[] = [
+  plant("앞 오른쪽 모서리 큰 화분", [6.4, 4.38], 1.25, 0.85),
+  plant("뒷벽 화분(화장실 옆)", [4.3, -4.35], 1.0),
+  plant("탕비실 앞 모서리 화분", [-4.25, 4.4], 0.8),
+  { name: "탕비실 출입구 옆 둥근 나무", kind: "tree", at: [-2.6, 4.3], height: 1.3, scale: 1, radius: ROUND_TREE_RADIUS },
+];
+
+/** 바깥벽 안쪽 면(사람·가구가 넘으면 안 되는 선). [x0, z0, x1, z1] */
+export const INTERIOR: [number, number, number, number] = [
+  -ROOM.halfWidth + ROOM.thickness / 2, -ROOM.halfDepth + ROOM.thickness / 2,
+  ROOM.halfWidth - ROOM.thickness / 2, ROOM.halfDepth - ROOM.thickness / 2,
 ];
