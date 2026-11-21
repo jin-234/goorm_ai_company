@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COWORKERS, coworkerAt, crewAt, entranceAt, leaveAt, planSummary, type Snapshot } from "./schedule";
 import { closestPair, separate } from "./separate";
-import { GUESTS, shareArrivalAt, shareEndAt } from "./share";
+import { GUESTS, reviewAt, shareArrivalAt, shareEndAt } from "./share";
 
 const day0 = Date.UTC(2026, 10, 16) - 9 * 3600_000;
 const at = (h: number, m = 0, s = 0) => day0 + ((h * 60 + m) * 60 + s) * 1000;
@@ -49,6 +49,16 @@ describe("캐릭터끼리 겹치지 않는다(0.1초 간격, 두 사람 사이 0
     for (let s = 0; s < 18; s += 0.1) {
       const e = shareEndAt(s);
       check([...coworkers(t1 + s * 1000), e.me, ...GUESTS.map((g) => e.guests[g])], `공유 퇴장 ${s.toFixed(1)}s`);
+    }
+  });
+
+  it("팀장 사전 보고하러 가는 동안과, 팀장 앞에서 회의실로 가는 동안(손님 입장과 함께)", () => {
+    const t0 = at(14, 30);
+    for (let s = 0; s < 8; s += 0.1) check([...coworkers(t0 + s * 1000), reviewAt(s).me], `보고하러 ${s.toFixed(1)}s`);
+    const t1 = at(14, 40);
+    for (let s = 0; s < 16; s += 0.1) {
+      const a = shareArrivalAt(s, "report", "designer");
+      check([...coworkers(t1 + s * 1000), a.me, ...GUESTS.map((g) => a.guests[g])], `보고 뒤 회의 ${s.toFixed(1)}s`);
     }
   });
 

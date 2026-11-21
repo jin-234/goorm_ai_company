@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLOCKERS, route, SEATS, SPOTS, type Spot, type Vec2 } from "./layout";
 import { BADGE_READER, BADGE_READER_FACE_Z, DECOR, INTERIOR, MEETING, MEETING_TABLE_BOX, OUTSIDE_MAT } from "./layout";
-import { arrivalTimes, ENTRY_ORDER, GUEST_SEATS, GUESTS, guestInPath, guestOutPath, meBackPath, meToPresenterPath, shareArrivalAt, shareEndAt, shareSteady } from "./share";
+import { managerPose, meToReportPath, REPORT_SPOT, reviewAt, arrivalTimes, ENTRY_ORDER, GUEST_SEATS, GUESTS, guestInPath, guestOutPath, meBackPath, meToPresenterPath, shareArrivalAt, shareEndAt, shareSteady } from "./share";
 import { COWORKERS, coworkerAt, crewAt, dayStart, ENTRANCE, entranceAt, entrancePath, leavePath, meAt, planSummary } from "./schedule";
 
 // 2026-11-16(월)~20(금) 한국 시각 자정.
@@ -311,8 +311,8 @@ describe("타 부서 공유(회의실 발표)", () => {
     }
   };
 
-  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀·운영팀)", () => {
-    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀", "운영팀"]);
+  it("부서마다 담당자 1명씩만 온다(기획팀·디자인팀·마케팅팀, 문서 2장)", () => {
+    expect(GUEST_SEATS.map((g) => g.dept)).toEqual(["기획팀", "디자인팀", "마케팅팀"]);
     expect(new Set(GUEST_SEATS.map((g) => g.dept)).size).toBe(GUEST_SEATS.length);
     expect(GUEST_SEATS.map((g) => g.guest)).toEqual([...GUESTS]);
   });
@@ -326,7 +326,7 @@ describe("타 부서 공유(회의실 발표)", () => {
   it("손님이 문 밖에서 들어와 앉은 뒤 내가 발표 자리에 선다. 12초(화면 틀 대체 시간) 안에 ready", () => {
     const t = arrivalTimes();
     for (const g of GUESTS) expect(t.guestSeat(g)).toBeLessThanOrEqual(t.ready);
-    expect(t.ready).toBeLessThan(12);
+    expect(t.ready).toBeLessThan(10.5); // 화면 틀 대체 시간 12초보다 넉넉히 먼저
     const start = shareArrivalAt(0.3);
     const [first, , last] = ENTRY_ORDER;
     expect(start.guests[first].pose).toBe("walk");
@@ -359,6 +359,33 @@ describe("타 부서 공유(회의실 발표)", () => {
     const end = shareEndAt(t);
     for (const g of GUESTS) expect(end.guests[g].visible).toBe(false);
     expect(end.me.pose).toBe("sitType");
+  });
+
+  it("① 팀장 사전 보고: 팀장 자리 앞으로 걸어가 팀장을 보고 서서 보고한다. 길은 벽·책상을 지나지 않는다", () => {
+    checkPath("나 → 팀장 자리 앞", meToReportPath());
+    expect(reviewAt(0.5).me.pose).toBe("walk");
+    const r = reviewAt(30);
+    expect(r.arrived).toBe(true);
+    expect(r.me.pose).toBe("present");
+    expect(r.me.position[0]).toBeCloseTo(REPORT_SPOT[0], 3);
+    expect(managerPose("dev_lead", 1)).toBe("sitExplain");
+    expect(["sitListen", "nod"]).toContain(managerPose("user", 1));
+  });
+
+  it("② 팀장 보고를 마치고 회의로 갈 때도 길은 막힘이 없고 10.5초 안에 발표가 시작된다(대체 12초보다 먼저)", () => {
+    checkPath("팀장 자리 앞 → 발표 자리", meToPresenterPath("report"));
+    expect(arrivalTimes("report").ready).toBeLessThan(10.5);
+    expect(shareArrivalAt(0.1, "report").me.position[0]).toBeCloseTo(REPORT_SPOT[0], 3);
+  });
+
+  it("회의 중 마지막으로 말한 부서 담당자만 설명하는 몸짓을 한다", () => {
+    for (const sp of GUESTS) {
+      for (let t = 0; t < 12; t += 0.7) {
+        const st = shareSteady(t, sp);
+        expect(st.guests[sp].pose).toBe("sitExplain");
+        for (const g of GUESTS) if (g !== sp) expect(["sitListen", "nod"]).toContain(st.guests[g].pose);
+      }
+    }
   });
 
   it("공유 단계의 나(연출이 끝난 뒤)는 회의실 발표 자리에 있다", () => {
