@@ -532,3 +532,46 @@ label.stack {
     display: none !important;
   }
 }
+
+/* MARK: 3D 사무실 띠 */
+
+.panel-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.stage-canvas,
+.stage-loading {
+  height: 320px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  overflow: hidden;
+  background: #f4ecdb;
+}
+
+.stage-loading {
+  display: grid;
+  place-items: center;
+}
+
+@media (max-width: 860px) {
+  .stage-canvas,
+  .stage-loading {
+    height: 260px;
+  }
+}
