@@ -11,8 +11,20 @@
  */
 import { firstQuestion, isRepeatQuestion, stripJudgement } from "@/lib/colleague/colleague";
 import { BadRequest } from "@/lib/server/actions";
+import { KST_OFFSET_MS } from "@/lib/office/time";
 import { SolarClient, SolarError } from "@/lib/solar/client";
-import { type ConversationSummary, dropLog, emptyNotes, LIMITS, memoryForPrompt, mergeSummary, parseMemory, renderMemory, renderSummary } from "./markdown";
+import {
+  type ConversationSummary,
+  dropLog,
+  emptyNotes,
+  LIMITS,
+  memoryForPrompt,
+  type MemoryNotes,
+  mergeSummary,
+  parseMemory,
+  renderMemory,
+  renderSummary,
+} from "./markdown";
 import { isPersonaId, PERSONAS, type PersonaId, personaLabel } from "./personas";
 import type { ChatTurn, ColleagueMemory, Conversation, ConversationKind, ConversationStore, TurnSource } from "./store";
 
@@ -44,7 +56,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s
 
 /** 한국 시각 날짜·시각(기억 MD에 적는다). */
 export function kstStamp(d: Date, withTime = true): string {
-  const k = new Date(d.getTime() + 9 * 3600_000).toISOString();
+  const k = new Date(d.getTime() + KST_OFFSET_MS).toISOString();
   return withTime ? `${k.slice(0, 10)} ${k.slice(11, 16)}` : k.slice(0, 10);
 }
 
@@ -65,6 +77,11 @@ export async function writeMemory(ctx: Ctx, personaId: PersonaId, markdown: stri
 }
 
 const hasMemory = (m: ColleagueMemory) => m.updatedAt !== "";
+
+/** 기억 노트를 MD로 다시 써서 저장할 기억 한 건을 만든다. */
+function memoryRecord(ctx: Ctx, personaId: PersonaId, notes: MemoryNotes, now: Date): ColleagueMemory {
+  return { officeId: ctx.officeId, personaId, markdown: renderMemory(personaId, notes, kstStamp(now)), updatedAt: now.toISOString() };
+}
 
 // MARK: - 지침
 
@@ -237,23 +254,31 @@ function memoryContext(memories: Map<PersonaId, ColleagueMemory>) {
   return Object.fromEntries([...memories].map(([id, m]) => [id, hasMemory(m) ? memoryForPrompt(m.markdown) : "(지난 대화 기억 없음. 처음 이야기한다.)"]));
 }
 
+const TURN_TASK = {
+  opening:
+    "대화를 시작하는 첫마디. colleague_memory의 '다음에 이어갈 것'이 있으면 그것부터 자연스럽게 묻는다. 없으면 인사하고 오늘 나눌 이야기를 묻는다.",
+  reply: "conversation의 마지막 말에 이어 다음 한 마디.",
+} as const;
+
+/** Solar가 준 목록에서 판정 표현을 빼고 빈 항목을 없앤다. */
+const cleanList = (v: unknown) => strings(v).map(stripJudgement).filter(Boolean);
+
 async function colleagueSays(
   ctx: Ctx,
   conversation: Conversation,
   memories: Map<PersonaId, ColleagueMemory>,
   task: "opening" | "reply",
 ): Promise<{ speaker: PersonaId; text: string; source: TurnSource } & SolarIssue> {
-  const fallback = task === "opening" ? sampleOpening(conversation.participants, memories) : sampleReply(conversation);
-  if (modeOf(ctx) === "sample") return { ...fallback, text: guardReplyText(fallback.text), source: "sample", solarError: null };
+  const sample = task === "opening" ? sampleOpening(conversation.participants, memories) : sampleReply(conversation);
+  const fallback = { ...sample, text: guardReplyText(sample.text) };
+  if (modeOf(ctx) === "sample") return { ...fallback, source: "sample", solarError: null };
   try {
     const content = await ctx.client.completeJSON({
       system: personaSystem(conversation.participants, ctx),
       messages: [{
         role: "user",
         content: JSON.stringify({
-          task: task === "opening"
-            ? "대화를 시작하는 첫마디. colleague_memory의 '다음에 이어갈 것'이 있으면 그것부터 자연스럽게 묻는다. 없으면 인사하고 오늘 나눌 이야기를 묻는다."
-            : "conversation의 마지막 말에 이어 다음 한 마디.",
+          task: TURN_TASK[task],
           kind: conversation.kind,
           title: conversation.title,
           colleague_memory: memoryContext(memories),
@@ -272,7 +297,7 @@ async function colleagueSays(
     return { speaker, text: guardReplyText(text), source: "solar", solarError: null };
   } catch (error) {
     if (!(error instanceof SolarError)) throw error;
-    return { ...fallback, text: guardReplyText(fallback.text), source: "manual", solarError: error.toJSON() };
+    return { ...fallback, source: "manual", solarError: error.toJSON() };
   }
 }
 
@@ -302,10 +327,10 @@ async function summarize(ctx: Ctx, conversation: Conversation, memories: Map<Per
     const v = parseJSON(content);
     const summary: ConversationSummary = {
       title: String(v.title ?? "").trim() || fallback.title,
-      points: strings(v.points).map(stripJudgement).filter(Boolean),
-      context: strings(v.context).map(stripJudgement).filter(Boolean),
-      decisions: strings(v.decisions).map(stripJudgement).filter(Boolean),
-      followups: strings(v.followups).map(stripJudgement).filter(Boolean),
+      points: cleanList(v.points),
+      context: cleanList(v.context),
+      decisions: cleanList(v.decisions),
+      followups: cleanList(v.followups),
       // 해결됨은 실제로 기억에 있던 항목만 받는다.
       resolved: strings(v.resolved).filter((r) => previousFollowups.includes(r)),
     };
@@ -407,6 +432,13 @@ export interface ConversationPatch {
   summaryMd?: unknown;
 }
 
+/** 손으로 덧붙이는 말의 말한 사람: 나 또는 이 대화의 동료만. */
+function appendSpeaker(conversation: Conversation, value: unknown): ChatTurn["speaker"] {
+  if (value === "me") return "me";
+  if (isPersonaId(value) && conversation.participants.includes(value)) return value;
+  throw new BadRequest("말한 사람은 나 또는 이 대화의 동료여야 합니다.");
+}
+
 /** 대화 기록 고치기(제목·말 수정·삭제·추가·요약). 기억에 반영하려면 다시 마치기(finish)를 부른다. */
 export async function editConversation(ctx: Ctx, id: string, patch: ConversationPatch): Promise<Conversation> {
   const conversation = await load(ctx, id);
@@ -425,9 +457,7 @@ export async function editConversation(ctx: Ctx, id: string, patch: Conversation
   }
   if (Array.isArray(patch.append)) {
     for (const raw of patch.append as { speaker?: unknown; text?: unknown }[]) {
-      const speaker = raw?.speaker === "me" ? "me" : isPersonaId(raw?.speaker) && conversation.participants.includes(raw.speaker) ? raw.speaker : null;
-      if (!speaker) throw new BadRequest("말한 사람은 나 또는 이 대화의 동료여야 합니다.");
-      conversation.turns.push(newTurn(ctx, speaker, userText(raw.text), "user"));
+      conversation.turns.push(newTurn(ctx, appendSpeaker(conversation, raw?.speaker), userText(raw?.text), "user"));
     }
     if (conversation.turns.length > MAX_TURNS) throw new BadRequest(`대화 한 건은 ${MAX_TURNS}마디까지입니다.`);
   }
@@ -455,8 +485,7 @@ export async function finishConversation(
   const saved: ColleagueMemory[] = [];
   for (const [personaId, memory] of memories) {
     const notes = hasMemory(memory) ? parseMemory(memory.markdown) : emptyNotes();
-    const merged = mergeSummary(notes, summary, { conversationId: conversation.id, date });
-    const next = { officeId: ctx.officeId, personaId, markdown: renderMemory(personaId, merged, kstStamp(now)), updatedAt: now.toISOString() };
+    const next = memoryRecord(ctx, personaId, mergeSummary(notes, summary, { conversationId: conversation.id, date }), now);
     await ctx.store.saveMemory(next);
     saved.push(next);
   }
@@ -473,13 +502,13 @@ export async function finishConversation(
 /** 대화 기록을 지운다. 기억 MD에서도 이 대화의 기록 항목을 뺀다. */
 export async function deleteConversation(ctx: Ctx, id: string): Promise<void> {
   const conversation = await load(ctx, id);
+  const now = nowOf(ctx);
   for (const personaId of conversation.participants) {
     const memory = await ctx.store.getMemory(ctx.officeId, personaId);
-    if (!memory || !memory.markdown.trim()) continue;
+    if (!memory?.markdown.trim()) continue;
     const notes = parseMemory(memory.markdown);
     if (!notes.log.some((e) => e.conversationId === id)) continue;
-    const now = nowOf(ctx);
-    await ctx.store.saveMemory({ ...memory, markdown: renderMemory(personaId, dropLog(notes, id), kstStamp(now)), updatedAt: now.toISOString() });
+    await ctx.store.saveMemory(memoryRecord(ctx, personaId, dropLog(notes, id), now));
   }
   await ctx.store.remove(ctx.officeId, id);
 }

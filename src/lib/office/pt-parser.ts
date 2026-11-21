@@ -70,14 +70,17 @@ export function parse(transcript: string, workEnd: number = WorkRules.defaultWor
 
 // MARK: 단계 표시 찾기
 
+/** 단계 앞에 오는 숫자 말. 숫자·한자어·고유어·영어로 말할 수 있다. */
+const LEVEL_WORDS: Record<string, TaskLevel> = {
+  "3": 3, 삼: 3, 세: 3, 쓰리: 3,
+  "2": 2, 이: 2, 두: 2, 투: 2,
+  "1": 1, 일: 1, 한: 1, 원: 1,
+};
+
 export function levelMarkers(text: string): LevelMarker[] {
   // "3단계부터 1단계 순서로 말씀드리겠습니다" 같은 안내 말은 업무가 아니다.
   const pattern = "(3|2|1|삼|이|일|세|두|한|쓰리|투|원)\\s*단계(?!\\s*(?:부터|까지|순서|순으로|에서|별로))";
-  return [...matchAll(pattern, text)].map((m) => {
-    const word = m[1];
-    const level: TaskLevel = ["3", "삼", "세", "쓰리"].includes(word) ? 3 : ["2", "이", "두", "투"].includes(word) ? 2 : 1;
-    return { level, start: m.index, end: m.index + m[0].length };
-  });
+  return [...matchAll(pattern, text)].map((m) => ({ level: LEVEL_WORDS[m[1]], start: m.index, end: m.index + m[0].length }));
 }
 
 // MARK: 구간 → 초안

@@ -102,13 +102,14 @@ export function parseMemory(markdown: string): MemoryNotes {
   return notes;
 }
 
-const bullets = (items: string[]) => (items.length ? items.map((i) => `- ${i}`).join("\n") : "- (없음)");
+const listLines = (items: string[]) => items.map((i) => `- ${i}`);
+const bullets = (items: string[]) => (items.length ? listLines(items).join("\n") : "- (없음)");
 
 export function renderMemory(personaId: PersonaId, notes: MemoryNotes, updatedAt: string): string {
   const p = PERSONAS[personaId];
   const log = notes.log.map((e) => {
     const head = `### ${e.date ? `${e.date} · ` : ""}${e.title || "제목 없음"}${e.conversationId ? ` <!-- c:${e.conversationId} -->` : ""}`;
-    return [head, ...e.points.map((pt) => `- ${pt}`)].join("\n");
+    return [head, ...listLines(e.points)].join("\n");
   });
   return [
     `# ${p.name} ${p.title}(${p.department})와의 대화 기억`,
@@ -170,7 +171,7 @@ export function dropLog(notes: MemoryNotes, conversationId: string): MemoryNotes
 
 /** 대화 한 건의 요약을 MD로(대화 기록에 붙여 보여 준다). */
 export function renderSummary(summary: ConversationSummary): string {
-  const part = (title: string, items: string[]) => (items.length ? [`**${title}**`, ...items.map((i) => `- ${i}`), ""] : []);
+  const part = (title: string, items: string[]) => (items.length ? [`**${title}**`, ...listLines(items), ""] : []);
   return [
     `### ${summary.title}`,
     "",
@@ -199,7 +200,7 @@ export function memoryForPrompt(markdown: string, limit = 4000, recent: number =
       `## ${SECTION.followups}`, bullets(notes.followups),
       notes.extra,
       `## ${SECTION.log}(최근 ${l.length}건)`,
-      ...l.map((e) => [`### ${e.date} · ${e.title}`, ...e.points.map((p) => `- ${p}`)].join("\n")),
+      ...l.map((e) => [`### ${e.date} · ${e.title}`, ...listLines(e.points)].join("\n")),
     ].join("\n");
   while (log.length > 0 && draft(log).length > limit) log = log.slice(1);
   return draft(log).slice(0, limit);
