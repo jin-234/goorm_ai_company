@@ -15,7 +15,6 @@ export type TaskStatus = Task["status"];
 export type Submission = OfficeView["day"]["submissions"][number];
 export type ShareTurn = OfficeView["day"]["share"]["turns"][number];
 export type PlannerReply = NonNullable<ShareTurn["reply"]>;
-export type ShareState = NonNullable<OfficeView["day"]["share"]["state"]>;
 export type Review = NonNullable<OfficeView["day"]["review"]["draft"]>;
 export type CloseChoice = NonNullable<Task["outcome"]>;
 /** AI 응답 출처. sample = AI 연결 전 예시 생성기(실제처럼 이어지지만 AI가 아님을 꼬리표로 알린다). */
