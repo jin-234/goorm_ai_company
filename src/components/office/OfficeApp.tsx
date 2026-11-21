@@ -1,0 +1,133 @@
+"use client";
+/**
+ * 웹 화면의 큰 틀: 위 막대 + 왼쪽 장소 이름표 + 오른쪽 패널.
+ * 3D 없이도 하루 흐름이 끝까지 이어지는 2D 화면(웹 기획서 7장).
+ * 단계가 바뀌면 그 단계의 패널로 자동으로 옮긴다(맥 앱과 같은 규칙).
+ */
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import type { OfficeView } from "./api";
+import { CheckIn } from "./panels/CheckIn";
+import { Onboarding } from "./panels/Onboarding";
+import { nextStepOf, TopBar } from "./TopBar";
+import { type PlaceId, Notice } from "./ui";
+import { type OfficeHandle, useOffice } from "./useOffice";
+
+interface PlaceInfo {
+  id: PlaceId;
+  name: string;
+  sub: (view: OfficeView) => string;
+}
+
+const PLACES: PlaceInfo[] = [
+  { id: "door", name: "출입문", sub: (v) => (v.state.day.checkInAt != null ? "출근 완료" : "출근") },
+  { id: "meeting", name: "회의실", sub: (v) => (v.phase.value === "morningPT" ? "지금 아침 PT" : "아침 PT") },
+  { id: "desk", name: "내 책상", sub: (v) => `체크리스트 · ${v.seat.title}` },
+  { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
+  { id: "weekly", name: "주간보고", sub: (v) => (v.clock.isFriday ? "오늘 제출" : "금요일에 제출") },
+  { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
+];
+
+/** 단계가 바뀔 때 자동으로 열 패널. */
+function placeForPhase(view: OfficeView): PlaceId {
+  switch (view.phase.value) {
+    case "beforeCheckIn":
+      return "door";
+    case "morningPT":
+      return "meeting";
+    default:
+      return "desk";
+  }
+}
+
+export function OfficeApp() {
+  const office = useOffice();
+  const { view } = office;
+  const [place, setPlace] = useState<PlaceId>("door");
+  const lastPhase = useRef<string | null>(null);
+
+  // 단계가 바뀌면 그 단계의 패널로(처음 불러올 때도).
+  useEffect(() => {
+    if (!view) return;
+    const key = `${view.clock.date}:${view.phase.value}`;
+    if (lastPhase.current !== key) {
+      lastPhase.current = key;
+      setPlace(placeForPhase(view));
+    }
+  }, [view]);
+
+  if (!view) {
+    return (
+      <main style={{ padding: 40 }}>
+        {office.loadError ? (
+          <Notice kind="error" title="회사 상태를 불러오지 못했습니다">
+            {office.loadError}
+          </Notice>
+        ) : (
+          <p className="muted">사무실을 여는 중입니다.</p>
+        )}
+      </main>
+    );
+  }
+
+  if (!view.state.onboarded) {
+    return (
+      <>
+        <Onboarding office={office} />
+        <Toast text={office.toast} />
+      </>
+    );
+  }
+
+  const now = nextStepOf(view)?.place;
+  return (
+    <div className="app">
+      <TopBar office={office} view={view} onGo={setPlace} />
+      {office.loadError ? (
+        <div style={{ padding: "8px 20px" }}>
+          <Notice kind="warning" title="서버와 연결이 잠시 끊겼습니다">
+            {office.loadError}
+          </Notice>
+        </div>
+      ) : null}
+      <div className="layout">
+        <nav className="places" aria-label="사무실 장소">
+          {PLACES.map((p) => (
+            <button
+              key={p.id}
+              className={`place ${place === p.id ? "active" : ""} ${now === p.id && place !== p.id ? "now" : ""}`}
+              onClick={() => setPlace(p.id)}
+              aria-current={place === p.id ? "page" : undefined}
+            >
+              <div className="name">{p.name}</div>
+              <div className="sub">{p.sub(view)}</div>
+            </button>
+          ))}
+        </nav>
+        <main>{renderPanel(place, office, view, setPlace)}</main>
+      </div>
+      <Toast text={office.toast} />
+    </div>
+  );
+}
+
+function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go: (p: PlaceId) => void): ReactNode {
+  switch (place) {
+    case "door":
+      return <CheckIn office={office} view={view} onDone={() => go("meeting")} />;
+    default:
+      return (
+        <Notice kind="info" title="준비 중인 화면입니다">
+          이 장소의 화면은 다음 작업에서 붙입니다.
+        </Notice>
+      );
+  }
+}
+
+function Toast({ text }: { text: string | null }) {
+  if (!text) return null;
+  return (
+    <div className="toast" role="status" aria-live="polite">
+      {text}
+    </div>
+  );
+}
