@@ -121,7 +121,7 @@ export function OfficeApp() {
   const now = nextStepOf(view)?.place;
   return (
     <div className="app">
-      <TopBar office={office} view={view} onGo={setPlace} />
+      <TopBar office={office} view={view} onGo={setPlace} place={shown} />
       {office.loadError ? (
         <div style={{ padding: "8px 20px" }}>
           <Notice kind="warning" title="서버와 연결이 잠시 끊겼습니다">
@@ -178,7 +178,7 @@ function FullOffice({
       </div>
 
       <div className="o3-top">
-        <TopBar office={office} view={view} onGo={setPlace} />
+        <TopBar office={office} view={view} onGo={setPlace} place={place} />
         {office.loadError ? (
           <div style={{ padding: "8px 20px" }}>
             <Notice kind="warning" title="서버와 연결이 잠시 끊겼습니다">

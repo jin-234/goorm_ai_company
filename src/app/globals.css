@@ -582,7 +582,7 @@ label.stack {
 .o3 {
   --o3-panel: 460px;
   --o3-gap: 14px;
-  --o3-top: 96px;
+  --o3-top: 66px;
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -619,6 +619,10 @@ label.stack {
 
 .o3-top .topbar {
   position: static;
+  /* 맥 앱 위 막대 높이 */
+  min-height: 62px;
+  padding-top: 8px;
+  padding-bottom: 8px;
   background: rgba(251, 248, 240, 0.88);
 }
 
