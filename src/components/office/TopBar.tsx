@@ -94,7 +94,7 @@ export function TopBar({
       <div className="spacer" />
 
       {step ? (
-        <div className="row">
+        <div className="row topbar-now">
           <span className="small muted">지금 할 일</span>
           <button className="btn" onClick={() => onGo(step.place)}>
             {step.label}
