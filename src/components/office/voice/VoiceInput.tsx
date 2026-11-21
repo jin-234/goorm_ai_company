@@ -49,7 +49,7 @@ export function VoiceInput({ disabled, ...options }: VoiceInputOptions & { disab
         </Notice>
       ) : (
         <p className="small muted" style={{ margin: 0 }}>
-          브라우저 내장 음성 인식으로 글로 옮깁니다. 소리는 브라우저 회사 서버에서 글로 바뀌고, 우리 서버에는 남지 않습니다.
+          말한 내용을 글로 옮깁니다. 소리는 브라우저(Chrome·Edge) 제공사의 음성 인식으로 처리되고, 이 서비스에는 글만 남습니다.
         </p>
       )}
     </div>

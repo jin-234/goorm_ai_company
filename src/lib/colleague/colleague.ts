@@ -5,6 +5,7 @@
  * - Solar 응답은 서버에서 다시 지킨다: 질문 하나, 반복 금지, 상한, 건너뛰기, 읽지 않은 자료는 근거로 쓰지 않음.
  * - Solar가 없거나 실패하면 정해진 양식(manual)을 돌려준다. 화면은 이것을 AI가 말한 것처럼 보이지 않게 한다.
  */
+import { TIME_ONLY } from "./minutes";
 import type { Office } from "@/lib/office/office";
 import {
   PART_MAX_QUESTIONS, type PlannerReply, type Review, sharePartState, type ShareTurn, speakerOf, type Submission,
@@ -335,6 +336,8 @@ export function sampleProposal(goal: string): LeaderProposal {
     .split(/\n+|[.。]\s*|,\s*|\s그리고\s|(?<=[가-힣])하고\s/)
     .map((p) => p.replace(/^[\s\-·•*\d.)]+/, "").trim())
     .filter((p) => p.length >= 2)
+    // "오늘은 3시간 정도 쓸 수 있습니다" 같은 시간 이야기는 과제가 아니다.
+    .filter((p) => !TIME_ONLY.test(p))
     .slice(0, 3);
   const titles = parts.length > 0 ? parts : [goal.trim().slice(0, 80)];
   const tasks = titles.filter(Boolean).map((title) => {
@@ -405,7 +408,7 @@ export function sampleReview(office: Office): Review {
   return {
     reported_work: first ? snippet(first, 200) : `확정한 과제: ${day.tasks.map((t) => t.title).join(", ")}`,
     explained_learning: learningOnly && first ? snippet(first, 200) : "",
-    artifact_observations: read.length > 0 ? `붙여 넣은 글·코드 ${read.length}건이 있습니다(예시 응답은 내용을 분석하지 않았습니다).` : "읽은 자료 없음(설명 기준).",
+    artifact_observations: read.length > 0 ? `붙여 넣은 글·코드 ${read.length}건을 남겼습니다. 확인한 내용을 직접 적어 주세요.` : "읽은 자료 없음(설명 기준).",
     shared_scope_and_limits: answers.length > 0 ? answers.join(" / ") : "",
     open_questions: [...day.share.openQuestions],
     job_connection: role ? `${role} 관점에서 오늘 한 일을 다른 부서가 이해하도록 설명해 보았습니다.` : "오늘 한 일을 다른 부서가 이해하도록 설명해 보았습니다.",
