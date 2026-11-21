@@ -7,7 +7,7 @@
  * 회사 상태(offices)와 같은 연결 주소를 쓴다. 주소가 없으면 프로세스 메모리(로컬 개발용).
  */
 import postgres from "postgres";
-import { cleanUrl, databaseUrl, getStore, PostgresStore } from "@/lib/server/store";
+import { connectPostgres, databaseUrl, getStore, PostgresStore } from "@/lib/server/store";
 import type { PersonaId } from "./personas";
 
 export type TurnSource = "solar" | "sample" | "manual" | "user";
@@ -142,6 +142,21 @@ interface ConversationRow {
   updated_at: Date;
 }
 
+interface MemoryRow {
+  persona_id: PersonaId;
+  markdown: string;
+  updated_at: Date;
+}
+
+const iso = (d: Date) => new Date(d).toISOString();
+
+const memoryFromRow = (officeId: string, r: MemoryRow): ColleagueMemory => ({
+  officeId,
+  personaId: r.persona_id,
+  markdown: r.markdown,
+  updatedAt: iso(r.updated_at),
+});
+
 const fromRow = (r: ConversationRow): Conversation => ({
   id: r.id,
   officeId: r.office_id,
@@ -152,9 +167,9 @@ const fromRow = (r: ConversationRow): Conversation => ({
   status: r.status,
   summaryMd: r.summary_md,
   memoryUsed: r.memory_used ?? [],
-  startedAt: new Date(r.started_at).toISOString(),
-  endedAt: r.ended_at ? new Date(r.ended_at).toISOString() : null,
-  updatedAt: new Date(r.updated_at).toISOString(),
+  startedAt: iso(r.started_at),
+  endedAt: r.ended_at ? iso(r.ended_at) : null,
+  updatedAt: iso(r.updated_at),
 });
 
 export class PostgresConversationStore implements ConversationStore {
@@ -163,19 +178,7 @@ export class PostgresConversationStore implements ConversationStore {
 
   /** 연결 주소 대신 이미 열린 연결을 받으면 그것을 같이 쓴다(회사 상태 저장소와 연결 하나). */
   constructor(urlOrSql: string | postgres.Sql) {
-    if (typeof urlOrSql !== "string") {
-      this.sql = urlOrSql;
-      return;
-    }
-    const host = new URL(urlOrSql).hostname;
-    this.sql = postgres(cleanUrl(urlOrSql), {
-      prepare: false,
-      ssl: host === "localhost" || host === "127.0.0.1" ? false : "require",
-      max: 1,
-      idle_timeout: 20,
-      connect_timeout: 10,
-      onnotice: () => {},
-    });
+    this.sql = typeof urlOrSql === "string" ? connectPostgres(urlOrSql) : urlOrSql;
   }
 
   private ensureTables() {
@@ -228,16 +231,16 @@ export class PostgresConversationStore implements ConversationStore {
 
   async getMemory(officeId: string, personaId: PersonaId) {
     await this.ensureTables();
-    const rows = await this.sql<{ markdown: string; updated_at: Date }[]>`
-      SELECT markdown, updated_at FROM colleague_memories WHERE office_id = ${officeId} AND persona_id = ${personaId}`;
-    return rows.length ? { officeId, personaId, markdown: rows[0].markdown, updatedAt: new Date(rows[0].updated_at).toISOString() } : null;
+    const rows = await this.sql<MemoryRow[]>`
+      SELECT persona_id, markdown, updated_at FROM colleague_memories WHERE office_id = ${officeId} AND persona_id = ${personaId}`;
+    return rows.length ? memoryFromRow(officeId, rows[0]) : null;
   }
 
   async listMemories(officeId: string) {
     await this.ensureTables();
-    const rows = await this.sql<{ persona_id: PersonaId; markdown: string; updated_at: Date }[]>`
+    const rows = await this.sql<MemoryRow[]>`
       SELECT persona_id, markdown, updated_at FROM colleague_memories WHERE office_id = ${officeId}`;
-    return rows.map((r) => ({ officeId, personaId: r.persona_id, markdown: r.markdown, updatedAt: new Date(r.updated_at).toISOString() }));
+    return rows.map((r) => memoryFromRow(officeId, r));
   }
 
   async saveMemory(m: ColleagueMemory) {
@@ -261,11 +264,15 @@ export class PostgresConversationStore implements ConversationStore {
 
 const globalStore = globalThis as unknown as { __conversationStore?: ConversationStore };
 
+/** 회사 상태가 Postgres에 있으면 그 연결을 같이 쓰고, 아니면 주소로 새로 열거나 메모리에 둔다. */
+function createConversationStore(): ConversationStore {
+  const office = getStore();
+  if (office instanceof PostgresStore) return new PostgresConversationStore(office.sql);
+  const url = databaseUrl();
+  return url ? new PostgresConversationStore(url) : new MemoryConversationStore();
+}
+
 export function getConversationStore(): ConversationStore {
-  if (!globalStore.__conversationStore) {
-    const office = getStore();
-    globalStore.__conversationStore =
-      office instanceof PostgresStore ? new PostgresConversationStore(office.sql) : databaseUrl() ? new PostgresConversationStore(databaseUrl()!) : new MemoryConversationStore();
-  }
+  globalStore.__conversationStore ??= createConversationStore();
   return globalStore.__conversationStore;
 }

@@ -65,21 +65,26 @@ function sslFor(url: string): false | "require" {
   return host === "localhost" || host === "127.0.0.1" ? false : "require";
 }
 
+/** 서버리스 함수에 맞춘 Postgres 연결. 저장소마다 같은 설정을 쓴다. */
+export function connectPostgres(url: string): postgres.Sql {
+  return postgres(cleanUrl(url), {
+    prepare: false,
+    ssl: sslFor(url),
+    // 함수 하나는 요청을 하나씩 처리하므로 연결 하나면 충분하다.
+    max: 1,
+    idle_timeout: 20,
+    connect_timeout: 10,
+    onnotice: () => {},
+  });
+}
+
 export class PostgresStore implements OfficeStore {
   /** 같은 함수 안의 다른 저장소(동료 대화 기록)도 이 연결 하나를 같이 쓴다. */
   readonly sql: postgres.Sql;
   private ready: Promise<unknown> | null = null;
 
   constructor(url: string) {
-    this.sql = postgres(cleanUrl(url), {
-      prepare: false,
-      ssl: sslFor(url),
-      // 함수 하나는 요청을 하나씩 처리하므로 연결 하나면 충분하다.
-      max: 1,
-      idle_timeout: 20,
-      connect_timeout: 10,
-      onnotice: () => {},
-    });
+    this.sql = connectPostgres(url);
   }
 
   private ensureTable() {
