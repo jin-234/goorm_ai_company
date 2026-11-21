@@ -13,6 +13,7 @@ import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
 import { TaskWork } from "./TaskList";
+import { SeatCameraPreview } from "../camera/SeatMonitor";
 
 type Option = OfficeView["enforcement"]["options"][number];
 
@@ -83,7 +84,7 @@ export function MonthLine({ view }: { view: OfficeView }) {
   );
 }
 
-/** 보통·엄격 근무 중 착석 확인 상태와 점심·자리 비움. 자리 상태는 오른쪽 아래 카메라 창(SeatMonitor)이 알린다. */
+/** 보통·엄격 근무 중 착석 확인(카드 안 카메라 미리보기·인식 상태)과 점심·자리 비움. 판정은 SeatMonitorProvider가 한다. */
 export function AttendanceCard({ office, view }: { office: OfficeHandle; view: OfficeView }) {
   const [reason, setReason] = useState("");
   const a = view.attendance;
@@ -121,9 +122,7 @@ export function AttendanceCard({ office, view }: { office: OfficeHandle; view: O
           </button>
         </div>
       ) : a.monitoring ? (
-        <div className="small muted pre">
-          {"오른쪽 아래 카메라 창이 자리에 있는지 확인합니다. 얼굴이 20초 넘게 안 보이면 자리 비움으로 알립니다.\n영상은 이 기기 안에서만 쓰고, 서버에는 자리 상태만 남습니다. 카메라를 끄면 '카메라 꺼짐'으로 남고 자리 비움으로 세지 않습니다."}
-        </div>
+        <SeatCameraPreview />
       ) : null}
       {view.can.requestLunch || view.can.registerAway ? (
         <div className="row">

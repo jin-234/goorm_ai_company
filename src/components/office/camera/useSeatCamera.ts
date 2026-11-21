@@ -8,7 +8,7 @@
  *   videoRef: <video ref>에 붙인다(좌우 반전은 화면 CSS)
  *   reason: denied·unavailable일 때 한국어 이유
  *   noFaceSeconds: 얼굴이 안 보인 채 이어진 초
- *   retry(): 권한을 다시 요청 / stop(): 카메라를 끈다(출근 버튼을 누를 때)
+ *   stream: 켜진 카메라 스트림(미리보기를 하나 더 띄울 때) · retry(): 권한을 다시 요청 / stop(): 카메라를 끈다(출근 버튼을 누를 때)
  * enabled가 false면 카메라를 켜지 않고 idle을 유지한다. 언마운트하면 스트림을 정리한다.
  * intervalMs: 검출 간격(근무 중 착석 확인은 MONITOR_INTERVAL_MS).
  */
@@ -43,5 +43,9 @@ export function useSeatCamera(enabled: boolean, deps?: SeatCameraDeps, intervalM
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const stop = useCallback(() => controller.current?.stop(), []);
 
-  return { ...snapshot, videoRef, retry, stop };
+  // 검출이 돌기 시작하면(noFace·seated) 스트림이 있다. 상태가 바뀔 때마다 다시 그리므로 여기서 읽는다.
+  const live = snapshot.state === "noFace" || snapshot.state === "seated";
+  const stream = live ? (controller.current?.mediaStream ?? null) : null;
+
+  return { ...snapshot, stream, videoRef, retry, stop };
 }
