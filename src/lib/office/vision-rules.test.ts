@@ -12,6 +12,8 @@ const reply = (fields: Partial<PlannerReply> = {}): PlannerReply => ({
   acknowledgement: "설명 고맙습니다.",
   question: "아직 지원하지 않는 것은 무엇인가요?",
   question_reason: "사용자 안내에 한계를 적어야 해서요.",
+  question_basis: "role_need",
+  basis_ref: "",
   known_facts: ["도시를 입력하면 날씨가 보인다"],
   open_questions: ["실패 안내"],
   evidence_refs: [],

@@ -137,12 +137,28 @@ export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link"
 
 export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
 
+/**
+ * 기획자 질문의 근거 종류(사용자 원칙 2026-11-21).
+ * - role_need: 기획자가 결정·책임지는 일(사용자 안내·화면 흐름·출시 범위)에 필요한 정보. 질문의 목적.
+ * - ux_guide: 공개 UX·접근성 가이드로 구성한 시나리오(빈 화면·오류·로딩·입력처럼 놓치기 쉬운 상황). 질문의 소재.
+ * - collected_case: 현직자 인터뷰 등에서 실제로 수집한 사례. 현실성 검증용.
+ * 가이드로 만든 질문을 '실제 기획자가 했던 질문'으로 포장하지 않는다.
+ */
+export type QuestionBasis = "role_need" | "ux_guide" | "collected_case";
+export const QUESTION_BASES: QuestionBasis[] = ["role_need", "ux_guide", "collected_case"];
+/** 수집한 인터뷰 사례 데이터가 아직 없다. 생기기 전까지 collected_case는 ux_guide로 낮춘다(실제 사례인 척 방지). */
+export const COLLECTED_CASES_AVAILABLE = false;
+
 /** AI 기획자 응답(개정 기획서 4.3 E). */
 export interface PlannerReply {
   acknowledgement: string;
   /** 질문이 필요 없거나 끝낼 때는 빈 문자열. */
   question: string;
   question_reason: string;
+  /** 질문의 근거 종류. question이 비면 "". */
+  question_basis: QuestionBasis | "";
+  /** 근거 출처 이름(예: "W3C 오류·성공 알림 가이드"). 없거나 question이 비면 "". */
+  basis_ref: string;
   known_facts: string[];
   open_questions: string[];
   evidence_refs: string[];

@@ -3,6 +3,9 @@
  * 입력 모양 검증은 여기서 하고(BadRequest), 규칙 위반은 OfficeError로 던진다.
  */
 import {
+  COLLECTED_CASES_AVAILABLE,
+  QUESTION_BASES,
+  type QuestionBasis,
   CHECK_IN_METHODS,
   type CheckInMethod,
   type PlannerReply,
@@ -103,10 +106,18 @@ export function plannerReplyOf(value: unknown): PlannerReply {
     if (typeof v !== "string") throw new BadRequest(`reply.${key}는 문자열이어야 합니다.`);
     return v.slice(0, WorkRules.maxFieldLength);
   };
+  const question = text("question");
+  let basis = (typeof r.question_basis === "string" ? r.question_basis : "") as QuestionBasis | "";
+  if (basis !== "" && !QUESTION_BASES.includes(basis)) basis = "role_need";
+  // 수집한 사례 데이터가 없으면 AI가 '실제 사례'라고 해도 공개 가이드 기반 시나리오로 낮춘다.
+  if (basis === "collected_case" && !COLLECTED_CASES_AVAILABLE) basis = "ux_guide";
+  if (question.trim() && basis === "") basis = "role_need";
   return {
     acknowledgement: text("acknowledgement"),
-    question: text("question"),
+    question,
     question_reason: text("question_reason"),
+    question_basis: question.trim() ? basis : "",
+    basis_ref: question.trim() ? text("basis_ref").slice(0, 120) : "",
     known_facts: strList(r.known_facts, "reply.known_facts"),
     open_questions: strList(r.open_questions, "reply.open_questions"),
     evidence_refs: strList(r.evidence_refs, "reply.evidence_refs"),
