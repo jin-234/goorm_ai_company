@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>ko</string>
+	<key>CFBundleDisplayName</key>
+	<string>AI 상사 가상회사</string>
+	<key>CFBundleExecutable</key>
+	<string>AIBossOffice</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.seohogyun.aibossoffice</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>AI 상사 가상회사</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSCameraUsageDescription</key>
+	<string>출근과 근무 중 착석 여부를 확인합니다. 영상은 저장하거나 보내지 않고 이 맥 안에서만 사람이 보이는지 판단합니다.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>회의실 아침 PT에서 말한 내용을 글로 옮깁니다. 녹음은 이 맥 안에서 전사한 뒤 지웁니다.</string>
+</dict>
+</plist>
