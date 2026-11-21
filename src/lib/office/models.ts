@@ -133,7 +133,7 @@ export interface Submission {
 
 export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
 
-// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀 담당자 1명씩이 듣고, 기획자가 질문한다
+// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀·운영팀 담당자 1명씩이 듣고, 기획자가 질문한다
 
 export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
 
