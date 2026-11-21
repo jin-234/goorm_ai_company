@@ -763,7 +763,7 @@ label.stack {
   padding: 20px 4px !important;
 }
 
-/* 이 배치에서는 위 막대의 '지금 할 일' 버튼 대신 왼쪽 카드가 있다. */
+/* 이 배치에는 왼쪽 카드가 없으니(맥 앱처럼) 위 막대의 '지금 할 일' 버튼을 보인다. */
 .o3 .topbar-now {
-  display: none !important;
+  display: inline-flex !important;
 }

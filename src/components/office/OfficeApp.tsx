@@ -1,8 +1,8 @@
 "use client";
 /**
  * 웹 화면의 큰 틀.
- * - 넓은 화면 + WebGL: 맥 앱처럼 3D 사무실이 화면 전체를 채우고, 위 막대·'지금 할 일' 카드가 그 위에 뜬다.
- *   3D 장소 이름표나 [바로 하기]를 누르면 오른쪽에서 패널이 나온다(닫기·Esc).
+ * - 넓은 화면 + WebGL: 맥 앱처럼 3D 사무실이 화면 전체를 채우고 위 막대만 그 위에 뜬다.
+ *   지금 할 일 버튼과 메일·주간보고·설정은 위 막대에 있다. 3D 장소 이름표를 누르면 오른쪽에서 패널이 나온다(닫기·Esc).
  * - 3D를 숨겼거나 못 그리거나 좁은 화면: 위 막대 + 왼쪽 장소 이름표 + 패널의 2D 배치(웹 기획서 7장).
  * 어느 쪽이든 단계가 바뀌면 그 단계의 패널을 자동으로 연다(맥 앱과 같은 규칙).
  */
@@ -24,10 +24,18 @@ interface PlaceInfo {
 }
 
 const PLACES: PlaceInfo[] = [
-  { id: "door", name: "출입문", sub: (v) => (v.state.day.checkInAt != null ? "출근 완료" : "출근") },
-  { id: "meeting", name: "회의실", sub: (v) => (v.phase.value === "morningPT" ? "지금 아침 PT" : "아침 PT") },
-  { id: "desk", name: "내 책상", sub: (v) => `체크리스트 · ${v.seat.title}` },
-  { id: "share" as PlaceId, name: "기획팀", sub: () => "AI 기획자에게 공유" },
+  { id: "door", name: "출입문", sub: (v) => (v.day.checkInAt != null ? "출근 완료" : "사원증 찍고 출근") },
+  { id: "meeting", name: "회의실", sub: (v) => (v.phase.value === "morningPT" ? "지금 아침보고" : "아침보고 · AI 팀장") },
+  {
+    id: "desk",
+    name: "내 책상",
+    sub: (v) => {
+      const tasks = v.day.tasks;
+      const done = tasks.filter((t) => t.status === "submitted" || t.status === "reviewed").length;
+      return tasks.length > 0 ? `과제 · 제출 ${done}/${tasks.length}` : "과제 · 결과물 제출";
+    },
+  },
+  { id: "share", name: "기획팀", sub: () => "AI 기획자에게 공유" },
   { id: "manager", name: "팀장 자리", sub: (v) => (v.mail.unreadCount > 0 ? `메일함 · 안 읽음 ${v.mail.unreadCount}` : "사내 메일함") },
   { id: "weekly", name: "주간보고", sub: (v) => (v.clock.isFriday ? "오늘 제출" : "금요일에 제출") },
   { id: "settings", name: "설정", sub: () => "Solar 연결 · 처음부터" },
@@ -82,7 +90,7 @@ export function OfficeApp() {
     );
   }
 
-  if (!view.state.onboarded) {
+  if (!view.onboarded) {
     if (stage.full) {
       // 맥 앱처럼 사무실을 뒤에 두고 입사 안내를 그 위에 띄운다.
       return (
@@ -162,7 +170,6 @@ function FullOffice({
   setPlace: (p: PlaceId | null) => void;
   stage: StageMode;
 }) {
-  const now = nextStepOf(view)?.place;
   const title = PLACES.find((p) => p.id === place)?.name ?? "";
   return (
     <div className={`o3 ${place ? "with-panel" : ""}`}>
@@ -179,26 +186,6 @@ function FullOffice({
             </Notice>
           </div>
         ) : null}
-      </div>
-
-      <div className="o3-left">
-        <NowPanel view={view} onGo={setPlace} place={place} />
-        <nav className="o3-places" aria-label="더 보기">
-          {EXTRA_PLACES.map((p) => (
-            <button
-              key={p.id}
-              className={`o3-place ${place === p.id ? "active" : ""} ${now === p.id && place !== p.id ? "now" : ""}`}
-              onClick={() => setPlace(p.id)}
-              aria-current={place === p.id ? "page" : undefined}
-            >
-              <span className="name">{p.name}</span>
-              <span className="sub">{p.sub(view)}</span>
-            </button>
-          ))}
-          <button className="o3-place plain" onClick={() => stage.setHidden(true)} title="3D 없이 2D 화면으로 봅니다.">
-            <span className="name">2D 화면으로 보기</span>
-          </button>
-        </nav>
       </div>
 
       {place ? (
