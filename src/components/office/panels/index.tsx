@@ -16,7 +16,6 @@ import { Settings } from "./Settings";
 import { Share } from "./Share";
 
 export { Onboarding } from "./Onboarding";
-export { applySavedTextScale } from "./Settings";
 
 /** 단계가 바뀌면 자동으로 열 장소. */
 export function placeForPhase(view: OfficeView): PlaceId {
