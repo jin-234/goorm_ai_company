@@ -22,7 +22,11 @@ const STATUS: Record<SeatCameraState, { title: string; detail: string; kind: "in
   noFace: { title: "자리에 앉아 주세요", detail: "카메라 정면에 앉아 주세요.\n얼굴이나 어깨가 화면에 들어오면 됩니다.", kind: "info" },
   seated: { title: "착석 확인됨", detail: "사람이 보입니다. 출근할 수 있습니다.", kind: "ok" },
   denied: { title: "카메라 권한이 꺼져 있습니다", detail: "주소창 왼쪽의 자물쇠에서 카메라를 '허용'으로 바꾼 뒤 다시 시도해 주세요.", kind: "warning" },
-  unavailable: { title: "카메라를 쓸 수 없습니다", detail: "카메라가 연결돼 있는지, 다른 앱이 쓰고 있지 않은지 확인해 주세요.", kind: "warning" },
+  unavailable: {
+    title: "이 환경에서는 자리 확인을 쓸 수 없습니다",
+    detail: "카메라가 없거나, 이 브라우저가 얼굴 확인을 지원하지 않습니다.\n아래 '카메라 없이 출근'을 눌러 주세요. 불이익은 없습니다.",
+    kind: "warning",
+  },
 };
 
 export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: OfficeView; onDone: () => void }) {
@@ -96,11 +100,13 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
                 <div className="small pre" style={{ opacity: 0.85 }}>
                   {status.detail}
                 </div>
-                <div>
-                  <button className="btn secondary small" onClick={cam.retry}>
-                    카메라 다시 켜기
-                  </button>
-                </div>
+                {cam.state === "denied" ? (
+                  <div>
+                    <button className="btn secondary small" onClick={cam.retry}>
+                      카메라 다시 켜기
+                    </button>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <span
@@ -154,19 +160,24 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
         </Notice>
       ) : null}
 
-      {useCamera ? (
+      {useCamera && !cameraFailed ? (
         <>
           <button className="btn" onClick={() => checkIn("camera")} disabled={office.busy || !view.can.checkIn || cam.state !== "seated"}>
             사원증 찍고 출근하기
           </button>
           {cam.state !== "seated" ? <div className="small muted">자리에 앉으면 켜집니다.</div> : null}
         </>
+      ) : useCamera ? (
+        // 카메라를 못 쓰면 대체 경로를 주 버튼으로 둔다.
+        <button className="btn" onClick={() => checkIn("noCamera")} disabled={office.busy || !view.can.checkIn}>
+          카메라 없이 출근
+        </button>
       ) : (
         <button className="btn" onClick={() => checkIn("noCamera")} disabled={office.busy || !view.can.checkIn}>
           사원증 찍고 출근하기
         </button>
       )}
-      {useCamera && showFallback ? (
+      {useCamera && showFallback && !cameraFailed ? (
         <button className="btn plain" onClick={() => checkIn("noCamera")} disabled={office.busy || !view.can.checkIn}>
           카메라 없이 출근
         </button>
