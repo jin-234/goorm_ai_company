@@ -332,6 +332,33 @@ export class SolarClient {
     return envelope.model ?? this.config.model;
   }
 
+  /**
+   * 역할 지침(system)과 대화(messages)를 보내 JSON 스키마에 맞는 답을 받는다. AI 동료 대화(src/lib/colleague)가 쓴다.
+   * 돌려준 문자열은 호출한 쪽에서 해석·검증한다.
+   */
+  async completeJSON(args: {
+    system: string;
+    messages: { role: "user" | "assistant"; content: string }[];
+    schemaName: string;
+    schema: object;
+    temperature: number;
+    maxTokens: number;
+  }): Promise<string> {
+    const envelope = await this.post({
+      model: this.config.model,
+      messages: [{ role: "system", content: args.system }, ...args.messages],
+      temperature: args.temperature,
+      max_tokens: args.maxTokens,
+      response_format: { type: "json_schema", json_schema: { name: args.schemaName, strict: true, schema: args.schema } },
+    });
+    const choice = envelope.choices?.[0];
+    if (!choice) throw new SolarError("malformed", { message: "응답에 선택지가 없습니다" });
+    if (choice.finish_reason === "length") throw new SolarError("truncated");
+    const content = choice.message?.content;
+    if (!content) throw new SolarError("malformed", { message: "응답 본문이 비어 있습니다" });
+    return content;
+  }
+
   private async complete(args: {
     system: string;
     user: string;
