@@ -184,7 +184,6 @@ export const ACTION_TYPES = [
   "markMailRead",
   "startNextWorkday",
   "setEnforcement",
-  "lowerToday",
   "setDayOff",
   "observePresence",
   "requestLunch",
@@ -261,9 +260,6 @@ export function applyAction(office: Office, body: Json): unknown {
       return null;
     case "setEnforcement":
       office.setEnforcement(enforcementOf(body.level));
-      return null;
-    case "lowerToday":
-      office.lowerToday();
       return null;
     case "setDayOff":
       office.setDayOff(body.off !== false, dayOf(body, "date"));

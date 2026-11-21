@@ -160,7 +160,7 @@ describe("행동 API로 하루 보내기", () => {
     const { office } = await withOffice("a", (o) => o.completeOnboarding("김서울"), { store, realNow: realStart });
     const view = officeView(office);
     // 기본 관리 강도는 보통이다.
-    expect(view.enforcement).toMatchObject({ chosen: "standard", level: "standard", lowered: false });
+    expect(view.enforcement).toMatchObject({ chosen: "standard", level: "standard" });
     expect(view.phase).toMatchObject({ value: "beforeCheckIn", label: "출근 전", headline: "출근 전 · 09:00까지 출근" });
     expect(view.seat.kind).toBe("beforeCheckIn");
     expect(view.can).toMatchObject({ checkIn: true, confirmTasks: false, startNextWorkday: true });

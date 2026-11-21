@@ -9,7 +9,6 @@
  *   마감 시각에 퇴근 점검을 하고 2·3단계 과제가 남으면 저녁시간 → 추가근무(3시간) → 추가근무 점검으로 넘어간다.
  * - 엄격: 보통에 더해 허용 밖 자리 비움을 짧아도 기록·경고하고, 마감 시각 전 마감에 사유를 받는다.
  * 놓친 날 복귀: 미리 알린 쉬는 날은 세지 않고, 돌아온 날은 지각으로 세지 않으며, 연속 출근하면 점수를 덜어 준다.
- * '오늘만 한 단계 낮추기'로 그날만 강도를 낮출 수 있다.
  *
  * 화면·네트워크와 무관한 순수 로직이라 그대로 시험할 수 있다.
  * 상태는 `toJSON()`으로 꺼내 저장하고 `Office.fromJSON()`으로 되살린다(새로고침 후 복원).
@@ -54,7 +53,6 @@ import {
   type EnforcementLevel,
   isEnforcementLevel,
   LateFee,
-  lowerLevel,
   type MonthStats,
   OfficeError,
   WorkRules,
@@ -242,14 +240,9 @@ export class Office implements OfficeState {
 
   // MARK: 관리 강도
 
-  /** 오늘 적용하는 강도(오늘만 낮추기 전). 출근 전에는 입사 때 고른 강도. */
-  get baseLevel(): EnforcementLevel {
-    return this.day.level ?? this.profile.enforcement;
-  }
-
-  /** 지금 실제로 적용하는 강도. */
+  /** 지금 적용하는 강도. 출근 전에는 입사·설정에서 고른 강도. */
   get level(): EnforcementLevel {
-    return this.day.lowered ? lowerLevel(this.baseLevel) : this.baseLevel;
+    return this.day.level ?? this.profile.enforcement;
   }
 
   get rules(): EnforcementInfo {
@@ -263,18 +256,6 @@ export class Office implements OfficeState {
     this.profile.enforcement = level;
     if (this.day.checkInAt != null && this.day.phase !== "off") this.day.level = level;
     this.log("enforcement", `관리 강도 ${ENFORCEMENT[level].label}로 변경`);
-    this.applyLevelChange();
-  }
-
-  get canLowerToday(): boolean {
-    return this.onboarded && !this.day.lowered && this.baseLevel !== "light" && this.day.phase !== "off" && !this.day.absentCandidate;
-  }
-
-  /** 오늘만 한 단계 낮춘다. 다음 활동일에는 원래 강도로 돌아간다. 이미 남은 지각 기록은 그대로 둔다. */
-  lowerToday(): void {
-    if (!this.canLowerToday) throw OfficeError.notAllowedNow("오늘은 더 낮출 수 없습니다.");
-    this.day.lowered = true;
-    this.log("lowered", `오늘만 관리 강도를 ${ENFORCEMENT[this.level].label}로 낮춤`);
     this.applyLevelChange();
   }
 

@@ -7,7 +7,7 @@ import { Clock, hm } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader, type PlaceId } from "../ui";
-import { AttendanceCard, LowerTodayButton } from "./Enforcement";
+import { AttendanceCard } from "./Enforcement";
 import { TaskWork } from "./TaskList";
 
 export function Desk({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: PlaceId) => void }) {
@@ -109,7 +109,6 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
             >
               공유 없이 바로 마감
             </button>
-            {blockedBy.length > 0 ? <LowerTodayButton office={office} view={view} small /> : null}
           </div>
         </Card>
       ) : phase === "sharing" ? (

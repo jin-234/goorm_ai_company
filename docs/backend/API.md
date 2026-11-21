@@ -37,7 +37,6 @@
 | --- | --- | --- |
 | `onboard` | `name`, `targetRole?`, `experience?`, `activityStart?`, `activityEnd?`(분 또는 `"HH:MM"`), `enforcement?`(`light` \| `standard` \| `strict`, 기본 `standard`) | — |
 | `setEnforcement` | `level`(`light` \| `standard` \| `strict`) — 출근 뒤면 오늘부터 적용 | — |
-| `lowerToday` | — (오늘만 한 단계 낮추기: 엄격→보통, 보통→가볍게) | — |
 | `setDayOff` | `off`(bool, 기본 true), `date?`("YYYY-MM-DD", 없으면 오늘) — 쉬는 날 미리 알리기 | — |
 | `checkIn` | `method?`: `"camera"` \| `"noCamera"`(기록만, 규칙에 쓰지 않음) | `{ checkInAt, method, late }` — `late`는 보통·엄격에서 시작 시각을 넘겼을 때 |
 | `saveGoal` | `goal` | — |
@@ -83,12 +82,12 @@ Review 8칸: `reported_work`, `explained_learning`, `artifact_observations`, `sh
 | `clock` | `now`, `hm`, `date`, `dateShort`, `dateLong`, `weekLabel`, `isFriday` |
 | `phase` | `{ value, label, headline }` |
 | `pastActivityEnd` | 사용자가 정한 마감 시각이 지났는지 |
-| `enforcement` | `chosen`(고른 강도), `level`(오늘 실제 강도), `lowered`, `rules`(켜진 장치), `options`(세 강도 설명) |
+| `enforcement` | `chosen`(고른 강도), `level`(오늘 실제 강도), `rules`(켜진 장치), `options`(세 강도 설명) |
 | `attendance` | `isLate`, `absentCandidate`, `dayOff`, `returning`, `presence`, `monitoring`, `activeAllowance`, `lunchUsed`, `unauthorizedAwayMinutes`, `cameraOffMinutes`, `month`(`late`·`absent`·`recovered`·`points`·`estimatedFee`), `lateFee`(규칙 값) |
 | `overtime` | `dinnerHM`·`overtimeHM`, `targetIds`(지금 남은 2·3단계), `assignedIds`, `outcome`, `checkoutAt`, `earlyLeaveReason` |
 | `day` | `date`, `checkInAt`, `checkInMethod`, `goal`, `tasks[]`, `submissions[]`, `share`, `review`, `unsubmittedTaskIds`, `events` |
 | `pendingCarry` | 다음 활동일에 붙을 이월 과제(원본 ID `carriedFromTaskId` 보존) |
-| `can` | `checkIn`, `confirmTasks`, `editTasks`, `startSharing`, `endSharing`, `confirmReview`, `startNextWorkday`, `skipHour`, `lowerToday`, `setDayOff`, `observePresence`, `requestLunch`, `registerAway`, `returnFromAllowance`, `submitCheckout`, `endOvertime`, `earlyLeave`, `earlyLeaveNeedsReason`, `earlyLeaveBlockedBy` |
+| `can` | `checkIn`, `confirmTasks`, `editTasks`, `startSharing`, `endSharing`, `confirmReview`, `startNextWorkday`, `skipHour`, `setDayOff`, `observePresence`, `requestLunch`, `registerAway`, `returnFromAllowance`, `submitCheckout`, `endOvertime`, `earlyLeave`, `earlyLeaveNeedsReason`, `earlyLeaveBlockedBy` |
 | `mail` | `unreadCount`, `inbox[]`, `sent[]` |
 | `history` | `[{ date, dateShort, tasks, review, counted, checkedIn, isLate, absentCandidate, dayOff }]` — `counted`: 제출물·설명이 있고 마감을 확정한 날 |
 | `seat`, `state.now` | 3D 사무실 호환용. `seat`는 보통·엄격에서 점심·자리 비움·저녁시간·카메라 꺼짐도 반영(`isWarning`) |
