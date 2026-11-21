@@ -19,7 +19,7 @@ export interface MemoryNotes {
   context: string[];
   decisions: string[];
   followups: string[];
-  /** 최신이 앞. */
+  /** 시간순(오래된 것이 앞, 새 대화는 맨 뒤에 붙는다). 개수 제한 없음. */
   log: MemoryLogEntry[];
   /** 정해진 제목이 아닌 부분(사용자가 추가한 절). 원문 그대로. */
   extra: string;
@@ -32,7 +32,7 @@ export const SECTION = {
   log: "대화 기록",
 } as const;
 
-export const LIMITS = { context: 15, decisions: 15, followups: 10, log: 20, itemChars: 200, markdownChars: 20_000 } as const;
+export const LIMITS = { context: 15, decisions: 15, followups: 10, promptLog: 5, itemChars: 200, markdownChars: 200_000 } as const;
 
 export const emptyNotes = (): MemoryNotes => ({ context: [], decisions: [], followups: [], log: [], extra: "" });
 
@@ -145,8 +145,9 @@ export interface ConversationSummary {
 }
 
 /**
- * 기존 기억에 요약을 합친다. 같은 대화를 다시 요약하면(기록을 고친 뒤) 그 대화의 기록 항목을 바꾼다.
- * 새 항목이 앞에 오고, 상한을 넘으면 오래된 것부터 뺀다.
+ * 기존 기억에 요약을 합친다.
+ * - 맥락·결정·이어갈 것: 정리된 상태로 유지한다(새 항목이 앞, 같은 항목은 하나, 상한을 넘으면 오래된 것부터 뺌).
+ * - 대화 기록: 지우지 않고 시간순으로 맨 뒤에 덧붙인다. 같은 대화를 다시 요약하면(기록을 고친 뒤) 그 자리의 항목을 바꾼다.
  */
 export function mergeSummary(notes: MemoryNotes, summary: ConversationSummary, meta: { conversationId: string; date: string }): MemoryNotes {
   const resolved = new Set(summary.resolved.map(key));
@@ -155,7 +156,9 @@ export function mergeSummary(notes: MemoryNotes, summary: ConversationSummary, m
     context: dedupe([...summary.context, ...notes.context]).slice(0, LIMITS.context),
     decisions: dedupe([...summary.decisions, ...notes.decisions]).slice(0, LIMITS.decisions),
     followups: dedupe([...summary.followups, ...notes.followups]).filter((f) => !resolved.has(key(f))).slice(0, LIMITS.followups),
-    log: [entry, ...notes.log.filter((e) => e.conversationId !== meta.conversationId)].slice(0, LIMITS.log),
+    log: notes.log.some((e) => e.conversationId === meta.conversationId)
+      ? notes.log.map((e) => (e.conversationId === meta.conversationId ? entry : e))
+      : [...notes.log, entry],
     extra: notes.extra,
   };
 }
@@ -181,11 +184,14 @@ export function renderSummary(summary: ConversationSummary): string {
     .trim();
 }
 
-/** 프롬프트에 넣을 때 너무 길면 오래된 대화 기록부터 줄인다. */
-export function memoryForPrompt(markdown: string, limit = 4000): string {
-  if (markdown.length <= limit) return markdown;
+/**
+ * 프롬프트에 넣을 기억. 대화 기록은 다 넣지 않고 요약 절 + 최근 대화 몇 건만 넣는다.
+ * 그래도 길면 오래된 대화 기록부터 줄인다.
+ */
+export function memoryForPrompt(markdown: string, limit = 4000, recent: number = LIMITS.promptLog): string {
   const notes = parseMemory(markdown);
-  let log = notes.log;
+  if (notes.log.length <= recent && markdown.length <= limit) return markdown;
+  let log = notes.log.slice(-recent);
   const draft = (l: MemoryLogEntry[]) =>
     [
       `## ${SECTION.context}`, bullets(notes.context),
@@ -195,6 +201,6 @@ export function memoryForPrompt(markdown: string, limit = 4000): string {
       `## ${SECTION.log}(최근 ${l.length}건)`,
       ...l.map((e) => [`### ${e.date} · ${e.title}`, ...e.points.map((p) => `- ${p}`)].join("\n")),
     ].join("\n");
-  while (log.length > 0 && draft(log).length > limit) log = log.slice(0, -1);
+  while (log.length > 0 && draft(log).length > limit) log = log.slice(1);
   return draft(log).slice(0, limit);
 }
