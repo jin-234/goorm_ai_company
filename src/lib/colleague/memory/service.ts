@@ -183,7 +183,8 @@ export function sampleOpening(participants: PersonaId[], memories: Map<PersonaId
       ? { speaker, text: `${hello} 지난번에 남겨 둔 이야기부터 이어 갈게요. ${followup}` }
       : { speaker, text: `${hello} 지난번에 이야기한 "${clip(followup, 60)}" 건은 어떻게 되고 있나요?` };
   }
-  if (notes.log[0]) return { speaker, text: `${hello} 지난번 "${clip(notes.log[0].title, 40)}" 이야기에 이어서 해 볼까요? 오늘은 무엇을 나눌까요?` };
+  const latest = notes.log[notes.log.length - 1];
+  if (latest) return { speaker, text: `${hello} 지난번 "${clip(latest.title, 40)}" 이야기에 이어서 해 볼까요? 오늘은 무엇을 나눌까요?` };
   return { speaker, text: `${hello} 오늘은 어떤 이야기를 나눌까요?` };
 }
 
