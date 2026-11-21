@@ -6,6 +6,7 @@
  */
 import type { Office } from "@/lib/office/office";
 import type { PlannerReply, Review, ShareTurn, Submission } from "@/lib/office/models";
+import { parse as parsePT } from "@/lib/office/pt-parser";
 import { plannerReplyOf, reviewOf } from "@/lib/server/actions";
 import { SolarClient, SolarError } from "@/lib/solar/client";
 import {
@@ -230,12 +231,23 @@ export function manualReview(office: Office): Review {
   };
 }
 
-export function manualProposal(goal: string): LeaderProposal {
-  const title = goal.trim().split("\n")[0].slice(0, 80);
-  return {
-    tasks: title ? [{ title, completionCriteria: "", shareForm: "" }] : [],
-    question: "완료 기준과 저녁에 공유할 형태를 직접 적어 주세요.",
-  };
+/**
+ * AI 미연결 때의 과제 초안. 서버 안 규칙(pt-parser)으로 먼저 찾고, 못 찾으면 목표 글의 줄마다 과제 한 건.
+ * 완료 기준·공유 형태는 사용자가 채운다(AI가 정한 것처럼 보이지 않게).
+ */
+export function manualProposal(goal: string, activityEnd = 18 * 60): LeaderProposal {
+  let tasks: ProposedTask[] = parsePT(goal, activityEnd)
+    .map((d) => ({ title: (d.title ?? "").trim().slice(0, 120), completionCriteria: (d.doneCriteria ?? "").trim().slice(0, 300), shareForm: "" }))
+    .filter((t) => t.title);
+  if (tasks.length === 0) {
+    tasks = goal
+      .split(/\n+/)
+      .map((l) => l.replace(/^[\s\-·•*\d.)]+/, "").trim())
+      .filter(Boolean)
+      .slice(0, 5)
+      .map((title) => ({ title: title.slice(0, 120), completionCriteria: "", shareForm: "" }));
+  }
+  return { tasks, question: "완료 기준과 저녁에 공유할 형태를 직접 적어 주세요." };
 }
 
 // MARK: - Solar 호출
@@ -255,7 +267,10 @@ export interface Outcome<T> {
 }
 
 /** AI 팀장: 오늘 목표를 작은 과제·완료 기준·공유 형태로 제안. 상태는 바꾸지 않는다. */
-export async function proposeScope(client: SolarClient, input: { goal: string; targetRole: string; availableMinutes: number | null; carried: string[] }): Promise<Outcome<LeaderProposal>> {
+export async function proposeScope(
+  client: SolarClient,
+  input: { goal: string; targetRole: string; availableMinutes: number | null; carried: string[]; activityEnd?: number },
+): Promise<Outcome<LeaderProposal>> {
   try {
     const content = await client.completeJSON({
       system: leaderSystem(),
@@ -287,7 +302,7 @@ export async function proposeScope(client: SolarClient, input: { goal: string; t
     return { source: "solar", value: { tasks, question: firstQuestion(String(value.question ?? "")) }, solarError: null };
   } catch (error) {
     if (!(error instanceof SolarError)) throw error;
-    return { source: "manual", value: manualProposal(input.goal), solarError: error.toJSON() };
+    return { source: "manual", value: manualProposal(input.goal, input.activityEnd), solarError: error.toJSON() };
   }
 }
 
