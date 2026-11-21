@@ -60,33 +60,56 @@ describe("예시 팀장", () => {
 });
 
 describe("예시 회의실 동료", () => {
-  it("받은 말을 짚고, 기획자 → 디자이너 → 운영 담당자가 질문을 하나씩 한 뒤 기획자가 마무리한다", async () => {
+  it("받은 말을 짚고, 파트를 맡은 부서가 질문을 두 개까지 한 뒤 마무리한다", async () => {
+    // 화면 과제 하나 → 디자인팀이 듣는 파트 하나.
     const office = sharing({ kind: "code", content: "fetch(url).then(r => r.json())" });
     const a = await say(office, "도시를 입력하면 날씨를 보여주는 화면을 만들었습니다.");
     expect(a.source).toBe("sample");
+    expect(office.day.share.turns.at(-1)?.speaker).toBe("designer");
     expect(a.value.acknowledgement).toContain("도시를 입력하면");
-    expect(a.value.question).toBe(ROLES.planner.manualQuestions[0]);
-    expect(a.value.question_reason).toBe(ROLES.planner.need);
+    expect(a.value.question).toBe(ROLES.designer.manualQuestions[0]);
+    expect(a.value.question_reason).toBe(ROLES.designer.need);
     expect(a.value.can_finish).toBe(false);
 
-    const b = await say(office, "도시 이름을 아는 사람은 누구나 오늘 날씨를 볼 수 있습니다.");
+    const b = await say(office, "검색 → 결과 화면 순서입니다.");
     expect(office.day.share.turns.at(-1)?.speaker).toBe("designer");
-    expect(b.value.question).toBe(ROLES.designer.manualQuestions[0]);
-    expect(b.value.question_reason).toBe(ROLES.designer.need);
+    expect(b.value.question).toBe(ROLES.designer.manualQuestions[1]);
+    expect(isRepeatQuestion(b.value.question, [a.value.question])).toBe(false);
 
-    const c = await say(office, "검색 → 결과 화면 순서입니다.");
+    const c = await say(office, "실패 안내는 아직 없습니다.");
+    expect(office.day.share.turns.at(-1)?.speaker).toBe("designer");
+    expect(c.value.question).toBe("");
+    expect(c.value.can_finish).toBe(true);
+    expect(c.value.acknowledgement).toContain(ROLES.designer.wrapUp);
+    expect(c.value.acknowledgement).toContain("오늘 발표는 여기까지");
+    expect(office.day.share).toMatchObject({ questionCount: 2, state: "ready_to_summarize" });
+    expect(c.value.known_facts).toHaveLength(3);
+    expect(c.value.evidence_refs).toEqual(["턴 1", "턴 3", "턴 5"]);
+  });
+
+  it("한 파트를 마무리하면 다음 파트를 맡은 부서에 넘기고, 그 부서는 자기 질문부터 한다", async () => {
+    const office = makeOffice();
+    office.checkIn();
+    office.confirmTasks({
+      tasks: [
+        { title: "날씨 조회 화면", completionCriteria: "도시 입력 시 날씨 표시", shareForm: "캡처" },
+        { title: "Vercel 배포", completionCriteria: "배포 주소에서 열린다", shareForm: "주소" },
+      ],
+    });
+    office.startSharing();
+    await say(office, "날씨 화면을 만들었습니다.");
+    await say(office, "검색 → 결과 순서입니다.");
+    const wrap = await say(office, "불러오는 중에는 회색 상자가 보입니다.");
+    expect(wrap.value.question).toBe("");
+    expect(wrap.value.acknowledgement).toContain("다음 파트는 운영팀에서 이어서 들을게요");
+    expect(office.day.share.state).toBe("clarifying");
+
+    const ops = await say(office, "Vercel에 배포했습니다.");
     expect(office.day.share.turns.at(-1)?.speaker).toBe("operations");
-    expect(c.value.question).toBe(ROLES.operations.manualQuestions[0]);
-    expect(isRepeatQuestion(c.value.question, [a.value.question, b.value.question])).toBe(false);
-
-    const d = await say(office, "실패 안내는 아직 없습니다.");
-    expect(office.day.share.turns.at(-1)?.speaker).toBe("planner");
-    expect(d.value.question).toBe("");
-    expect(d.value.can_finish).toBe(true);
-    expect(d.value.acknowledgement).toContain("부서마다");
-    expect(office.day.share).toMatchObject({ questionCount: 3, state: "ready_to_summarize" });
-    expect(d.value.known_facts).toHaveLength(4);
-    expect(d.value.evidence_refs).toEqual(["턴 1", "턴 3", "턴 5", "턴 7"]);
+    expect(ops.value.question).toBe(ROLES.operations.manualQuestions[0]);
+    // 앞 파트의 말은 이 부서의 정리에 섞지 않는다.
+    expect(ops.value.known_facts).toEqual(["Vercel에 배포했습니다."]);
+    expect(office.day.share.knownFacts).toContain("날씨 화면을 만들었습니다.");
   });
 
   it("건너뛴 질문은 남은 질문으로 두고 다음 질문으로 넘어간다", async () => {

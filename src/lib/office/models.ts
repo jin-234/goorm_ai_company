@@ -190,16 +190,13 @@ export interface Submission {
 
 export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
 
-// MARK: 회의실 발표(ReportTurn) — 기획팀·디자인팀·운영팀 담당자 1명씩이 듣고, 차례로 하나씩 질문한다
+// MARK: 회의실 발표(ReportTurn) — 과제(파트)마다 그 일을 이어받을 부서 한 곳과 짧게 대화한다
 
 /** 회의실에 오는 타 부서 AI 동료. */
 export type MeetingRoleId = "planner" | "designer" | "operations";
-/**
- * 질문하는 차례(사용자 결정 2026-11-21: 분야별로 한 번씩 모두 대화한다).
- * 각 부서가 자기 후속 업무에 필요한 질문을 하나씩 하고, 마지막 답을 들으면 진행자(기획자)가 마무리한다.
- */
+/** 회의에 올 수 있는 부서. 파트를 맡길 부서를 고를 때 점수가 같으면 이 순서를 따른다. */
 export const MEETING_ORDER: MeetingRoleId[] = ["planner", "designer", "operations"];
-/** 회의 진행자. 모든 부서가 물은 뒤 마무리 인사를 한다. */
+/** 회의 진행자. 어느 부서에도 맞지 않는 파트는 기획자가 듣는다. */
 export const MEETING_HOST: MeetingRoleId = "planner";
 /** 화면과 프롬프트가 같이 쓰는 이름. */
 export const MEETING_ROLE_NAME: Record<MeetingRoleId, { title: string; department: string; short: string }> = {
@@ -207,6 +204,72 @@ export const MEETING_ROLE_NAME: Record<MeetingRoleId, { title: string; departmen
   designer: { title: "AI 디자이너", department: "디자인팀", short: "디자이너" },
   operations: { title: "AI 운영 담당자", department: "운영팀", short: "운영 담당자" },
 };
+
+/**
+ * 발표 한 파트(사용자 결정 2026-11-21: 세 부서 모두에게 설명하지 않고, 한 파트는 한 부서와 대화한다).
+ * 파트는 오늘 확정한 과제 하나이고, 그 과제를 이어받을 부서 한 곳이 듣는다.
+ */
+export interface SharePart {
+  taskId: string | null;
+  title: string;
+  role: MeetingRoleId;
+}
+
+/** 한 파트에서 부서가 할 수 있는 질문 수. 다 묻거나 더 물을 것이 없으면 마무리하고 다음 파트로 넘긴다. */
+export const PART_MAX_QUESTIONS = 2;
+
+/** 파트를 맡길 부서를 고르는 단서. 맞는 것이 없으면 기획자(MEETING_HOST)가 듣는다. */
+const DEPARTMENT_HINTS: [MeetingRoleId, RegExp][] = [
+  ["designer", /화면|UI|UX|디자인|레이아웃|버튼|페이지|컴포넌트|스타일|CSS|반응형|접근성|애니메이션|입력창|폼/gi],
+  ["operations", /배포|운영|오류|에러|장애|로그|모니터|알림|서버|권한|보안|성능|백업|문의|이용\s*제한/gi],
+];
+
+/** 과제 글(제목·완료 기준)로 부서마다 점수를 매긴다. 제목은 두 배로 센다. */
+function departmentScores(task: { title: string; completionCriteria?: string }): Record<MeetingRoleId, number> {
+  const scores: Record<MeetingRoleId, number> = { planner: 0, designer: 0, operations: 0 };
+  for (const [role, re] of DEPARTMENT_HINTS) {
+    scores[role] += 2 * (task.title.match(re)?.length ?? 0) + (task.completionCriteria?.match(re)?.length ?? 0);
+  }
+  return scores;
+}
+
+/**
+ * 과제마다 파트를 만들고 맡을 부서를 정한다. 가장 맞는 부서를 고르되, 이미 다른 파트를 맡은 부서보다
+ * 단서가 있는 다른 부서를 먼저 고른다(같은 부서가 모든 파트를 듣지 않게). 과제가 없으면 기획자에게 한 파트.
+ */
+export function sharePartsOf(tasks: { id?: string; title: string; completionCriteria?: string }[]): SharePart[] {
+  if (tasks.length === 0) return [{ taskId: null, title: "오늘 한 일", role: MEETING_HOST }];
+  const used = new Set<MeetingRoleId>();
+  return tasks.map((task) => {
+    const scores = departmentScores(task);
+    const ranked = MEETING_ORDER.filter((r) => scores[r] > 0).sort((a, b) => scores[b] - scores[a]);
+    const role = ranked.find((r) => !used.has(r)) ?? ranked[0] ?? MEETING_HOST;
+    used.add(role);
+    return { taskId: task.id ?? null, title: task.title, role };
+  });
+}
+
+/**
+ * 대화 기록으로 지금 몇 번째 파트인지 계산한다. 부서가 질문 없이 말하면(마무리) 그 파트가 끝난다.
+ * turnPart[i]는 i번째 턴이 속한 파트. 모든 파트가 끝난 뒤의 턴은 마지막 파트로 센다.
+ */
+export function sharePartState(parts: SharePart[], turns: ShareTurn[]): { index: number; done: boolean; askedInPart: number; turnPart: number[] } {
+  const last = Math.max(0, parts.length - 1);
+  let index = 0;
+  let asked = 0;
+  const turnPart: number[] = [];
+  for (const t of turns) {
+    turnPart.push(Math.min(index, last));
+    if (t.role !== "planner") continue;
+    if (t.reply?.question?.trim()) asked += 1;
+    else {
+      index += 1;
+      asked = 0;
+    }
+  }
+  const done = index >= parts.length;
+  return { index: Math.min(index, last), done, askedInPart: done ? 0 : asked, turnPart };
+}
 
 export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
 
@@ -259,8 +322,8 @@ export interface ShareTurn {
   source?: ColleagueSource;
 }
 
-/** 회의 전체 질문 상한: 부서마다 하나씩. */
-export const MAX_SHARE_QUESTIONS = MEETING_ORDER.length;
+/** 회의 전체 질문 상한의 기본값(파트 하나). 발표를 시작할 때 파트 수 × PART_MAX_QUESTIONS로 다시 정한다. */
+export const MAX_SHARE_QUESTIONS = PART_MAX_QUESTIONS;
 
 /** 동료 턴을 말한 부서. */
 export const speakerOf = (t: ShareTurn): MeetingRoleId => t.speaker ?? "planner";
@@ -269,10 +332,12 @@ export interface ShareSession {
   state: ShareState | null;
   questionCount: number;
   maxQuestions: number;
+  /** 발표 파트(과제마다 한 부서). 발표를 시작할 때 정한다. 없으면(옛 기록) 과제로 다시 만든다. */
+  parts?: SharePart[];
   turns: ShareTurn[];
-  /** 동료들이 지금까지 알게 된 사실(마지막 응답의 known_facts). 반복 질문을 줄이는 데 쓴다. */
+  /** 동료들이 지금까지 알게 된 사실(파트마다 마지막 응답의 known_facts를 이어 붙임). 반복 질문을 줄이는 데 쓴다. */
   knownFacts: string[];
-  /** 아직 남은 질문(마지막 응답의 open_questions). */
+  /** 아직 남은 질문(파트마다 마지막 응답의 open_questions를 이어 붙임). */
   openQuestions: string[];
   /** 공유를 끝낸 방식. */
   endedBy: "done" | "userStopped" | "skipped" | null;
