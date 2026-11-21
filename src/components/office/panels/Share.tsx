@@ -9,6 +9,7 @@ import { api, isManual, isSample, type OfficeView, type PlannerReply, type Share
 import type { OfficeHandle } from "../useOffice";
 import { Card, ManualMark, Notice, PanelHeader, type PlaceId, SampleMark } from "../ui";
 import { SubmissionLine } from "./TaskList";
+import { VoiceInput } from "../voice/VoiceInput";
 
 const SKIP_TEXT = "이 질문은 건너뛸게요.";
 
@@ -194,6 +195,11 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
                 더 덧붙일 말이 없으면 공유를 마쳐도 됩니다.
               </Notice>
             ) : null}
+            {/* 말로 하면 적어 둔 글 뒤에 덧붙인다. 보내기 전에 고칠 수 있다. */}
+            <VoiceInput
+              onText={(t) => setMessage((m) => (m.trim() ? `${m.trimEnd()}\n${t}` : t))}
+              disabled={office.busy || sending}
+            />
             <textarea
               className="field"
               aria-label="AI 기획자에게 보낼 말"
