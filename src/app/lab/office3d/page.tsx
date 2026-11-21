@@ -35,6 +35,9 @@ function Lab() {
   const [placed, setPlaced] = useState("없음");
   const [entered, setEntered] = useState("아직");
   const [left, setLeft] = useState("아직");
+  const [stage, setStage] = useState(q.get("stage") ?? "");
+  const [speaker, setSpeaker] = useState(q.get("speaker") ?? "");
+  const [shareReady, setShareReady] = useState("아직");
   const [start] = useState(q.get("start") ?? "09:00");
   const [end] = useState(q.get("end") ?? "18:00");
   const toMin = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
@@ -45,6 +48,8 @@ function Lab() {
       profile: { name: "김서울", activityStart: toMin(start), activityEnd: toMin(end) },
       day: {
         checkInAt: phase === "beforeCheckIn" ? null : toInstant(day, time),
+        // 공유 진행 단계와 마지막 발언자(4a 최종 모양: stage, turns[].role·dept)
+        share: stage ? { stage, turns: speaker ? [{ role: "user", text: "…" }, { role: "colleague", dept: speaker }] : [] } : undefined,
         tasks: q.get("notasks") ? [] : [
           { title: "로그인 화면 오류 메시지 정리", status: "submitted" },
           { title: "회원가입 폼 검증 붙이기", status: "in_progress" },
@@ -54,7 +59,7 @@ function Lab() {
       phase: { value: phase },
     }) satisfies Office3DView,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [day, time, phase, start, end],
+    [day, time, phase, start, end, stage, speaker],
   );
 
   return (
@@ -74,11 +79,22 @@ function Lab() {
           <button type="button" data-testid="leave" onClick={() => { setPhase("off"); setLeft("연출 중"); }}>하루 마감 확정</button>
         )}
         <span data-testid="left">퇴근 연출: {left}</span>
+        {phase === "sharing" && (
+          <>
+            <label>공유 진행 <select data-testid="stage" value={stage} onChange={(e) => setStage(e.target.value)}>
+              {["", "review", "confirm", "meeting", "closed"].map((v) => <option key={v} value={v}>{v || "(없음)"}</option>)}
+            </select></label>
+            <label>발언자 <select data-testid="speaker" value={speaker} onChange={(e) => setSpeaker(e.target.value)}>
+              {["", "dev_lead", "designer", "marketer", "planner"].map((v) => <option key={v} value={v}>{v || "(없음)"}</option>)}
+            </select></label>
+            <span data-testid="share-ready">회의 준비: {shareReady}</span>
+          </>
+        )}
         <span data-testid="placed">누른 곳: {placed}</span>
         <span data-testid="entered">입장 연출: {entered}</span>
       </div>
       <div style={{ minHeight: 0 }}>
-        <Office3D view={view} speed={speed} focus={focus} onPlace={(p) => setPlaced(p)} onEntranceEnd={() => setEntered("끝남")} onLeaveEnd={() => setLeft("끝남")} />
+        <Office3D view={view} speed={speed} focus={focus} onPlace={(p) => setPlaced(p)} onEntranceEnd={() => setEntered("끝남")} onLeaveEnd={() => setLeft("끝남")} onShareReady={() => setShareReady("끝남")} />
       </div>
     </main>
   );

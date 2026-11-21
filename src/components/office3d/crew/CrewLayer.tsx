@@ -18,7 +18,8 @@ const deptChip: CSSProperties = {
 /** 개발팀 자리 주인 + 타 부서 손님(공유할 때만). */
 export type CrewFrame = Record<string, { snapshot: Snapshot }>;
 
-const IDS: string[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", "planner", "designer", "operations"];
+// 개발팀 자리 주인 + 회의 손님(crew/share.ts GUESTS에서 바로 가져와 목록이 어긋나지 않게).
+const IDS: string[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me", ...GUESTS];
 
 const signature = (s: Snapshot) => `${s.visible}|${s.pose}|${s.holding.cup ?? ""}|${s.holding.bag ?? ""}|${s.holding.box ?? ""}`;
 

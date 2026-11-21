@@ -17,7 +17,8 @@ import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react"
 import { type AmbientLight, Color, type DirectionalLight, type HemisphereLight, NeutralToneMapping, Object3D, PerspectiveCamera, Vector3 } from "three";
 import { CrewLayer, type CrewFrame } from "./crew/CrewLayer";
 import { DOOR_X, ROOM, type SeatId } from "./crew/layout";
-import { GUESTS, shareArrivalAt, shareEndAt, shareSteady } from "./crew/share";
+import { GUESTS, managerPose, reviewAt, reviewSteady, shareArrivalAt, shareEndAt, shareSteady } from "./crew/share";
+import { meAt } from "./crew/schedule";
 import { separate } from "./crew/separate";
 import { fitShot } from "./camera";
 import { type ActivityWindow, crewAt, DEFAULT_WINDOW, type DeskProps, ENTRANCE, entranceAt, leaveAt, type SeatKind, type Snapshot } from "./crew/schedule";
@@ -183,7 +184,35 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
   const shareEnd = useRef<number | null>(null);
   const shareReadyRef = useRef(onShareReady);
   shareReadyRef.current = onShareReady;
-  const [meetingMode, setMeetingMode] = useState<MeetingMode>(phase === "sharing" ? "share" : "morning");
+  // 공유 안의 진행(view.day.share.stage, 4a 최종): review·confirm 팀장 사전 보고(팀장 앞) → meeting 부서 회의 → closed.
+  // 장면은 review(confirm 포함) / meeting / closed 셋으로 본다. stage가 없으면(옛 화면) sharing이면 곧바로 회의.
+  const rawStage = phase === "sharing" ? (read.shareStage ?? "meeting") : null;
+  const shareStage: string | null = rawStage === "confirm" ? "review" : rawStage === "minutes" || rawStage === "done" ? "closed" : rawStage;
+  const speaker = read.speaker;
+  const reviewStart = useRef<number | null>(null);
+  const arriveFrom = useRef<"seat" | "report">("seat");
+  const lastStage = useRef(shareStage);
+  const [meetingMode, setMeetingMode] = useState<MeetingMode>(shareStage === "meeting" ? "share" : "morning");
+  useEffect(() => {
+    const prev = lastStage.current;
+    if (shareStage === "review" && prev !== "review") {
+      reviewStart.current = performance.now();
+    } else if (shareStage === "meeting" && prev !== "meeting") {
+      // 회의가 시작되면 손님이 들어오고, 나는 (팀장 보고를 했으면) 팀장 자리 앞에서 회의실로 간다.
+      arriveFrom.current = prev === "review" ? "report" : "seat";
+      reviewStart.current = null;
+      shareArrive.current = performance.now();
+      shareEnd.current = null;
+      onEntranceStart();
+    } else if (prev === "meeting" && shareStage !== "meeting") {
+      // 회의가 끝나면(회의록 정리·완료·공유 종료) 손님이 나가고 나는 자리로.
+      shareArrive.current = null;
+      shareEnd.current = performance.now();
+    }
+    if (shareStage !== "review") reviewStart.current = shareStage === null ? null : reviewStart.current;
+    lastStage.current = shareStage;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareStage]);
   const lastPhase = useRef(phase);
   const endRef = useRef(onEntranceEnd);
   endRef.current = onEntranceEnd;
@@ -193,14 +222,6 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
     const prev = lastPhase.current;
     if (prev === "beforeCheckIn" && phase !== "beforeCheckIn") {
       entrance.current = performance.now();
-      onEntranceStart();
-    } else if (phase === "sharing" && prev !== "sharing") {
-      shareArrive.current = performance.now();
-      shareEnd.current = null;
-      onEntranceStart();
-    } else if (prev === "sharing" && phase !== "sharing") {
-      shareArrive.current = null;
-      shareEnd.current = performance.now();
       onEntranceStart();
     }
     if (phase === "off" && prev !== "off" && prev !== "beforeCheckIn") {
@@ -267,9 +288,15 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
     // 타 부서 손님(기획팀·디자인팀 담당자 1명씩).
     const clockSec = performance.now() / 1000;
     let guests: Record<string, { snapshot: Snapshot }> = {};
-    if (shareArrive.current != null) {
+    if (shareStage === "review") {
+      // ① 팀장 사전 보고: 팀장 자리 앞으로 가서 서서 보고. 팀장은 마지막에 자기가 말했으면 설명, 아니면 듣는다.
+      const r = reviewStart.current != null ? reviewAt((performance.now() - reviewStart.current) / 1000) : { me: reviewSteady(), arrived: true };
+      crew.me = { snapshot: r.me, desk: { ...crew.me.desk, screenOn: true, bagAtDesk: true } };
+      const m = crew.manager.snapshot;
+      if (m.visible && m.pose.startsWith("sit")) crew.manager = { ...crew.manager, snapshot: { ...m, pose: managerPose(speaker, clockSec), holding: {}, doing: "사전 보고 듣기" } };
+    } else if (shareArrive.current != null) {
       const t = (performance.now() - shareArrive.current) / 1000;
-      const a = shareArrivalAt(t);
+      const a = shareArrivalAt(t, arriveFrom.current, speaker);
       for (const g of GUESTS) guests[g] = { snapshot: a.guests[g] };
       crew.me = { snapshot: a.me, desk: { ...crew.me.desk, screenOn: true, bagAtDesk: true } };
       // 걸어오는 동안은 사무실 전체, 내가 발표 자리에 서면 회의실로 다가간다.
@@ -279,8 +306,8 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
         onShareSeated();
         shareReadyRef.current?.();
       }
-    } else if (phase === "sharing") {
-      const st = shareSteady(clockSec);
+    } else if (shareStage === "meeting") {
+      const st = shareSteady(clockSec, speaker);
       for (const g of GUESTS) guests[g] = { snapshot: st.guests[g] };
     } else if (shareEnd.current != null) {
       const t = (performance.now() - shareEnd.current) / 1000;
@@ -288,8 +315,11 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       for (const g of GUESTS) guests[g] = { snapshot: e.guests[g] };
       if (leaving.current == null) crew.me = { snapshot: e.me, desk: { ...crew.me.desk, screenOn: true, bagAtDesk: true } };
       if (e.done) shareEnd.current = null;
+    } else if (shareStage === "closed") {
+      // 회의 정리·회의록까지 끝: 손님은 나갔고 나는 내 자리에서 일한다.
+      crew.me = meAt(now, { kind: "seated" }, "working");
     }
-    const mode: MeetingMode = phase === "sharing" || shareEnd.current != null ? "share" : "morning";
+    const mode: MeetingMode = shareStage === "meeting" || shareEnd.current != null ? "share" : "morning";
     if (mode !== meetingMode) setMeetingMode(mode);
     const nowCinematic = waiting || entrance.current != null || leaving.current != null || shareArrive.current != null;
     if (nowCinematic !== cinematic) setCinematic(nowCinematic);
@@ -329,13 +359,13 @@ function Scene({ view, speed, focus, onClick, onEntranceStart, onEntranceEnd, on
       <Room light={light} lightRef={lightRef} minute={minute} desks={desks} doors={doors} reader={reader} facade={facade} frosted={frosted} meetingMode={meetingMode} myTasks={myTasks} onClick={onClick} />
       <CrewLayer frame={frame} labelHost={labelHost} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : GUESTS.includes(id as (typeof GUESTS)[number]) ? onClick("share") : undefined)} />
       {/* 이름표는 늘 붙여 두고 연출 중엔 감추기만 한다. 지웠다 다시 만들면 drei Html이 렌더 도중 떼어져 React 경고가 난다. */}
-      <Labels onClick={onClick} hidden={cinematic} host={labelHost} meetingMode={meetingMode} />
+      <Labels onClick={onClick} hidden={cinematic} host={labelHost} meetingMode={meetingMode} reviewing={shareStage === "review"} />
     </>
   );
 }
 
 /** 화면 상태에서 3D가 쓰는 값만 꺼낸다. 옛 모양과 새 모양을 둘 다 읽는다. */
-export function readView(v: Office3DView): { now: number; phase: string; seat: { kind: SeatKind; reason?: string }; window: ActivityWindow; tasks: TaskLine[] } {
+export function readView(v: Office3DView): { now: number; phase: string; seat: { kind: SeatKind; reason?: string }; window: ActivityWindow; tasks: TaskLine[]; shareStage: string | null; speaker: string | null } {
   const now = v.clock?.now ?? v.state?.now ?? Date.now();
   const phase = v.phase?.value ?? "working";
   const profile = (v.profile ?? v.state?.profile ?? undefined) as Window2 | undefined;
@@ -358,7 +388,19 @@ export function readView(v: Office3DView): { now: number; phase: string; seat: {
         return [{ title: o.title, done }];
       })
     : [];
-  return { now, phase, seat, window: end > start ? { start, end } : DEFAULT_WINDOW, tasks };
+  // 공유 진행 단계와 마지막으로 말한 동료(4a 최종: turns에서 role이 "colleague"인 마지막 턴의 dept, 팀장은 "dev_lead").
+  // 앞서 정했던 turns[].speaker도 함께 읽는다.
+  const share = (v.day as { share?: { stage?: unknown; turns?: unknown } } | null | undefined)?.share;
+  const shareStage = typeof share?.stage === "string" ? share.stage : null;
+  let speaker: string | null = null;
+  if (Array.isArray(share?.turns)) {
+    for (let i = share.turns.length - 1; i >= 0; i--) {
+      const turn = share.turns[i] as { role?: unknown; dept?: unknown; speaker?: unknown };
+      if (turn?.role === "colleague" && typeof turn.dept === "string") { speaker = turn.dept; break; }
+      if (typeof turn?.speaker === "string" && turn.speaker !== "user") { speaker = turn.speaker; break; }
+    }
+  }
+  return { now, phase, seat, window: end > start ? { start, end } : DEFAULT_WINDOW, tasks, shareStage, speaker };
 }
 
 /** 조명·배경색을 매 프레임 lightRef(연속 시각의 빛)로 맞춘다. React를 다시 그리지 않아 가볍다. */
@@ -459,13 +501,18 @@ function CameraRig({ aim }: { aim: React.MutableRefObject<CameraAim> }) {
 // 회의실 이름표는 단계에 따라 문구와 여는 곳이 바뀐다(아침보고 → meeting, 타 부서 공유 → share). key는 고정한다.
 const LABELS: { key: string; text: string; at: [number, number, number]; place: ClickPlace }[] = [
   { key: "door", text: "출입문", at: [DOOR_X, 2.65, ROOM.halfDepth], place: "door" },
-  { key: "meeting-room", text: "회의실 · 아침보고", at: [-4.6, 2.55, -1.2], place: "meeting" },
+  { key: "meeting-room", text: "회의실 · 아침보고", at: [-6.1, 2.6, -1.2], place: "meeting" }, // 손님 머리 위 팀 이름과 겹치지 않게 유리벽 왼쪽 위
   { key: "desk", text: "내 책상", at: [-0.9, 1.95, 2.25], place: "desk" },
   { key: "manager", text: "팀장 자리", at: [4.5, 1.75, 1.0], place: "manager" },
 ];
 
-function Labels({ onClick, hidden, host, meetingMode }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null>; meetingMode: MeetingMode }) {
-  const labels = LABELS.map((l) => (l.key === "meeting-room" && meetingMode === "share" ? { ...l, text: "회의실 · 타 부서 공유", place: "share" as ClickPlace } : l));
+function Labels({ onClick, hidden, host, meetingMode, reviewing }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null>; meetingMode: MeetingMode; reviewing: boolean }) {
+  // 회의실: 아침보고(meeting) ↔ 부서 회의(share). 팀장 자리: 사전 보고 중이면 공유 흐름(share)을 연다. key는 고정.
+  const labels = LABELS.map((l) => {
+    if (l.key === "meeting-room" && meetingMode === "share") return { ...l, text: "회의실 · 부서 회의", place: "share" as ClickPlace };
+    if (l.key === "manager" && reviewing) return { ...l, text: "팀장 자리 · 사전 보고", place: "share" as ClickPlace };
+    return l;
+  });
   return (
     <>
       {labels.map((l) => (
