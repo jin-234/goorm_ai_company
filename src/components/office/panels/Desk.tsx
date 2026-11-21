@@ -3,6 +3,7 @@
  * 내 책상 · 수행과 결과물 제출(개정 기획서 3.1).
  * 확정한 과제마다 시작 → 결과물 남기기 → 제출 완료(또는 오늘은 못 끝냄). 다 되면 회의실에서 타 부서에 발표한다.
  */
+import { useState } from "react";
 import { Clock, hm } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
@@ -18,28 +19,31 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
 
   const blockedBy = view.can.earlyLeaveBlockedBy;
 
-  /** 보통·엄격에서 마감 시각 전에 넘어갈 때: 한 번 확인(보통) 또는 사유(엄격). 넘어가지 않으면 null. */
-  const earlyReason = (): string | null => {
-    if (!view.can.earlyLeave) return "";
-    if (view.can.earlyLeaveNeedsReason) {
-      const reason = window.prompt(`마감 시각(${Clock.hm(view.profile.activityEnd)}) 전에 마감하는 사유를 적어 주세요.`);
-      return reason && reason.trim() ? reason.trim() : null;
+  // 넘어가기 전 확인은 브라우저 기본 창(confirm·prompt) 대신 이 패널 안 카드로 묻는다.
+  // start = 회의실 발표 시작(마감 시각 전일 때만 묻는다), skip = 발표 없이 하루 마감(늘 묻는다).
+  const [asking, setAsking] = useState<"start" | "skip" | null>(null);
+  const [reason, setReason] = useState("");
+  const needsReason = view.can.earlyLeave && view.can.earlyLeaveNeedsReason;
+  const endHM = Clock.hm(view.profile.activityEnd);
+
+  const run = async (kind: "start" | "skip") => {
+    const early = view.can.earlyLeave ? reason.trim() : "";
+    if (kind === "start") {
+      if ((await office.act("startSharing", { earlyReason: early })) != null) {
+        setAsking(null);
+        onGo("share");
+      }
+    } else if ((await office.act("endSharing", { reason: "userStopped", earlyReason: early })) != null) {
+      setAsking(null);
+      office.notify("공유를 건너뛰었습니다.\n하루 마감을 해 주세요.");
     }
-    return window.confirm(`아직 마감 시각(${Clock.hm(view.profile.activityEnd)}) 전입니다.\n지금 넘어가면 퇴근 점검 없이 오늘을 정리합니다. 넘어갈까요?`) ? "" : null;
   };
 
-  const skipSharing = async () => {
-    if (!view.can.earlyLeave && !window.confirm("오늘은 회의실 발표 없이 하루 마감으로 갈까요?")) return;
-    const early = earlyReason();
-    if (early == null) return;
-    if ((await office.act("endSharing", { reason: "userStopped", earlyReason: early })) != null) office.notify("공유를 건너뛰었습니다.\n하루 마감을 해 주세요.");
+  const startSharing = () => {
+    if (!view.can.earlyLeave) void run("start");
+    else setAsking("start");
   };
-
-  const startSharing = async () => {
-    const early = earlyReason();
-    if (early == null) return;
-    if ((await office.act("startSharing", { earlyReason: early })) != null) onGo("share");
-  };
+  const skipSharing = () => setAsking("skip");
 
   return (
     <div className="panel">
@@ -92,10 +96,32 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
             <Notice kind="warning" title="마감 시각 전에는 마감할 수 없습니다">
               {`2·3단계 과제가 남아 있습니다.\n${blockedBy.map((t) => `· ${t}`).join("\n")}\n제출하거나 ${Clock.hm(view.profile.activityEnd)} 퇴근 점검을 기다려 주세요.`}
             </Notice>
-          ) : view.can.earlyLeaveNeedsReason ? (
-            <p className="small muted" style={{ margin: 0 }}>
-              마감 시각 전에 넘어가려면 사유를 적습니다.
-            </p>
+          ) : null}
+          {asking ? (
+            <Notice
+              kind={view.can.earlyLeave ? "warning" : "info"}
+              title={asking === "start" ? `마감 시각(${endHM}) 전에 발표할까요?` : "발표 없이 하루 마감으로 갈까요?"}
+            >
+              {asking === "start"
+                ? "발표를 마치면 퇴근 점검 없이 바로 하루 마감으로 이어집니다."
+                : view.can.earlyLeave
+                  ? `마감 시각(${endHM}) 전입니다. 회의실 발표 없이 지금 하루 마감으로 갑니다.`
+                  : "회의실 발표 없이 하루 마감으로 갑니다."}
+              {needsReason ? (
+                <label className="stack" style={{ marginTop: 8 }}>
+                  마감 시각 전에 넘어가는 사유
+                  <input className="field" value={reason} maxLength={200} placeholder="예: 오늘 할 일을 일찍 끝냈습니다" onChange={(e) => setReason(e.target.value)} autoFocus />
+                </label>
+              ) : null}
+              <div className="row" style={{ marginTop: 8 }}>
+                <button className="btn small" onClick={() => void run(asking)} disabled={office.busy || (needsReason && !reason.trim())}>
+                  {asking === "start" ? "발표 시작" : "하루 마감으로"}
+                </button>
+                <button className="btn plain small" onClick={() => setAsking(null)}>
+                  취소
+                </button>
+              </div>
+            </Notice>
           ) : null}
           <div className="row">
             <button className="btn" onClick={startSharing} disabled={office.busy || !view.can.startSharing || blockedBy.length > 0}>
