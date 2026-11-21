@@ -1,7 +1,7 @@
 "use client";
 /**
- * 위 막대(고정). 가상 시각·단계·자리 상태, 지금 해야 할 일과 실행 버튼, 이번 달 점수,
- * 그리고 실제 기능과 구분한 점선 '시연' 묶음(다음 정각·다음 근무일·금요일 장면).
+ * 위 막대(고정). 가상 시각·단계, 지금 해야 할 일과 실행 버튼,
+ * 그리고 실제 기능과 구분한 점선 '시연' 묶음(다음 정각·다음 활동일·금요일 장면).
  */
 import type { OfficeView } from "./api";
 import type { OfficeHandle } from "./useOffice";
@@ -14,29 +14,23 @@ export interface NextStep {
 
 /** 지금 단계에서 가장 먼저 할 일. 화면 이동만 고르고 규칙은 서버 값(can.*)을 따른다. */
 export function nextStepOf(view: OfficeView): NextStep | null {
-  if (!view.state.onboarded) return null;
-  if (view.seat.kind === "absentCandidate") {
-    return view.can.startNextWorkday ? { label: "다음 근무일 시작", place: "desk" } : null;
-  }
+  if (!view.onboarded) return null;
   switch (view.phase.value) {
     case "beforeCheckIn":
       return { label: "출입문 · 출근하기", place: "door" };
     case "morningPT":
-      return { label: "회의실로 · 아침 PT", place: "meeting" };
+      return { label: "회의실로 · 아침보고", place: "meeting" };
     case "working":
       if (view.can.submitWeekly) return { label: "주간보고서 쓰기", place: "weekly" };
       if (view.mail.unreadCount > 0) return { label: `메일 ${view.mail.unreadCount}통 읽기`, place: "manager" };
-      return { label: "내 책상 · 체크리스트", place: "desk" };
+      return { label: "내 책상 · 과제 수행", place: "desk" };
+    case "sharing":
+      return { label: "기획팀에 설명하기", place: "desk" };
     case "checkoutReview":
-      return { label: "퇴근 점검 하기", place: "desk" };
-    case "dinner":
-    case "overtime":
-      return { label: "추가근무 업무 보기", place: "desk" };
-    case "overtimeReview":
-      return { label: "결과물 올리고 마치기", place: "desk" };
+      return { label: "하루 마감 쓰기", place: "desk" };
     case "off":
       if (view.can.submitWeekly) return { label: "주간보고서 쓰기", place: "weekly" };
-      return { label: "오늘 마무리 보기", place: "desk" };
+      return { label: "오늘 마감 보기", place: "desk" };
   }
 }
 
@@ -50,26 +44,24 @@ export function TopBar({
   onGo: (place: PlaceId) => void;
 }) {
   const step = nextStepOf(view);
-  const stats = view.monthStats;
-  const skip = async () => {
-    const res = await office.act<{ skip: { stoppedFor: string | null; to: number } }>("skipHour");
-    if (res?.skip?.stoppedFor) office.notify(`${res.skip.stoppedFor}에서 멈췄습니다.`);
-  };
+  const skip = () => office.act("skipHour");
   const friday = async () => {
+    if (!window.confirm("금요일 아침으로 갈까요?\n마감하지 않은 과제는 다음 활동일로 이월합니다.")) return;
     if ((await office.act("jumpToFriday")) != null) {
-      office.notify("금요일 아침으로 이동했습니다.\n오늘은 주간보고서를 제출하는 날입니다.");
+      office.notify("금요일 아침으로 이동했습니다.\n오늘은 주간보고서를 쓰는 날입니다.");
       onGo("door");
     }
   };
   const nextDay = async () => {
     if ((await office.act("startNextWorkday")) != null) onGo("door");
   };
+  const showNextDay = view.phase.value === "off" || (view.phase.value === "beforeCheckIn" && view.can.startNextWorkday);
 
   return (
     <div className="topbar" role="banner">
       <div>
         <div className="small muted">
-          가상회사 1팀 · {view.state.profile.name} 사원 · {view.clock.dateShort}
+          {view.profile.targetRole || "가상회사"} · {view.profile.name} 사원 · {view.clock.dateShort}
         </div>
         <div className="row" style={{ gap: 12 }}>
           <span className="clock" aria-label={`지금 시각 ${view.clock.hm}`}>
@@ -77,19 +69,12 @@ export function TopBar({
           </span>
           <div>
             <div className="phase">{view.phase.headline}</div>
-            <span className={`chip ${view.seat.isWarning ? "warn" : ""}`} title={view.seat.detail}>
-              {view.seat.isWarning ? "! " : ""}
-              {view.seat.title}
+            <span className="chip" title={view.seat.detail}>
+              {view.phase.label}
             </span>
           </div>
         </div>
       </div>
-
-      {stats.points > 0 ? (
-        <div className="small" title="지각 1회 1점, 결근 후보 1회 3점. 월 2점까지 0원, 초과 1점당 1,000원, 월 최대 5,000원. 시연에서는 청구하지 않습니다.">
-          이번 달 {stats.points}점 · 지각비 예상 {stats.estimatedFee.toLocaleString("ko-KR")}원
-        </div>
-      ) : null}
 
       <div className="spacer" />
 
@@ -102,33 +87,28 @@ export function TopBar({
         </div>
       ) : null}
 
-      {view.state.onboarded ? (
+      {view.onboarded ? (
         <div className="demo-group" aria-label="시연용 조작">
           <span className="label">시연</span>
-          {view.phase.value === "off" || view.seat.kind === "absentCandidate" ? (
-            <button className="btn secondary small" onClick={nextDay} disabled={office.busy || !view.can.startNextWorkday}>
-              다음 근무일
-            </button>
-          ) : (
+          <button className="btn secondary small" onClick={skip} disabled={office.busy || !view.can.skipHour} title="시연 시각을 다음 정각으로 보냅니다.">
+            다음 정각
+          </button>
+          {showNextDay ? (
             <button
               className="btn secondary small"
-              onClick={skip}
-              disabled={office.busy || !view.can.skipHour}
-              title={
-                view.can.skipHour
-                  ? "시연 시각을 다음 정각으로 보냅니다. 퇴근 점검·추가근무 시각에서는 멈춥니다."
-                  : "지금 점검을 먼저 제출해 주세요."
-              }
+              onClick={nextDay}
+              disabled={office.busy || !view.can.startNextWorkday}
+              title={view.phase.value === "off" ? "다음 활동일 아침으로 갑니다." : "오늘은 쉬는 날로 두고 다음 활동일로 갑니다."}
             >
-              다음 정각
+              다음 활동일
             </button>
-          )}
+          ) : null}
           {!view.clock.isFriday ? (
             <button
               className="btn secondary small"
               onClick={friday}
               disabled={office.busy || !view.can.jumpToFriday}
-              title="시연용: 오늘을 마감하고 이번 주 금요일 아침으로 갑니다."
+              title="시연용: 이번 주 금요일 아침으로 갑니다."
             >
               금요일 장면
             </button>

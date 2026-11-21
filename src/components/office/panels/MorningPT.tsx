@@ -1,34 +1,61 @@
 "use client";
 /**
- * 회의실 · 아침 PT.
- * 전사문(글 입력, 음성은 AI 담당 작업) → 업무 초안 만들기(Solar, 실패하면 서버 규칙 초안) → 칸 고치기 → 확정.
- * 칸은 입력을 마칠 때(blur) 한 번만 서버에 보낸다. 빈 칸은 '확인 필요'로 보인다.
+ * 회의실 · 아침보고.
+ * 오늘 목표(말하기 → OpenAI 음성 인식, 안 되면 글 입력) → AI 팀장 과제 초안(Solar, 실패하면 서버 규칙) → 칸 고치기 → 확정.
+ * 과제 초안은 화면이 들고 있고(이 브라우저에도 잠깐 보관), 서버에는 확정한 과제만 저장한다.
+ * 이월된 과제는 원본을 보존한 채 목록 앞에 붙고 빼지 않는다.
  */
-import { useEffect, useState } from "react";
-import { Clock } from "@/lib/office/time";
+import { useEffect, useRef, useState } from "react";
 import { api, type OfficeView, type SolarErrorInfo } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, LEVEL_NAME, LevelBadge, Notice, PanelHeader } from "../ui";
+import { Card, Notice, PanelHeader, StatusBadge } from "../ui";
+import { VoiceInput } from "../voice/VoiceInput";
 
-type Draft = OfficeView["morningPT"]["drafts"][number];
+interface Row {
+  key: string;
+  title: string;
+  completionCriteria: string;
+  shareForm: string;
+  /** 이월 과제면 pendingCarry의 ID. */
+  carryId?: string;
+  carryCount?: number;
+}
 
-export const SAMPLE_PT = `3단계 필수 업무는 지원서 최종 검토입니다. 오후 3시까지 오탈자를 확인하고 제출본을 저장하겠습니다.
-2단계 당일 업무는 포트폴리오 한 문단 초안입니다. 오후 5시까지 문단을 쓰겠습니다.
-1단계 이월 가능 업무는 관심 기업 세 곳 저장입니다. 퇴근 전까지 링크를 모으겠습니다.`;
+export const SAMPLE_GOAL = `API 요청을 배우고 도시별 날씨 조회 화면 만들기.
+도시를 입력하면 현재 기온과 날씨를 보여 주는 화면까지 오늘 끝내겠습니다.
+남는 시간에는 실패했을 때 보여 줄 안내 문구를 정리하겠습니다.`;
 
-const FORM_GUIDE: [1 | 2 | 3, string][] = [
-  [3, "3단계 필수 업무는 ○○입니다. 오후 3시까지 ○○하겠습니다."],
-  [2, "2단계 당일 업무는 ○○입니다. 오후 5시까지 ○○하겠습니다."],
-  [1, "1단계 이월 가능 업무는 ○○입니다. 퇴근 전까지 ○○하겠습니다."],
-];
+const SHARE_EXAMPLES = ["화면 캡처와 3줄 설명", "코드 링크와 동작 설명", "배운 점 3가지"];
+
+const emptyRow = (): Row => ({ key: crypto.randomUUID(), title: "", completionCriteria: "", shareForm: "" });
+
+const draftKey = (date: string) => `vision.ptDraft.${date}`;
+
+function loadRows(date: string): Row[] | null {
+  try {
+    const raw = localStorage.getItem(draftKey(date));
+    return raw ? (JSON.parse(raw) as Row[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeRows(date: string, rows: Row[] | null) {
+  try {
+    if (rows) localStorage.setItem(draftKey(date), JSON.stringify(rows));
+    else localStorage.removeItem(draftKey(date));
+  } catch {
+    // 보관하지 못해도 이번 화면에서는 계속 쓴다.
+  }
+}
 
 export function MorningPT({ office, view }: { office: OfficeHandle; view: OfficeView }) {
   const phase = view.phase.value;
   const header = (
     <PanelHeader
       place="회의실"
-      title="아침 PT"
-      detail={"오늘 할 일을 3단계부터 1단계 순서로 말해 주세요.\n확정한 업무로 퇴근 점검을 합니다."}
+      title="아침보고"
+      detail={"오늘 할 일과 가능한 범위를 말해 주세요.\nAI 팀장이 결과물과 완료 기준을 제안하고, 확정은 직접 합니다."}
     />
   );
 
@@ -36,7 +63,7 @@ export function MorningPT({ office, view }: { office: OfficeHandle; view: Office
     return (
       <div className="panel">
         {header}
-        <Notice kind="info" title="출근한 뒤 아침 PT를 합니다">
+        <Notice kind="info" title="출근한 뒤 아침보고를 합니다">
           출입문에서 출근 버튼을 먼저 눌러 주세요.
         </Notice>
       </div>
@@ -46,18 +73,23 @@ export function MorningPT({ office, view }: { office: OfficeHandle; view: Office
     return (
       <div className="panel">
         {header}
-        <Notice kind="ok" title="오늘 업무를 이미 확정했습니다" />
-        <Card title="확정한 업무">
-          {view.state.day.tasks.length === 0 ? (
+        <Notice kind="ok" title="오늘 과제를 이미 확정했습니다" />
+        {view.day.goal ? (
+          <Card title="오늘 목표">
+            <div className="pre">{view.day.goal}</div>
+          </Card>
+        ) : null}
+        <Card title="확정한 과제">
+          {view.day.tasks.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>
-              확정한 업무가 없습니다.
+              확정한 과제가 없습니다.
             </p>
           ) : (
-            view.state.day.tasks.map((t) => (
+            view.day.tasks.map((t) => (
               <div key={t.id} className="row">
-                <LevelBadge level={t.level} />
+                <StatusBadge status={t.status} label={t.statusLabel} />
                 <span style={{ fontWeight: 600 }}>{t.title}</span>
-                <span className="small muted">마감 {Clock.hm(t.due)}</span>
+                <span className="small muted">완료 기준: {t.completionCriteria}</span>
               </div>
             ))
           )}
@@ -69,213 +101,214 @@ export function MorningPT({ office, view }: { office: OfficeHandle; view: Office
 }
 
 function MorningPTEditor({ office, view, header }: { office: OfficeHandle; view: OfficeView; header: React.ReactNode }) {
-  const pt = view.morningPT;
-  const [transcript, setTranscript] = useState(view.state.day.transcript);
+  const date = view.clock.date;
+  const carried: Row[] = view.pendingCarry.map((t) => ({
+    key: t.id,
+    title: t.title,
+    completionCriteria: t.completionCriteria,
+    shareForm: t.shareForm,
+    carryId: t.id,
+    carryCount: t.carryCount,
+  }));
+  const [goal, setGoal] = useState(view.day.goal);
+  const [rows, setRows] = useState<Row[]>([]);
   const [drafting, setDrafting] = useState(false);
   const [solarError, setSolarError] = useState<SolarErrorInfo | null>(null);
+  const [sourceLabel, setSourceLabel] = useState<string | null>(null);
   const [seconds, setSeconds] = useState<number | null>(null);
+  const loaded = useRef(false);
 
-  const saveTranscript = async () => {
-    if (transcript !== view.state.day.transcript) await office.save("setTranscript", { transcript });
+  // 처음 열 때: 이 브라우저에 보관한 초안이 있으면 되살리고, 없으면 이월 과제로 시작한다.
+  useEffect(() => {
+    if (loaded.current) return;
+    loaded.current = true;
+    const saved = loadRows(date);
+    const savedCarry = new Map((saved ?? []).filter((r) => r.carryId).map((r) => [r.carryId!, r]));
+    const fresh = (saved ?? []).filter((r) => !r.carryId);
+    setRows([...carried.map((c) => savedCarry.get(c.carryId!) ?? c), ...fresh]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const update = (next: Row[]) => {
+    setRows(next);
+    storeRows(date, next);
+  };
+  const patch = (key: string, fields: Partial<Row>) => update(rows.map((r) => (r.key === key ? { ...r, ...fields } : r)));
+
+  const saveGoal = async () => {
+    if (goal !== view.day.goal) await office.save("saveGoal", { goal });
+  };
+
+  // 인식된 글은 적어 둔 목표 뒤에 덧붙이고 바로 저장한다(직접 적은 글을 지우지 않는다).
+  const addSpoken = (text: string) => {
+    const next = goal.trim() ? `${goal.trimEnd()}\n${text}` : text;
+    setGoal(next);
+    void office.save("saveGoal", { goal: next });
   };
 
   const makeDraft = async () => {
-    if (!transcript.trim()) {
-      office.notify("전사문이 비어 있습니다.\n직접 적거나 '예시 넣기'를 눌러 주세요.");
+    if (!goal.trim()) {
+      office.notify("오늘 목표가 비어 있습니다.\n말하거나 직접 적어 주세요.");
       return;
     }
-    if (pt.drafts.some((d) => !d.isCarried) && !window.confirm("초안을 새로 만들까요?\n지금 고친 초안은 바뀝니다.")) return;
+    if (rows.some((r) => !r.carryId) && !window.confirm("초안을 새로 받을까요?\n지금 고친 과제는 바뀝니다.")) return;
     setDrafting(true);
-    const res = await office.run(() => api.draft(transcript));
+    const res = await office.run(() => api.draft(goal));
     setDrafting(false);
-    if (res) {
-      setSolarError(res.result.solarError);
-      setSeconds(res.result.seconds);
-    }
+    if (!res) return;
+    const { tasks, solarError: err, source, seconds: s } = res.result;
+    setSolarError(err);
+    setSeconds(s);
+    setSourceLabel(source === "solar" ? "AI 팀장 제안" : "서버 규칙 초안");
+    update([...rows.filter((r) => r.carryId), ...tasks.map((t) => ({ ...t, key: crypto.randomUUID() }))]);
   };
 
   const confirm = async () => {
-    if ((await office.act("confirmTasks")) != null) office.notify("업무를 확정했습니다.\n근무를 시작합니다.");
+    const tasks = rows.map(({ title, completionCriteria, shareForm, carryId }) => ({
+      title,
+      completionCriteria,
+      shareForm,
+      ...(carryId ? { carryId } : {}),
+    }));
+    if ((await office.act("confirmTasks", { goal, tasks })) != null) {
+      storeRows(date, null);
+      office.notify("오늘 과제를 확정했습니다.\n내 책상에서 수행하고 결과물을 제출하세요.");
+    }
   };
+
+  const missing = rows.some((r) => !r.title.trim() || !r.completionCriteria.trim());
 
   return (
     <div className="panel">
       {header}
 
-      <Card title="발표 양식">
-        {FORM_GUIDE.map(([level, example]) => (
-          <div key={level} className="row" style={{ alignItems: "flex-start" }}>
-            <LevelBadge level={level} />
-            <span className="muted">{example}</span>
-          </div>
-        ))}
-      </Card>
-
       <Card
-        title="전사문"
+        title="오늘 목표"
         aside={
-          <button className="btn plain small" onClick={() => setTranscript(SAMPLE_PT)}>
+          <button className="btn plain small" onClick={() => setGoal(SAMPLE_GOAL)}>
             예시 넣기
           </button>
         }
       >
-        <Notice kind="info" title="말로 하기는 준비 중입니다">
-          {"지금은 할 일을 직접 적어 주세요.\n녹음은 이 기기 안에서 글로 옮긴 뒤 바로 지웁니다."}
-        </Notice>
+        <VoiceInput onText={addSpoken} disabled={office.busy || drafting} />
         <textarea
           className="field"
-          aria-label="전사문"
-          rows={6}
-          value={transcript}
-          placeholder={"녹음하면 여기에 글이 들어옵니다.\n직접 적어도 됩니다."}
-          onChange={(e) => setTranscript(e.target.value)}
-          onBlur={saveTranscript}
+          aria-label="오늘 목표"
+          rows={5}
+          value={goal}
+          placeholder={"오늘 할 일과 가능한 범위를 적어 주세요.\n말하기를 누르면 여기에 글이 들어옵니다."}
+          onChange={(e) => setGoal(e.target.value)}
+          onBlur={saveGoal}
         />
         <button className="btn" onClick={makeDraft} disabled={office.busy || drafting}>
-          {drafting ? "업무 초안을 만드는 중" : "업무 초안 만들기"}
+          {drafting ? "AI 팀장이 과제를 정리하는 중" : "AI 팀장에게 과제 제안 받기"}
         </button>
         {solarError ? (
           <Notice kind="warning" title={solarError.title}>
-            {`${solarError.guidance}\n아래는 서버 규칙으로 정리한 초안입니다.`}
-            <div className="row" style={{ marginTop: 8 }}>
-              {solarError.canRetry ? (
+            {`${solarError.guidance}\n아래는 서버 규칙으로 정리한 초안입니다. 칸을 직접 고쳐 주세요.`}
+            {solarError.canRetry ? (
+              <div className="row" style={{ marginTop: 8 }}>
                 <button className="btn secondary small" onClick={makeDraft} disabled={drafting}>
-                  Solar로 다시 시도
+                  다시 시도
                 </button>
-              ) : null}
-            </div>
+              </div>
+            ) : null}
           </Notice>
         ) : null}
       </Card>
 
-      <Card
-        title="업무 체크리스트"
-        aside={pt.draftSourceLabel ? <span className="badge tag">{pt.draftSourceLabel}</span> : undefined}
-      >
+      <Card title="오늘 과제" aside={sourceLabel ? <span className="badge tag">{sourceLabel}</span> : undefined}>
         {seconds != null ? <div className="small muted">초안까지 {seconds}초</div> : null}
-        {pt.drafts.length === 0 ? (
+        {rows.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>
-            아직 업무가 없습니다. 초안을 만들거나 직접 추가해 주세요.
+            아직 과제가 없습니다. 제안을 받거나 직접 추가해 주세요.
           </p>
         ) : (
-          pt.drafts.map((d) => <DraftRow key={d.id} draft={d} office={office} workEnd={view.state.profile.workEnd} />)
+          rows.map((r, i) => (
+            <TaskRow
+              key={r.key}
+              row={r}
+              index={i}
+              onChange={(f) => patch(r.key, f)}
+              onRemove={() => update(rows.filter((x) => x.key !== r.key))}
+            />
+          ))
         )}
-        <button className="btn secondary" onClick={() => office.act("addDraft")} disabled={office.busy}>
-          업무 직접 추가
+        <button className="btn secondary" onClick={() => update([...rows, emptyRow()])} disabled={office.busy}>
+          과제 직접 추가
         </button>
       </Card>
 
-      {pt.blocker && pt.drafts.length > 0 ? (
-        <Notice kind="warning" title="확인이 필요합니다">
-          {pt.blocker.message}
+      {missing ? (
+        <Notice kind="warning" title="확인이 필요한 칸이 있습니다">
+          과제마다 과제명과 완료 기준을 채워 주세요.
         </Notice>
       ) : null}
 
-      <button className="btn" onClick={confirm} disabled={office.busy || !view.can.confirmTasks}>
-        확정하고 근무 시작
+      <button className="btn" onClick={confirm} disabled={office.busy || !view.can.confirmTasks || rows.length === 0 || missing}>
+        확정하고 수행 시작
       </button>
     </div>
   );
 }
 
-function DraftRow({ draft, office, workEnd }: { draft: Draft; office: OfficeHandle; workEnd: number }) {
-  const [title, setTitle] = useState(draft.title ?? "");
-  const [due, setDue] = useState(draft.due != null ? Clock.hm(draft.due) : "");
-  const [criteria, setCriteria] = useState(draft.doneCriteria ?? "");
-  const [dueError, setDueError] = useState(false);
-
-  // 초안을 새로 만들면(서버 값이 바뀌면) 칸도 새 값으로.
-  useEffect(() => setTitle(draft.title ?? ""), [draft.title]);
-  useEffect(() => setDue(draft.due != null ? Clock.hm(draft.due) : ""), [draft.due]);
-  useEffect(() => setCriteria(draft.doneCriteria ?? ""), [draft.doneCriteria]);
-
-  const update = (patch: Record<string, unknown>) => office.save("updateDraft", { id: draft.id, ...patch });
-  const missing = new Set(draft.missingFields);
-  const need = (field: string, label: string) => (missing.has(field) ? `확인 필요 · ${label}` : label);
-
-  const saveDue = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      setDueError(false);
-      if (draft.due != null) void update({ due: null });
-      return;
-    }
-    const minutes = Clock.minutesFromHM(trimmed);
-    setDueError(minutes == null);
-    if (minutes != null && minutes !== draft.due) void update({ due: minutes });
-  };
-
+function TaskRow({
+  row,
+  index,
+  onChange,
+  onRemove,
+}: {
+  row: Row;
+  index: number;
+  onChange: (fields: Partial<Row>) => void;
+  onRemove: () => void;
+}) {
+  const need = (value: string, label: string) => (value.trim() ? label : `확인 필요 · ${label}`);
   return (
     <div className="card" style={{ background: "var(--paper)", gap: 8 }}>
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div className="row">
-          <LevelBadge level={draft.level} />
-          {draft.isCarried ? <span className="badge tag">이월 {draft.carryCount}회</span> : null}
+          <span style={{ fontWeight: 700 }}>{index + 1}</span>
+          {row.carryId ? <span className="badge tag">이월 {row.carryCount}회</span> : null}
         </div>
-        {draft.isCarried ? (
-          <span className="small muted">이월 업무는 뺄 수 없습니다</span>
+        {row.carryId ? (
+          <span className="small muted">이월 과제는 뺄 수 없습니다 · 마감 때 처리를 고릅니다</span>
         ) : (
-          <button className="btn plain small" onClick={() => office.act("removeDraft", { id: draft.id })}>
-            이 업무 빼기
+          <button className="btn plain small" onClick={onRemove}>
+            이 과제 빼기
           </button>
         )}
       </div>
       <label className="stack">
-        {need("업무명", "업무명")}
+        {need(row.title, "과제명")}
+        <input className="field" value={row.title} onChange={(e) => onChange({ title: e.target.value })} />
+      </label>
+      <label className="stack">
+        {need(row.completionCriteria, "완료 기준 (무엇이 되면 끝인지)")}
         <input
           className="field"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => title !== (draft.title ?? "") && update({ title: title.trim() || null })}
+          value={row.completionCriteria}
+          placeholder="예: 도시를 입력하면 기온이 화면에 나온다"
+          onChange={(e) => onChange({ completionCriteria: e.target.value })}
         />
       </label>
-      <div>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>{need("중요도", "중요도")}</div>
-        <div className="row" role="group" aria-label="중요도">
-          {([3, 2, 1] as const).map((level) => (
-            <button
-              key={level}
-              className={`btn small ${draft.level === level ? "" : "secondary"}`}
-              aria-pressed={draft.level === level}
-              onClick={() => update({ level })}
-            >
-              {level}단계 · {LEVEL_NAME[level]}
+      <label className="stack">
+        공유 형태 (선택)
+        <input
+          className="field"
+          value={row.shareForm}
+          placeholder="예: 화면 캡처와 3줄 설명"
+          onChange={(e) => onChange({ shareForm: e.target.value })}
+        />
+      </label>
+      {!row.shareForm ? (
+        <div className="row">
+          {SHARE_EXAMPLES.map((ex) => (
+            <button key={ex} className="btn plain small" onClick={() => onChange({ shareForm: ex })}>
+              {ex}
             </button>
           ))}
         </div>
-      </div>
-      <div className="row" style={{ alignItems: "flex-end" }}>
-        <label className="stack" style={{ width: 130 }}>
-          {need("마감", "마감")}
-          <input
-            className="field"
-            value={due}
-            placeholder="HH:MM"
-            inputMode="numeric"
-            onChange={(e) => setDue(e.target.value)}
-            onBlur={() => saveDue(due)}
-          />
-        </label>
-        <button
-          className="btn plain small"
-          onClick={() => {
-            setDue(Clock.hm(workEnd));
-            saveDue(Clock.hm(workEnd));
-          }}
-        >
-          퇴근 전
-        </button>
-        {dueError ? <span className="small" style={{ color: "var(--warn)" }}>! HH:MM 형식으로 적어 주세요</span> : null}
-      </div>
-      <label className="stack">
-        {need("완료 기준", "완료 기준")}
-        <input
-          className="field"
-          value={criteria}
-          onChange={(e) => setCriteria(e.target.value)}
-          onBlur={() => criteria !== (draft.doneCriteria ?? "") && update({ doneCriteria: criteria.trim() || null })}
-        />
-      </label>
+      ) : null}
     </div>
   );
 }

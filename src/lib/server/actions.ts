@@ -1,10 +1,19 @@
 /**
- * 화면에서 보내는 행동 하나를 규칙 엔진에 적용한다.
- * 입력 검증은 여기서 하고, 규칙 위반은 OfficeError로 던진다.
+ * 화면에서 보내는 행동 하나를 규칙 엔진에 적용한다(분담표 3.3 계약).
+ * 입력 모양 검증은 여기서 하고(BadRequest), 규칙 위반은 OfficeError로 던진다.
  */
-import { type CarryReport, isTaskLevel, PRESENCE_STATES, type PresenceState, type TaskDraft } from "../office/models";
-import type { Office } from "../office/office";
-import { OfficeError } from "../office/rules";
+import {
+  type PlannerReply,
+  REVIEW_LIST_FIELDS,
+  REVIEW_TEXT_FIELDS,
+  type Review,
+  SUBMISSION_KINDS,
+  type SubmissionKind,
+  TASK_OUTCOMES,
+  type TaskOutcome,
+} from "../office/models";
+import type { ConfirmInput, Office, OnboardInput } from "../office/office";
+import { OfficeError, WorkRules } from "../office/rules";
 import { Clock } from "../office/time";
 
 export class BadRequest extends Error {
@@ -23,59 +32,119 @@ const str = (body: Json, key: string, required = true): string => {
   throw new BadRequest(`${key}는 문자열이어야 합니다.`);
 };
 
-const bool = (body: Json, key: string): boolean => {
-  if (typeof body[key] !== "boolean") throw new BadRequest(`${key}는 true/false여야 합니다.`);
-  return body[key] as boolean;
+const optStr = (body: Json, key: string): string | undefined => (body[key] == null ? undefined : str(body, key));
+
+const obj = (value: unknown, key: string): Json => {
+  if (typeof value !== "object" || value == null || Array.isArray(value)) throw new BadRequest(`${key}는 객체여야 합니다.`);
+  return value as Json;
 };
 
-/** 초안 칸 고치기. due는 분(number) 또는 "HH:MM"을 받는다. */
-function draftPatch(body: Json): Partial<Pick<TaskDraft, "title" | "level" | "due" | "doneCriteria">> {
-  const patch: Partial<Pick<TaskDraft, "title" | "level" | "due" | "doneCriteria">> = {};
-  if ("title" in body) patch.title = body.title == null ? null : str(body, "title");
-  if ("doneCriteria" in body) patch.doneCriteria = body.doneCriteria == null ? null : str(body, "doneCriteria");
-  if ("level" in body) {
-    if (body.level != null && !isTaskLevel(body.level)) throw new BadRequest("level은 1, 2, 3 중 하나여야 합니다.");
-    patch.level = (body.level as TaskDraft["level"]) ?? null;
-  }
-  if ("due" in body) {
-    const due = body.due;
-    if (due == null) patch.due = null;
-    else if (typeof due === "number" && Number.isInteger(due) && due >= 0 && due <= 24 * 60) patch.due = due;
-    else if (typeof due === "string" && Clock.minutesFromHM(due) != null) patch.due = Clock.minutesFromHM(due);
-    else throw new BadRequest("due는 HH:MM 형식으로 적어 주세요.");
-  }
-  return patch;
+const strList = (value: unknown, key: string): string[] => {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.some((v) => typeof v !== "string")) throw new BadRequest(`${key}는 문자열 목록이어야 합니다.`);
+  return (value as string[]).map((v) => v.slice(0, WorkRules.maxFieldLength)).slice(0, 20);
+};
+
+/** 분(number) 또는 "HH:MM". */
+function minutes(body: Json, key: string): number | undefined {
+  const v = body[key];
+  if (v == null) return undefined;
+  if (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 24 * 60) return v;
+  if (typeof v === "string" && Clock.minutesFromHM(v) != null) return Clock.minutesFromHM(v)!;
+  throw new BadRequest(`${key}는 HH:MM 형식이나 자정 기준 분으로 적어 주세요.`);
 }
 
-function carryReports(body: Json): Record<string, CarryReport> {
-  const raw = body.carryReports ?? {};
-  if (typeof raw !== "object" || raw == null) throw new BadRequest("carryReports는 객체여야 합니다.");
-  const reports: Record<string, CarryReport> = {};
-  for (const [id, value] of Object.entries(raw as Json)) {
-    const r = (value ?? {}) as Json;
-    reports[id] = { reason: typeof r.reason === "string" ? r.reason : "", plan: typeof r.plan === "string" ? r.plan : "" };
+function onboardInput(body: Json): OnboardInput {
+  return {
+    name: str(body, "name", false),
+    targetRole: optStr(body, "targetRole"),
+    experience: optStr(body, "experience"),
+    activityStart: minutes(body, "activityStart"),
+    activityEnd: minutes(body, "activityEnd"),
+  };
+}
+
+function confirmInput(body: Json): ConfirmInput {
+  if (!Array.isArray(body.tasks)) throw new BadRequest("tasks는 목록이어야 합니다.");
+  return {
+    goal: optStr(body, "goal"),
+    tasks: body.tasks.map((raw, i) => {
+      const t = obj(raw, `tasks[${i}]`);
+      return {
+        title: str(t, "title", false),
+        completionCriteria: str(t, "completionCriteria", false),
+        shareForm: str(t, "shareForm", false),
+        ...(t.carryId != null ? { carryId: str(t, "carryId") } : {}),
+      };
+    }),
+  };
+}
+
+/** 마감 요약 8개 필드. 없는 칸은 빈 값으로 채우고, 모양이 틀리면 BadRequest. */
+export function reviewOf(value: unknown): Review {
+  const r = obj(value, "review");
+  const review = {} as Review;
+  for (const key of REVIEW_TEXT_FIELDS) {
+    const v = r[key] ?? "";
+    if (typeof v !== "string") throw new BadRequest(`review.${key}는 문자열이어야 합니다.`);
+    review[key] = v.slice(0, WorkRules.maxFieldLength);
   }
-  return reports;
+  for (const key of REVIEW_LIST_FIELDS) review[key] = strList(r[key], `review.${key}`);
+  return review;
+}
+
+/** AI 기획자 응답(개정 기획서 4.3 E). */
+export function plannerReplyOf(value: unknown): PlannerReply {
+  const r = obj(value, "reply");
+  const text = (key: string) => {
+    const v = r[key] ?? "";
+    if (typeof v !== "string") throw new BadRequest(`reply.${key}는 문자열이어야 합니다.`);
+    return v.slice(0, WorkRules.maxFieldLength);
+  };
+  return {
+    acknowledgement: text("acknowledgement"),
+    question: text("question"),
+    question_reason: text("question_reason"),
+    known_facts: strList(r.known_facts, "reply.known_facts"),
+    open_questions: strList(r.open_questions, "reply.open_questions"),
+    evidence_refs: strList(r.evidence_refs, "reply.evidence_refs"),
+    can_finish: r.can_finish === true,
+  };
+}
+
+function choicesOf(body: Json): Record<string, TaskOutcome> {
+  const raw = obj(body.choices ?? {}, "choices");
+  const out: Record<string, TaskOutcome> = {};
+  for (const [id, v] of Object.entries(raw)) {
+    if (!TASK_OUTCOMES.includes(v as TaskOutcome)) throw new BadRequest("choices 값은 adjust, carryOver, endToday 중 하나입니다.");
+    out[id] = v as TaskOutcome;
+  }
+  return out;
+}
+
+function reasonsOf(body: Json): Record<string, string> {
+  const raw = obj(body.reasons ?? {}, "reasons");
+  const out: Record<string, string> = {};
+  for (const [id, v] of Object.entries(raw)) {
+    if (typeof v !== "string") throw new BadRequest("reasons 값은 문자열이어야 합니다.");
+    out[id] = v;
+  }
+  return out;
 }
 
 export const ACTION_TYPES = [
   "onboard",
   "checkIn",
-  "setTranscript",
-  "addDraft",
-  "updateDraft",
-  "removeDraft",
+  "saveGoal",
   "confirmTasks",
-  "setTaskDone",
-  "setDeliverable",
-  "requestLunch",
-  "registerAway",
-  "returnFromAllowance",
-  "observePresence",
+  "setTaskStatus",
+  "submitWork",
+  "startSharing",
+  "recordShareTurn",
+  "endSharing",
+  "saveReviewDraft",
+  "confirmReview",
   "skipHour",
-  "submitCheckout",
-  "endOvertimeEarly",
-  "submitOvertimeReview",
   "saveWeeklyDraft",
   "submitWeeklyReport",
   "markMailRead",
@@ -90,55 +159,53 @@ export function applyAction(office: Office, body: Json): unknown {
   const type = body.type;
   switch (type as ActionType) {
     case "onboard":
-      office.completeOnboarding(str(body, "name", false));
+      office.completeOnboarding(onboardInput(body));
       return null;
     case "checkIn":
-      return { attendance: office.checkIn() };
-    case "setTranscript":
-      office.setTranscript(str(body, "transcript"));
-      return null;
-    case "addDraft":
-      return { draft: office.addDraft() };
-    case "updateDraft":
-      if (office.day.phase !== "morningPT") throw OfficeError.notAllowedNow("업무 초안은 아침 PT에서 고칩니다.");
-      office.updateDraft(str(body, "id"), draftPatch(body));
-      return null;
-    case "removeDraft":
-      office.removeDraft(str(body, "id"));
+      return office.checkIn();
+    case "saveGoal":
+      office.saveGoal(str(body, "goal"));
       return null;
     case "confirmTasks":
-      office.confirmTasks();
-      return null;
-    case "setTaskDone":
-      office.setTask(str(body, "id"), bool(body, "done"));
-      return null;
-    case "setDeliverable":
-      office.setDeliverable(str(body, "id"), str(body, "text"));
-      return null;
-    case "requestLunch":
-      return { allowance: office.requestLunch() };
-    case "registerAway":
-      return { allowance: office.registerAway(str(body, "reason")) };
-    case "returnFromAllowance":
-      office.returnFromAllowance();
-      return null;
-    case "observePresence": {
-      const state = body.state as PresenceState;
-      if (!PRESENCE_STATES.includes(state)) throw new BadRequest("state는 present, absent, cameraOff, unknown 중 하나입니다.");
-      office.observe(state);
+      return { tasks: office.confirmTasks(confirmInput(body)) };
+    case "setTaskStatus": {
+      const status = body.status;
+      if (status !== "in_progress" && status !== "submitted" && status !== "incomplete") {
+        throw new BadRequest("status는 in_progress, submitted, incomplete 중 하나입니다.");
+      }
+      office.setTaskStatus(str(body, "taskId"), status);
       return null;
     }
+    case "submitWork": {
+      const kind = body.kind as SubmissionKind;
+      if (!SUBMISSION_KINDS.includes(kind)) throw new BadRequest("kind는 text, link, code 중 하나입니다.");
+      return { submission: office.submitWork(str(body, "taskId"), kind, str(body, "content")) };
+    }
+    case "startSharing":
+      office.startSharing();
+      return null;
+    case "recordShareTurn": {
+      // 화면은 사용자 턴만 보낸다. 기획자 턴은 /api/office/share(서버)가 AI 응답을 받아 남긴다.
+      if (body.role !== "user") throw new BadRequest("화면에서는 role이 user인 턴만 남길 수 있습니다.");
+      office.recordShareTurn({ role: "user", text: str(body, "text") });
+      return null;
+    }
+    case "endSharing": {
+      const reason = body.reason ?? "done";
+      if (reason !== "done" && reason !== "userStopped") throw new BadRequest("reason은 done 또는 userStopped입니다.");
+      office.endSharing(reason);
+      return null;
+    }
+    case "saveReviewDraft":
+      office.saveReviewDraft(reviewOf(body.review), "user");
+      return null;
+    case "confirmReview":
+      return { close: office.confirmReview(reviewOf(body.review), choicesOf(body), reasonsOf(body)) };
     case "skipHour": {
       const result = office.skipHour();
-      if (!result) throw OfficeError.notAllowedNow("지금 점검을 먼저 제출해 주세요.");
+      if (!result) throw OfficeError.notAllowedNow("지금은 시간을 넘길 수 없습니다.");
       return { skip: result };
     }
-    case "submitCheckout":
-      return { checkout: office.submitCheckout(carryReports(body)) };
-    case "endOvertimeEarly":
-      return { overtime: office.endOvertimeEarly() };
-    case "submitOvertimeReview":
-      return { overtime: office.submitOvertimeReview() };
     case "saveWeeklyDraft":
       office.saveWeeklyDraft({
         ...("completed" in body ? { completed: str(body, "completed") } : {}),
@@ -147,7 +214,6 @@ export function applyAction(office: Office, body: Json): unknown {
       });
       return null;
     case "submitWeeklyReport": {
-      // 본문에 칸이 있으면 그 값으로, 없으면 저장해 둔 초안으로 제출한다.
       const draft = office.weeklyDraft;
       const report = {
         completed: "completed" in body ? str(body, "completed") : draft.completed,
@@ -161,11 +227,9 @@ export function applyAction(office: Office, body: Json): unknown {
       office.markRead(str(body, "id"));
       return null;
     case "startNextWorkday":
-      if (!office.canStartNextWorkday) throw OfficeError.notAllowedNow("퇴근한 뒤에 다음 근무일로 넘어갈 수 있습니다.");
       office.startNextWorkday();
       return null;
     case "jumpToFriday":
-      if (!office.canJumpToFriday) throw OfficeError.notAllowedNow("이미 금요일입니다.");
       office.jumpToFriday();
       return null;
     default:

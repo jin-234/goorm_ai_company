@@ -1,68 +1,36 @@
-/** 근무 시간 규칙. 단일 엄격 관리 기준이다. */
+/**
+ * 활동 규칙 값. 정해진 09시·18시를 강제하지 않고 사용자가 정한 시각을 쓴다(개정 기획서 3.1).
+ * 지각비·카메라 착석 판정·자동 추가근무는 없다.
+ */
 export const WorkRules = {
-  /** 시연 기본 출근 시각 09:00 */
-  defaultWorkStart: 9 * 60,
-  /** 시연 기본 퇴근 시각 18:00 */
+  /** 입사 때 따로 정하지 않았을 때의 활동 시작 시각 09:00 */
+  defaultActivityStart: 9 * 60,
+  /** 입사 때 따로 정하지 않았을 때의 활동 마감 시각 18:00 */
+  defaultActivityEnd: 18 * 60,
+  /** @deprecated 옛 아침 PT 초안(Solar checklist·pt-parser)의 기본 마감. 새 흐름에서는 activityEnd를 쓴다. */
   defaultWorkEnd: 18 * 60,
-  /** 시연을 시작하는 시각 08:55 */
-  demoStartMinute: 8 * 60 + 55,
-  /** 승인된 점심 1시간 */
-  lunchMinutes: 60,
-  /** 등록한 자리 비움 건당 15분 */
-  awayMinutes: 15,
-  /** 추가근무 전 저녁시간 1시간 (18:00~19:00) */
-  dinnerMinutes: 60,
-  /** 추가근무 3시간 (19:00~22:00) */
-  overtimeMinutes: 180,
+  /** 시연을 시작하는 시각: 활동 시작 5분 전 */
+  minutesBeforeStart: 5,
+  /** AI 기획자 질문 상한(기본은 1~2개). */
+  maxShareQuestions: 3,
+  /** 제출물 한 건의 최대 글자 수. */
+  maxSubmissionLength: 20_000,
+  /** 목표·요약 칸 하나의 최대 글자 수. */
+  maxFieldLength: 4_000,
+  /** 하루에 확정할 수 있는 과제 수. 작게 끝내는 것이 목적이라 넉넉히만 막는다. */
+  maxTasksPerDay: 10,
 } as const;
-
-/** 지각비. 시연에서는 예상액으로만 보여 주고 실제로 청구하지 않는다. */
-export const LateFee = {
-  pointsPerLate: 1,
-  pointsPerAbsence: 3,
-  freePoints: 2,
-  wonPerPoint: 1_000,
-  monthlyCap: 5_000,
-
-  points(late: number, absent: number): number {
-    return Math.max(0, late) * this.pointsPerLate + Math.max(0, absent) * this.pointsPerAbsence;
-  },
-
-  estimateFromPoints(points: number): number {
-    return Math.min(this.monthlyCap, Math.max(0, points - this.freePoints) * this.wonPerPoint);
-  },
-
-  estimate(late: number, absent: number): number {
-    return this.estimateFromPoints(this.points(late, absent));
-  },
-
-  /** 예: 3,000원 */
-  won(amount: number): string {
-    return amount.toLocaleString("ko-KR") + "원";
-  },
-};
-
-/** 이번 달 근태 집계. */
-export interface MonthStats {
-  late: number;
-  absent: number;
-  points: number;
-  estimatedFee: number;
-}
-
-export function monthStats(late = 0, absent = 0): MonthStats {
-  const points = LateFee.points(late, absent);
-  return { late, absent, points, estimatedFee: LateFee.estimateFromPoints(points) };
-}
 
 export type OfficeErrorCode =
   | "notAllowedNow"
-  | "draftIncomplete"
   | "noTasks"
-  | "lunchAlreadyUsed"
-  | "allowanceActive"
-  | "emptyReason"
-  | "carryReportMissing"
+  | "taskIncomplete"
+  | "taskNotFound"
+  | "emptySubmission"
+  | "noSubmission"
+  | "shareQuestionLimit"
+  | "choiceMissing"
+  | "invalidProfile"
   | "weeklyNotFriday"
   | "weeklyIncomplete"
   | "weeklyAlreadySubmitted";
@@ -71,7 +39,7 @@ export type OfficeErrorCode =
 export class OfficeError extends Error {
   constructor(
     public readonly code: OfficeErrorCode,
-    /** notAllowedNow: 이유 한 줄 / draftIncomplete: 업무별 빠진 칸 / carryReportMissing: 업무명 / weeklyIncomplete: 칸 이름 */
+    /** notAllowedNow: 이유 한 줄 / taskIncomplete: 과제별 빠진 칸 / choiceMissing: 과제명 / weeklyIncomplete: 칸 이름 */
     public readonly details: string[] = [],
   ) {
     super(OfficeError.describe(code, details));
@@ -87,18 +55,22 @@ export class OfficeError extends Error {
     switch (code) {
       case "notAllowedNow":
         return details[0] ?? "";
-      case "draftIncomplete":
-        return "확인이 필요한 칸이 남아 있습니다.\n" + details.join("\n");
       case "noTasks":
-        return "확정할 업무가 없습니다.\n업무를 한 건 이상 넣어 주세요.";
-      case "lunchAlreadyUsed":
-        return "오늘 점심은 이미 사용했습니다.";
-      case "allowanceActive":
-        return "이미 허용된 시간 안에 있습니다.\n복귀한 뒤 다시 요청해 주세요.";
-      case "emptyReason":
-        return "자리를 비우는 사유를 적어 주세요.";
-      case "carryReportMissing":
-        return "1단계 업무의 미완료 이유와 다음 근무일 계획을 적어 주세요.\n" + bullets;
+        return "확정할 과제가 없습니다.\n오늘 끝낼 과제를 한 건 이상 넣어 주세요.";
+      case "taskIncomplete":
+        return "확인이 필요한 칸이 남아 있습니다.\n" + details.join("\n");
+      case "taskNotFound":
+        return "그 과제를 찾지 못했습니다.\n화면을 새로고침해 주세요.";
+      case "emptySubmission":
+        return "제출할 내용을 적어 주세요.";
+      case "noSubmission":
+        return "제출물이 아직 없습니다.\n글·코드·링크 중 하나를 먼저 올려 주세요.";
+      case "shareQuestionLimit":
+        return "질문 상한에 닿았습니다.\n지금까지 설명한 내용으로 공유를 마칠 수 있습니다.";
+      case "choiceMissing":
+        return "제출하지 못한 과제의 처리를 골라 주세요.\n(범위 조정 · 다음 활동일로 이월 · 오늘 종료)\n" + bullets;
+      case "invalidProfile":
+        return details[0] ?? "입사 정보를 확인해 주세요.";
       case "weeklyNotFriday":
         return "주간보고서는 금요일에 제출합니다.";
       case "weeklyIncomplete":

@@ -35,17 +35,6 @@ export function MailBox({ office, view, onGo }: { office: OfficeHandle; view: Of
             금요일 주간보고서 쓰기
           </button>
         ) : null}
-        {view.can.requestLunch ? (
-          <button
-            className="btn secondary"
-            onClick={async () => {
-              if ((await office.act("requestLunch")) != null) office.notify("점심 요청을 보냈습니다.\n1시간 동안 착석 확인을 쉽니다.");
-            }}
-            disabled={office.busy}
-          >
-            점심 요청 메일 보내기
-          </button>
-        ) : null}
       </div>
       <div className="row" role="tablist" aria-label="메일함">
         {(
