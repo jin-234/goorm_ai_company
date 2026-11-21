@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { OfficeView } from "./api";
 import { CheckIn } from "./panels/CheckIn";
 import { Desk } from "./panels/Desk";
+import { MailBox } from "./panels/Mail";
 import { MorningPT } from "./panels/MorningPT";
 import { Onboarding } from "./panels/Onboarding";
 import { Checkout, DayEnd, Overtime, OvertimeEnd } from "./panels/Review";
@@ -119,6 +120,8 @@ function renderPanel(place: PlaceId, office: OfficeHandle, view: OfficeView, go:
       return <CheckIn office={office} view={view} onDone={() => go("meeting")} />;
     case "meeting":
       return <MorningPT office={office} view={view} />;
+    case "manager":
+      return <MailBox office={office} view={view} onGo={go} />;
     case "desk":
       if (view.seat.kind === "absentCandidate") return <DayEnd office={office} view={view} onGo={go} />;
       switch (view.phase.value) {
