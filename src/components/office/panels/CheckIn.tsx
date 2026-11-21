@@ -3,13 +3,14 @@
  * 출입문 · 출근. 카메라로 자리에 앉은 것을 확인한 뒤 사원증을 찍어 들어간다(맥 앱 CheckInView 구성).
  * - 기본은 카메라 켜짐. 착석이 확인돼야 [사원증 찍고 출근하기]가 켜진다(checkIn method "camera").
  * - 권한 거부·카메라 없음·10초 넘게 사람이 안 보이면 [카메라 없이 출근]을 함께 준다(method "noCamera").
+ *   권한 창에 10초 넘게 답이 없을 때도 준다(창을 놓치거나 닫지 않고 두면 카메라가 영영 켜지지 않는다).
  * - 설정에서 카메라를 끄면 미리보기 없이 바로 출근한다. 카메라를 안 써도 불이익은 없다(개정 기획서 5장).
  * - 버튼을 누르면 카메라를 먼저 끄고 출근을 보낸다. 문이 열리는 연출은 3D가 맡는다.
  * 영상은 이 기기 안에서만 쓰고 저장·전송하지 않는다.
  * 관리 강도 보통·엄격: 시작 시각보다 늦으면 지각, 마감 시각까지 오지 않으면 결근 후보.
  * 놓친 날 복귀: 쉬는 날을 미리 알릴 수 있고, 쉰 날 다음에 돌아온 날은 지각으로 세지 않는다.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { hm } from "@/lib/office/time";
 import { hhmm, type OfficeView } from "../api";
 import { type SeatCameraState, useSeatCamera } from "../camera/useSeatCamera";
@@ -19,6 +20,19 @@ import { loadCameraPref } from "./cameraPref";
 import { MonthLine } from "./Enforcement";
 
 const NO_FACE_FALLBACK_SECONDS = 10;
+const ASKING_FALLBACK_SECONDS = 10;
+
+/** `active`가 `seconds`초 넘게 이어지면 true. */
+function useLasting(active: boolean, seconds: number): boolean {
+  const [lasting, setLasting] = useState(false);
+  useEffect(() => {
+    setLasting(false);
+    if (!active) return;
+    const timer = setTimeout(() => setLasting(true), seconds * 1000);
+    return () => clearTimeout(timer);
+  }, [active, seconds]);
+  return lasting;
+}
 
 const STATUS: Record<SeatCameraState, { title: string; detail: string; kind: "info" | "ok" | "warning" }> = {
   idle: { title: "카메라를 켜는 중", detail: "", kind: "info" },
@@ -41,6 +55,7 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
   // 설정은 처음 그릴 때 한 번 읽는다(설정 화면에서 바꾸면 다음에 출입문을 열 때 적용).
   const [useCamera] = useState(loadCameraPref);
   const cam = useSeatCamera(waiting && useCamera);
+  const askingTooLong = useLasting(cam.state === "asking", ASKING_FALLBACK_SECONDS);
 
   const checkIn = async (method: "camera" | "noCamera") => {
     cam.stop();
@@ -114,7 +129,8 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
 
   const status = STATUS[cam.state];
   const cameraFailed = cam.state === "denied" || cam.state === "unavailable";
-  const showFallback = !useCamera || cameraFailed || (cam.state === "noFace" && cam.noFaceSeconds >= NO_FACE_FALLBACK_SECONDS);
+  const noFaceTooLong = cam.state === "noFace" && cam.noFaceSeconds >= NO_FACE_FALLBACK_SECONDS;
+  const showFallback = !useCamera || cameraFailed || askingTooLong || noFaceTooLong;
 
   return (
     <div className="panel">
@@ -181,7 +197,7 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
               </span>
             )}
           </div>
-          {cam.state === "noFace" ? <div className="small muted pre">{status.detail}</div> : null}
+          {cam.state === "noFace" || cam.state === "asking" ? <div className="small muted pre">{status.detail}</div> : null}
           <p className="small muted" style={{ margin: 0 }}>
             영상은 이 기기 안에서만 쓰고 저장·전송하지 않습니다.
           </p>
