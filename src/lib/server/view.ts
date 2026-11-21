@@ -4,6 +4,7 @@
  */
 import { mailTag, PHASE_LABEL, partyName, TASK_LEVEL_LABEL, TASK_OUTCOME_LABEL, TASK_STATUS_LABEL } from "../office/models";
 import type { Office } from "../office/office";
+import { shareView } from "../colleague/v2/view";
 import { ENFORCEMENT, ENFORCEMENT_LEVELS, WorkRules } from "../office/rules";
 import { phaseHeadline, seatDetail, seatIsWarning, seatShowsWorkingAvatar, seatStatusOf, seatTitle } from "../office/seat-status";
 import { dayString, hm, isFriday, koreanLong, koreanShort, weekLabel } from "../office/time";
@@ -74,7 +75,7 @@ export function officeView(office: Office) {
       goal: day.goal,
       tasks: day.tasks.map(taskView),
       submissions: day.submissions,
-      share: day.share,
+      share: shareView(day.share, office.canAnotherRound),
       review: day.review,
       /** 마감 때 처리를 골라야 하는 과제 ID(제출하지 않은 과제). */
       unsubmittedTaskIds: office.unsubmittedTasks.map((t) => t.id),
@@ -87,6 +88,9 @@ export function officeView(office: Office) {
       editTasks: office.canEditTasks,
       startSharing: office.canStartSharing,
       endSharing: day.phase === "sharing" || office.canStartSharing,
+      talkInShare: office.canTalkInShare,
+      enterMeeting: office.canEnterMeeting,
+      anotherRound: office.canAnotherRound,
       confirmReview: day.phase === "checkoutReview",
       startNextWorkday: office.canStartNextWorkday,
       skipHour: office.canSkipHour,
