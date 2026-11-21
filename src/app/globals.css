@@ -502,10 +502,11 @@ label.stack {
    카드만 고정하면 스크롤할 때 아래 장소 이름표를 덮으므로 줄 전체를 함께 고정한다. */
 .sidebar {
   position: sticky;
-  top: 84px;
+  /* 위 막대 높이(약 93px) + 여백 */
+  top: 104px;
   align-self: start;
   /* 카드 + 장소 목록이 화면보다 길면 맨 아래에서 함께 밀려 올라가므로 화면 안에 가둔다. */
-  max-height: calc(100vh - 104px);
+  max-height: calc(100vh - 124px);
   overflow-y: auto;
   display: flex;
   flex-direction: column;
