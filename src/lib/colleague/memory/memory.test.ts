@@ -41,7 +41,7 @@ describe("기억 MD", () => {
     expect(merged.context).toEqual(["다음 주 발표 예정", "로그인·회원가입 화면을 만들고 있다", "색은 초록 계열을 좋아한다"]);
     expect(merged.followups).toEqual([]);
     expect(merged.extra).toContain("## 내 메모");
-    expect(merged.log.map((l) => l.conversationId)).toEqual(["c2", "c1"]);
+    expect(merged.log.map((l) => l.conversationId)).toEqual(["c1", "c2"]);
   });
 
   test("같은 대화를 다시 요약하면 기록 항목을 바꾼다", () => {
@@ -49,6 +49,31 @@ describe("기억 MD", () => {
     const twice = mergeSummary(once, summary({ title: "고친 제목" }), { conversationId: "c1", date: "d" });
     expect(twice.log).toHaveLength(1);
     expect(twice.log[0].title).toBe("고친 제목");
+  });
+
+  test("대화 기록은 지우지 않고 시간순으로 뒤에 쌓인다", () => {
+    let notes = emptyNotes();
+    for (let i = 0; i < 30; i++) notes = mergeSummary(notes, summary({ title: `대화 ${i}` }), { conversationId: `c${i}`, date: "d" });
+    expect(notes.log).toHaveLength(30);
+    expect(notes.log[0].title).toBe("대화 0");
+    expect(notes.log[29].title).toBe("대화 29");
+    // 중간 대화를 다시 요약하면 그 자리에서 바뀐다
+    notes = mergeSummary(notes, summary({ title: "고친 대화 5" }), { conversationId: "c5", date: "d" });
+    expect(notes.log).toHaveLength(30);
+    expect(notes.log[5].title).toBe("고친 대화 5");
+    const md = renderMemory("pm", notes, "x");
+    expect(md.indexOf("대화 0 <!--")).toBeLessThan(md.indexOf("대화 29 <!--"));
+    expect(parseMemory(md).log.map((l) => l.title)).toEqual(notes.log.map((l) => l.title));
+  });
+
+  test("프롬프트에는 요약 절과 최근 대화 몇 건만 넣는다", () => {
+    let notes = emptyNotes();
+    for (let i = 0; i < 10; i++) notes = mergeSummary(notes, summary({ title: `대화 ${i}` }), { conversationId: `c${i}`, date: "d" });
+    const prompt = memoryForPrompt(renderMemory("pm", notes, "x"));
+    expect(prompt).toContain("로그인 화면을 만들고 있다");
+    expect(prompt).toContain("대화 9");
+    expect(prompt).toContain("대화 5");
+    expect(prompt).not.toContain("대화 4\n");
   });
 
   test("프롬프트에 넣을 때 길면 오래된 기록부터 뺀다", () => {
