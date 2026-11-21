@@ -770,7 +770,7 @@ label.stack {
 }
 
 .o3-modal-card {
-  width: min(600px, 100%);
+  width: min(640px, 100%);
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   border-radius: 18px;
@@ -780,7 +780,9 @@ label.stack {
 
 .o3-modal-card .panel {
   margin: 0 auto !important;
-  padding: 20px 4px !important;
+  /* 글이 창 가장자리에 붙지 않게 안쪽 여백을 넉넉히 */
+  padding: 32px 36px 36px !important;
+  max-width: none !important;
 }
 
 /* 이 배치에는 왼쪽 카드가 없으니(맥 앱처럼) 위 막대의 '지금 할 일' 버튼을 보인다. */
