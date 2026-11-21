@@ -32,8 +32,7 @@ export function Weekly({ office, view, onGo }: { office: OfficeHandle; view: Off
     setValues({ completed: draft.completed, incomplete: draft.incomplete, nextGoals: draft.nextGoals });
   }, [draft.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const thisWeek = view.state.weeklyReports.filter((r) => r.submittedAt != null).at(-1);
-  const submittedThisWeek = thisWeek && thisWeek.weekOf.year === draft.weekOf.year && thisWeek.weekOf.month === draft.weekOf.month && thisWeek.weekOf.day === draft.weekOf.day;
+  const thisWeek = view.weekly.lastSubmitted;
   const missing = FIELDS.filter(([k]) => !values[k].trim()).map(([, label]) => label.slice(3));
 
   const save = (key: FieldKey) => {
@@ -56,7 +55,7 @@ export function Weekly({ office, view, onGo }: { office: OfficeHandle; view: Off
 
   const header = <PanelHeader place="주간보고" title="주간보고서" detail={`${view.clock.weekLabel} · 양식에 맞춰 직접 씁니다.`} />;
 
-  if (submittedThisWeek && thisWeek) {
+  if (thisWeek) {
     return (
       <div className="panel">
         {header}
@@ -104,7 +103,7 @@ export function Weekly({ office, view, onGo }: { office: OfficeHandle; view: Off
         <Notice kind="info" title="주간보고서는 금요일에 제출합니다">
           {"미리 써 두면 초안으로 저장됩니다.\n위 막대의 '금요일 장면'으로 금요일 아침으로 갈 수 있습니다."}
         </Notice>
-      ) : view.state.day.checkInAt == null ? (
+      ) : view.day.checkInAt == null ? (
         <Notice kind="info" title="출근한 뒤 제출할 수 있습니다" />
       ) : null}
       <Card>
