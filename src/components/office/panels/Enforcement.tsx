@@ -2,7 +2,6 @@
 /**
  * 관리 강도 화면 부품.
  * - EnforcementPicker: 입사·설정에서 가볍게·보통·엄격을 고른다.
- * - LowerTodayButton: 오늘만 한 단계 낮추기.
  * - AttendanceCard: 보통·엄격의 착석 확인(지금은 버튼)·점심·자리 비움·이번 달 근태.
  * - OvertimePanel: 퇴근 점검 → 저녁시간 → 추가근무 → 추가근무 점검.
  * 규칙은 다시 계산하지 않고 서버가 준 view.enforcement·attendance·overtime·can만 읽는다.
@@ -83,21 +82,6 @@ export function EnforcementPicker({
         );
       })}
     </div>
-  );
-}
-
-export function LowerTodayButton({ office, view, small }: { office: OfficeHandle; view: OfficeView; small?: boolean }) {
-  if (!view.can.lowerToday) return null;
-  const lower = async () => {
-    const next = view.enforcement.chosen === "strict" && view.enforcement.level === "strict" ? "보통" : "가볍게";
-    const what = next === "가볍게" ? "오늘은 지각·착석 확인·추가근무 없이 지냅니다." : "오늘은 보통 강도로 지냅니다.";
-    if (!window.confirm(`오늘만 관리 강도를 ${next}로 낮출까요?\n${what}\n이미 남은 기록은 그대로이고, 다음 활동일에는 원래 강도로 돌아갑니다.`)) return;
-    if ((await office.act("lowerToday")) != null) office.notify(`오늘은 ${next}로 지냅니다.\n무리하지 않아도 괜찮습니다.`);
-  };
-  return (
-    <button className={`btn secondary ${small ? "small" : ""}`} onClick={lower} disabled={office.busy} title="오늘만 관리 강도를 한 단계 낮춥니다.">
-      오늘만 한 단계 낮추기
-    </button>
   );
 }
 
@@ -218,7 +202,7 @@ export function OvertimePanel({ office, view }: { office: OfficeHandle; view: Of
   };
   const end = async () => {
     const early = phase !== "overtimeReview" && assigned.some((t) => ot.targetIds.includes(t.id));
-    if (early && !window.confirm("추가근무를 지금 끝낼까요?\n남은 과제가 있어 보충근무 미이행으로 기록됩니다.\n힘든 날이면 '오늘만 한 단계 낮추기'를 쓰면 기록 없이 끝낼 수 있습니다.")) return;
+    if (early && !window.confirm("추가근무를 지금 끝낼까요?\n남은 과제가 있어 보충근무 미이행으로 기록됩니다.")) return;
     const res = await office.act<{ overtime: string }>("endOvertime");
     if (res) office.notify(res.overtime === "completed" ? "추가근무를 마쳤습니다.\n회의실 발표와 하루 마감으로 가세요." : "추가근무를 끝냈습니다.\n남은 과제는 하루 마감에서 처리를 고릅니다.");
   };
@@ -259,9 +243,6 @@ export function OvertimePanel({ office, view }: { office: OfficeHandle; view: Of
           </button>
         </Card>
       )}
-      <div className="row">
-        <LowerTodayButton office={office} view={view} />
-      </div>
       <Card title={phase === "checkout" ? "오늘 과제" : "추가근무 과제"}>
         <div style={{ display: "grid", gap: 10 }}>
           {(phase === "checkout" ? view.day.tasks : assigned).map((t) => (

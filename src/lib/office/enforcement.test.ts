@@ -327,44 +327,6 @@ describe("착석 확인과 자리 비움", () => {
   });
 });
 
-describe("오늘만 한 단계 낮추기", () => {
-  test("추가근무 중에 낮추면 추가근무 없이 공유·마감으로 가고, 다음 날 원래 강도로 돌아온다", () => {
-    const office = standardWorking();
-    office.advance(at(monday, 18 * 60));
-    office.submitCheckout();
-    office.advance(at(monday, 19 * 60 + 10));
-    office.lowerToday();
-    expect(office.level).toBe("light");
-    expect(office.day.phase).toBe("working");
-    expect(office.day.overtime).toBe("lowered");
-    expect(office.canLowerToday).toBe(false);
-    office.endSharing();
-    office.confirmReview(emptyReview(), Object.fromEntries(office.unsubmittedTasks.map((t) => [t.id, "carryOver" as const])));
-    office.startNextWorkday();
-    expect(office.level).toBe("standard");
-    expect(office.history[0].level).toBe("light");
-  });
-
-  test("출근 전에 낮추면 늦어도 지각이 아니다. 엄격은 보통으로 내려가 지각은 남는다", () => {
-    const light = makeOffice(8 * 60 + 55, monday, "standard");
-    light.lowerToday();
-    light.advance(at(monday, 10 * 60));
-    expect(light.checkIn().late).toBe(false);
-
-    const strict = makeOffice(8 * 60 + 55, monday, "strict");
-    strict.lowerToday();
-    expect(strict.level).toBe("standard");
-    strict.advance(at(monday, 10 * 60));
-    expect(strict.checkIn().late).toBe(true);
-  });
-
-  test("결근 후보가 된 뒤에는 낮춰서 지울 수 없다", () => {
-    const office = makeOffice(8 * 60 + 55, monday, "standard");
-    office.advance(at(monday, 18 * 60));
-    expect(office.canLowerToday).toBe(false);
-  });
-});
-
 describe("저장 형식", () => {
   test("관리 강도가 생기기 전에 저장한 상태는 지우지 않고 기본값을 채운다", () => {
     const office = workingOffice("light");

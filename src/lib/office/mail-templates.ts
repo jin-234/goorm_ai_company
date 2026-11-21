@@ -35,7 +35,7 @@ export function enforcementLines(level: EnforcementLevel, profile: EmployeeProfi
   }
   if (info.earlyLeaveReason) lines.push("· 마감 시각 전에 마감하려면 사유를 적습니다.");
   if (!info.attendance) lines.push("· 지각·착석 확인·추가근무가 없습니다. 언제든 마감할 수 있습니다.");
-  lines.push("· 힘든 날에는 '오늘만 한 단계 낮추기'로 그날만 강도를 낮출 수 있습니다. 강도는 설정에서 언제든 바꿉니다.");
+  lines.push("· 강도는 설정에서 언제든 바꿉니다.");
   return lines;
 }
 
@@ -105,7 +105,6 @@ export const MailTemplates = {
       lines.push("", `이어서 할 수 있는 과제 ${carried.length}건이 있습니다. 아침보고에서 범위를 줄여도 됩니다.`);
       for (const t of carried) lines.push(`· ${t.title}`);
     }
-    lines.push("", "부담되면 '오늘만 한 단계 낮추기'로 오늘의 관리 강도를 낮출 수 있습니다.");
     return newMail({ sentAt: at, from: "manager", to: "me", kind: "returnWelcome", subject: `[안내] 다시 오신 것을 환영합니다`, body: join(lines) });
   },
 
@@ -159,7 +158,6 @@ export const MailTemplates = {
       ...tasks.map((t) => `· ${TASK_LEVEL_LABEL[t.level].split(" ")[0]} | ${t.title}`),
       "",
       "끝나면 회의실 발표와 하루 마감으로 이어 갑니다.",
-      "많이 지친 날에는 '오늘만 한 단계 낮추기'로 추가근무 없이 마감할 수 있습니다.",
     ];
     return newMail({ sentAt: at, from: "manager", to: "me", kind: "overtimeAssigned", subject: `[근태] 추가근무 배정 ${hm(overtime[0])}~${hm(overtime[1])}`, body: join(lines) });
   },

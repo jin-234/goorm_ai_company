@@ -337,7 +337,6 @@ export type ActivityEventKind =
   | "late"
   | "absentCandidate"
   | "dayOff"
-  | "lowered"
   | "returned"
   | "lunchStart"
   | "lunchEnd"
@@ -389,10 +388,8 @@ export interface WorkDay {
   closedAt: Instant | null;
 
   // 근태(보통·엄격). 가볍게에서는 비어 있다.
-  /** 이 날 적용하는 강도(오늘만 낮추기를 반영하기 전). 출근할 때 정해진다. */
+  /** 이 날 적용하는 강도. 출근할 때 정해지고, 설정에서 바꾸면 따라 바뀐다. */
   level: EnforcementLevel | null;
-  /** 오늘만 한 단계 낮췄는지. 다음 활동일에는 원래 강도로 돌아간다. */
-  lowered: boolean;
   /** 쉰 날 다음에 돌아온 날. 이 날은 지각으로 세지 않는다. */
   returning: boolean;
   /** 미리 알린 쉬는 날. 결근 후보로 세지 않는다. */
@@ -415,7 +412,6 @@ export interface WorkDay {
 export function attendanceDefaults(): Pick<
   WorkDay,
   | "level"
-  | "lowered"
   | "returning"
   | "dayOff"
   | "isLate"
@@ -431,7 +427,6 @@ export function attendanceDefaults(): Pick<
 > {
   return {
     level: null,
-    lowered: false,
     returning: false,
     dayOff: false,
     isLate: false,
@@ -480,7 +475,7 @@ export interface DayRecord {
   review: Review | null;
   /** 활동 인정 기준 초안: 제출물 또는 공유 설명이 있고 마감을 확정한 날. */
   counted: boolean;
-  /** 이 날 실제로 적용한 강도(오늘만 낮추기 반영). 옛 기록은 없을 수 있다. */
+  /** 이 날 실제로 적용한 강도. 옛 기록은 없을 수 있다. */
   level?: EnforcementLevel | null;
   isLate?: boolean;
   absentCandidate?: boolean;

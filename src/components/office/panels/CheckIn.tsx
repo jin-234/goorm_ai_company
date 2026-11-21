@@ -16,7 +16,7 @@ import { type SeatCameraState, useSeatCamera } from "../camera/useSeatCamera";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
 import { loadCameraPref } from "./cameraPref";
-import { LowerTodayButton, MonthLine } from "./Enforcement";
+import { MonthLine } from "./Enforcement";
 
 const NO_FACE_FALLBACK_SECONDS = 10;
 
@@ -246,13 +246,12 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
       {rules.attendance ? (
         <Card title="오늘 쉬어야 하나요?">
           <p className="small muted pre" style={{ margin: 0 }}>
-            {"쉬는 날로 알리면 결근 후보로 세지 않습니다.\n오늘만 강도를 낮춰 가볍게 지낼 수도 있습니다."}
+            쉬는 날로 알리면 결근 후보로 세지 않습니다.
           </p>
           <div className="row">
             <button className="btn secondary" onClick={() => setDayOff(true)} disabled={office.busy || !view.can.setDayOff}>
               오늘은 쉬는 날
             </button>
-            <LowerTodayButton office={office} view={view} />
           </div>
         </Card>
       ) : null}
