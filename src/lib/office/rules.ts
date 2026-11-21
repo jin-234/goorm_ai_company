@@ -41,7 +41,7 @@ export interface EnforcementInfo {
   summary: string;
   /** 출근 시각을 보고 지각·결근 후보를 기록한다. */
   attendance: boolean;
-  /** 착석 확인(지금은 버튼, 카메라는 브라우저 안 판정). */
+  /** 근무 중 착석 확인(카메라를 브라우저 안에서 판정해 상태만 보낸다). */
   seatCheck: boolean;
   /** 점심·자리 비움 등록. */
   allowances: boolean;

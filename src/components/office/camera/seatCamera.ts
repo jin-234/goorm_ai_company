@@ -1,5 +1,5 @@
 /**
- * 출근 카메라 제어(React와 무관). 카메라 켜기 → 얼굴 검출 반복 → SeatJudge로 판정 → 상태 알림.
+ * 자리 카메라 제어(React와 무관). 출근 확인과 근무 중 착석 확인이 같이 쓴다. 카메라 켜기 → 얼굴 검출 반복 → SeatJudge로 판정 → 상태 알림.
  * 영상은 기기 안에서만 쓰고 저장·전송하지 않는다. 멈추면 스트림의 모든 트랙을 끈다.
  */
 import { cameraFailure, type SeatCameraState, SeatJudge } from "./seatJudge";
@@ -24,8 +24,10 @@ export interface SeatCameraDeps {
   clearInterval: (id: unknown) => void;
 }
 
-/** 검출 간격. 너무 잦으면 노트북이 뜨거워지고, 너무 드물면 판정이 늦다. */
+/** 검출 간격(출근 확인). 너무 잦으면 노트북이 뜨거워지고, 너무 드물면 판정이 늦다. */
 export const DETECT_INTERVAL_MS = 250;
+/** 근무 중 착석 확인의 검출 간격. 몇 시간 켜 두므로 출근 확인보다 드물게 본다. */
+export const MONITOR_INTERVAL_MS = 1000;
 
 export const IDLE: SeatCameraSnapshot = { state: "idle", reason: null, noFaceSeconds: 0 };
 
@@ -43,6 +45,7 @@ export class SeatCameraController {
     private readonly deps: SeatCameraDeps,
     private readonly getVideo: () => HTMLVideoElement | null,
     private readonly onChange: (s: SeatCameraSnapshot) => void,
+    private readonly intervalMs: number = DETECT_INTERVAL_MS,
   ) {}
 
   get current(): SeatCameraSnapshot {
@@ -83,7 +86,7 @@ export class SeatCameraController {
     this.detector = detector;
     this.judge = new SeatJudge(this.deps.now());
     this.emit({ state: "noFace", reason: null, noFaceSeconds: 0 });
-    this.timer = this.deps.setInterval(() => void this.tick(), DETECT_INTERVAL_MS);
+    this.timer = this.deps.setInterval(() => void this.tick(), this.intervalMs);
   }
 
   /** 검출 한 번. 시험에서 직접 부른다. */

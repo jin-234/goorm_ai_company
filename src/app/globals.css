@@ -821,3 +821,31 @@ label.stack {
 .o3 .toast {
   position: absolute;
 }
+
+/* 근무 중 착석 확인 카메라(SeatMonitor). 화면 오른쪽 아래 작은 창. */
+.seat-monitor {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 30;
+  width: 200px;
+  max-width: calc(100vw - 32px);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--paper);
+  border: 1px solid var(--line, #ddd);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+}
+.seat-monitor video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  transform: scaleX(-1); /* 거울처럼 */
+  background: #1f2421;
+}
+.seat-monitor-body {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+}

@@ -2,7 +2,7 @@
 /**
  * 관리 강도 화면 부품.
  * - EnforcementPicker: 입사·설정에서 가볍게·보통·엄격을 고른다(고른 단계 설명만 보인다).
- * - AttendanceCard: 보통·엄격의 착석 확인(지금은 버튼)·점심·자리 비움·이번 달 근태.
+ * - AttendanceCard: 보통·엄격의 착석 확인 상태(카메라는 camera/SeatMonitor)·점심·자리 비움·이번 달 근태.
  * - OvertimePanel: 퇴근 점검 → 저녁시간 → 추가근무 → 추가근무 점검.
  * 규칙은 다시 계산하지 않고 서버가 준 view.enforcement·attendance·overtime·can만 읽는다.
  */
@@ -83,20 +83,13 @@ export function MonthLine({ view }: { view: OfficeView }) {
   );
 }
 
-const PRESENCE_BUTTONS: [OfficeView["attendance"]["presence"], string][] = [
-  ["present", "자리에 있음"],
-  ["absent", "자리 비움"],
-  ["cameraOff", "카메라 꺼짐"],
-];
-
-/** 보통·엄격 근무 중 착석 확인과 점심·자리 비움. */
+/** 보통·엄격 근무 중 착석 확인 상태와 점심·자리 비움. 자리 상태는 오른쪽 아래 카메라 창(SeatMonitor)이 알린다. */
 export function AttendanceCard({ office, view }: { office: OfficeHandle; view: OfficeView }) {
   const [reason, setReason] = useState("");
   const a = view.attendance;
   const rules = view.enforcement.rules;
   if (!rules.seatCheck) return null;
   const allowance = a.activeAllowance;
-  const presence = (state: string) => office.act("observePresence", { state });
   const lunch = async () => {
     if ((await office.act("requestLunch")) != null) office.notify("점심을 승인받았습니다.\n그동안 착석 확인을 쉽니다.");
   };
@@ -128,24 +121,9 @@ export function AttendanceCard({ office, view }: { office: OfficeHandle; view: O
           </button>
         </div>
       ) : a.monitoring ? (
-        <>
-          <div className="row" role="group" aria-label="지금 자리 상태 알리기">
-            {PRESENCE_BUTTONS.map(([state, label]) => (
-              <button
-                key={state}
-                className={`btn small ${a.presence === state ? "" : "secondary"}`}
-                aria-pressed={a.presence === state}
-                onClick={() => presence(state)}
-                disabled={office.busy}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="small muted">
-            지금은 버튼으로 자리 상태를 알립니다. 카메라 판정이 붙어도 영상은 브라우저 안에서만 보고, 서버에는 이 상태 값만 남습니다.
-          </div>
-        </>
+        <div className="small muted pre">
+          {"오른쪽 아래 카메라 창이 자리에 있는지 확인합니다. 얼굴이 20초 넘게 안 보이면 자리 비움으로 알립니다.\n영상은 이 기기 안에서만 쓰고, 서버에는 자리 상태만 남습니다. 카메라를 끄면 '카메라 꺼짐'으로 남고 자리 비움으로 세지 않습니다."}
+        </div>
       ) : null}
       {view.can.requestLunch || view.can.registerAway ? (
         <div className="row">

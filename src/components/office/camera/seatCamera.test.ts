@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DETECT_INTERVAL_MS, type FaceDetectorLike, SeatCameraController, type SeatCameraDeps, type SeatCameraSnapshot } from "./seatCamera";
+import { DETECT_INTERVAL_MS, type FaceDetectorLike, MONITOR_INTERVAL_MS, SeatCameraController, type SeatCameraDeps, type SeatCameraSnapshot } from "./seatCamera";
 import { cameraFailure, HOLD_MS, SeatJudge } from "./seatJudge";
 
 describe("자리 판정(SeatJudge)", () => {
@@ -124,5 +124,22 @@ describe("출근 카메라 제어", () => {
     for (let i = 0; i < 44; i++) await t.step();
     expect(t.c.current.state).toBe("noFace");
     expect(t.c.current.noFaceSeconds).toBeGreaterThanOrEqual(10);
+  });
+});
+
+describe("근무 중 착석 확인 간격", () => {
+  it("검출 간격을 넘기면 그 간격으로 타이머를 건다(근무 중은 1초)", async () => {
+    const asked: number[] = [];
+    const stream = { getTracks: () => [] } as unknown as MediaStream;
+    const deps: SeatCameraDeps = {
+      getUserMedia: async () => stream,
+      loadDetector: async () => ({ hasFace: () => true, close: () => {} }),
+      now: () => 0,
+      setInterval: (_fn, ms) => asked.push(ms),
+      clearInterval: () => {},
+    };
+    await new SeatCameraController(deps, () => null, () => {}).start();
+    await new SeatCameraController(deps, () => null, () => {}, MONITOR_INTERVAL_MS).start();
+    expect(asked).toEqual([DETECT_INTERVAL_MS, MONITOR_INTERVAL_MS]);
   });
 });

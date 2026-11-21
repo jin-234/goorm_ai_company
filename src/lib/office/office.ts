@@ -769,7 +769,7 @@ export class Office implements OfficeState {
   }
 
   /**
-   * 자리 상태를 알린다. 지금은 화면의 버튼이 보내고, 카메라 판정이 붙으면 브라우저가 바뀔 때만 같은 값을 보낸다.
+   * 자리 상태를 알린다. 화면의 착석 확인 카메라(SeatMonitor)가 판정이 바뀔 때만 보낸다.
    * 영상은 서버로 오지 않는다. 카메라가 꺼진 시간은 자리 비움으로 세지 않는다.
    */
   observePresence(state: PresenceState): void {
