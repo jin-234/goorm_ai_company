@@ -1,7 +1,7 @@
 "use client";
 /**
  * 관리 강도 화면 부품.
- * - EnforcementPicker: 입사·설정에서 가볍게·보통·엄격을 고른다.
+ * - EnforcementPicker: 입사·설정에서 가볍게·보통·엄격을 고른다(고른 단계 설명만 보인다).
  * - AttendanceCard: 보통·엄격의 착석 확인(지금은 버튼)·점심·자리 비움·이번 달 근태.
  * - OvertimePanel: 퇴근 점검 → 저녁시간 → 추가근무 → 추가근무 점검.
  * 규칙은 다시 계산하지 않고 서버가 준 view.enforcement·attendance·overtime·can만 읽는다.
@@ -16,17 +16,12 @@ import { TaskWork } from "./TaskList";
 
 type Option = OfficeView["enforcement"]["options"][number];
 
-/** 강도마다 무엇이 기록되는지 짧은 줄로. */
+/** 고른 강도에서 달라지는 점만 짧게. 엄격은 보통과의 차이만 적는다. */
 function detailLines(o: Option, start: string, end: string): string[] {
-  if (!o.attendance) return ["출근 버튼만 누릅니다", "지각·착석 확인·추가근무 없음", "언제든 마감"];
-  return [
-    `${start}보다 늦으면 지각, ${end}까지 안 오면 결근 후보`,
-    "지각비 예상액 계산(시연용, 청구 안 함)",
-    o.strictAway ? "등록하지 않은 자리 비움은 짧아도 경고" : "등록하지 않은 자리 비움이 15분을 넘으면 기록",
-    "점심 1시간·자리 비움 15분 등록",
-    `${end} 퇴근 점검, 2·3단계가 남으면 추가근무 3시간`,
-    ...(o.earlyLeaveReason ? ["마감 시각 전 마감은 사유 필요"] : []),
-  ];
+  if (!o.attendance) return ["출근 버튼만 누르고, 언제든 마감", "지각·착석 확인·추가근무 없음"];
+  if (o.strictAway || o.earlyLeaveReason)
+    return ["보통 규칙 전부 +", "등록 안 한 자리 비움은 짧아도 경고", "마감 시각 전 마감은 사유 필요"];
+  return [`${start} 지나면 지각 (지각비는 예상액만)`, "착석 확인 · 점심·자리 비움 등록", `${end} 퇴근 점검, 중요 과제가 남으면 추가근무`];
 }
 
 export function EnforcementPicker({
@@ -44,43 +39,35 @@ export function EnforcementPicker({
   end: number;
   disabled?: boolean;
 }) {
+  const chosen = options.find((o) => o.id === value) ?? options[0];
   return (
-    <div role="radiogroup" aria-label="관리 강도" style={{ display: "grid", gap: 8 }}>
-      {options.map((o) => {
-        const on = o.id === value;
-        return (
-          <button
-            key={o.id}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            disabled={disabled}
-            onClick={() => onChange(o.id)}
-            className="card"
-            style={{
-              textAlign: "left",
-              cursor: disabled ? "default" : "pointer",
-              gap: 4,
-              padding: 12,
-              border: on ? "2px solid var(--green)" : "1px solid var(--line, #ddd)",
-              background: on ? "var(--green-soft)" : "var(--paper)",
-            }}
-          >
-            <div className="row" style={{ justifyContent: "space-between" }}>
-              <span style={{ fontWeight: 700, fontSize: 16 }}>
-                {on ? "● " : "○ "}
-                {o.label}
-              </span>
-              {o.id === "standard" ? <span className="badge tag">기본</span> : null}
-            </div>
-            <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
-              {detailLines(o, Clock.hm(start), Clock.hm(end)).map((l) => (
-                <li key={l}>{l}</li>
-              ))}
-            </ul>
-          </button>
-        );
-      })}
+    <div style={{ display: "grid", gap: 8 }}>
+      <div role="radiogroup" aria-label="관리 강도" style={{ display: "grid", gridTemplateColumns: `repeat(${options.length}, 1fr)`, gap: 6 }}>
+        {options.map((o) => {
+          const on = o.id === value;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              disabled={disabled}
+              onClick={() => onChange(o.id)}
+              className={`btn small ${on ? "" : "secondary"}`}
+            >
+              {o.label}
+              {o.id === "standard" ? " (기본)" : ""}
+            </button>
+          );
+        })}
+      </div>
+      {chosen ? (
+        <ul className="small muted" style={{ margin: 0, paddingLeft: 18 }}>
+          {detailLines(chosen, Clock.hm(start), Clock.hm(end)).map((l) => (
+            <li key={l}>{l}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
