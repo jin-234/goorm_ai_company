@@ -212,12 +212,15 @@ export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: O
         </Notice>
       ) : null}
 
-      <button className="btn" onClick={confirm} disabled={office.busy || !ready}>
-        이대로 하루 마감 확정
-      </button>
-      {!edit.reported_work.trim() || !edit.next_action.trim() ? (
-        <div className="small muted">'오늘 한 일'과 '다음 행동 하나'는 적어야 확정할 수 있습니다.</div>
-      ) : null}
+      {/* 확정 버튼은 패널 아래에 붙여 두고, 꺼져 있으면 왜 꺼졌는지 바로 위에 적는다(아침보고와 같은 방식). */}
+      <div className="sticky-cta stack" style={{ gap: 8 }}>
+        {!edit.reported_work.trim() || !edit.next_action.trim() ? (
+          <div className="small muted">'오늘 한 일'과 '다음 행동 하나'는 적어야 확정할 수 있습니다.</div>
+        ) : null}
+        <button className="btn" onClick={confirm} disabled={office.busy || !ready}>
+          이대로 하루 마감 확정
+        </button>
+      </div>
       <button className="btn plain small" onClick={() => onGo("share")}>
         회의실 발표 다시 보기
       </button>
