@@ -11,8 +11,6 @@ export const WorkRules = {
   defaultWorkEnd: 18 * 60,
   /** 시연을 시작하는 시각: 활동 시작 5분 전 */
   minutesBeforeStart: 5,
-  /** AI 기획자 질문 상한(기본은 1~2개). */
-  maxShareQuestions: 3,
   /** 제출물 한 건의 최대 글자 수. */
   maxSubmissionLength: 20_000,
   /** 목표·요약 칸 하나의 최대 글자 수. */

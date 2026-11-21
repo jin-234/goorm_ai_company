@@ -31,6 +31,9 @@ import {
   type EmployeeProfile,
   isIncoming,
   type Mail,
+  MEETING_HOST,
+  MEETING_ORDER,
+  type MeetingRoleId,
   newTask,
   newWorkDay,
   type PlannerReply,
@@ -537,8 +540,17 @@ export class Office implements OfficeState {
   }
 
   /**
-   * 공유 대화 한 턴을 남긴다. 기획자 질문 수를 세고 상한을 넘는 질문은 받지 않는다.
-   * 사용자가 이미 답한 질문을 다시 묻지 않는 판단은 AI 쪽(f4)에서 하고, 여기서는 기록과 상한만 지킨다.
+   * 회의실에서 다음에 말할 동료. 기획자 → 디자이너 → 운영 담당자 순서로 한 번씩 말하고(질문은 하나까지),
+   * 모두 말한 뒤에는 진행자(기획자)가 질문 없이 마무리한다.
+   */
+  get shareSpeaker(): { role: MeetingRoleId; canAsk: boolean } {
+    const spoken = this.day.share.turns.filter((t) => t.role === "planner").length;
+    return spoken < MEETING_ORDER.length ? { role: MEETING_ORDER[spoken], canAsk: true } : { role: MEETING_HOST, canAsk: false };
+  }
+
+  /**
+   * 공유 대화 한 턴을 남긴다. 동료 턴은 차례(shareSpeaker)대로 말한 부서를 붙이고, 차례가 아닌 질문은 받지 않는다.
+   * 사용자가 이미 답한 질문을 다시 묻지 않는 판단은 AI 쪽에서 하고, 여기서는 기록과 차례·상한만 지킨다.
    */
   recordShareTurn(input: ShareTurnInput): void {
     if (this.day.phase !== "sharing") throw OfficeError.notAllowedNow("발표 대화는 회의실 발표 중에만 남깁니다.");
@@ -552,14 +564,16 @@ export class Office implements OfficeState {
       return;
     }
     const reply = input.reply;
-    if (!reply) throw OfficeError.notAllowedNow("기획자 응답이 비어 있습니다.");
+    if (!reply) throw OfficeError.notAllowedNow("동료 응답이 비어 있습니다.");
+    const { role: speaker, canAsk } = this.shareSpeaker;
     const asks = reply.question.trim().length > 0;
-    if (asks && share.questionCount >= share.maxQuestions) throw new OfficeError("shareQuestionLimit");
-    share.turns.push({ id: crypto.randomUUID(), role: "planner", at: this.now, reply, source: input.source ?? "manual" });
+    if (asks && (!canAsk || share.questionCount >= share.maxQuestions)) throw new OfficeError("shareQuestionLimit");
+    share.turns.push({ id: crypto.randomUUID(), role: "planner", speaker, at: this.now, reply, source: input.source ?? "manual" });
     if (asks) share.questionCount += 1;
     share.knownFacts = [...reply.known_facts];
     share.openQuestions = [...reply.open_questions];
-    share.state = !asks || reply.can_finish || share.questionCount >= share.maxQuestions ? "ready_to_summarize" : "clarifying";
+    // 질문이 없으면 다음 부서 차례로 넘어간다. 마지막 부서까지 말했고 질문이 없으면 정리할 수 있다.
+    share.state = !asks && !this.shareSpeaker.canAsk ? "ready_to_summarize" : "clarifying";
   }
 
   /** 공유를 끝내고 하루 마감으로 간다. 수행 중에 바로 부르면 공유를 건너뛴 것으로 남긴다(공유가 맞지 않는 학습). */

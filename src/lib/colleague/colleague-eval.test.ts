@@ -274,7 +274,7 @@ describe("질문 근거: 가이드 기반 시나리오를 실제 사례로 포�
     expect(odd.value.question_basis).toBe("role_need");
   });
 
-  it("예시·수동 응답도 질문마다 근거 종류와 출처를 채운다(역할 필요 → 오류·빈 화면 가이드 순)", async () => {
+  it("예시·수동 응답도 질문마다 근거 종류와 출처를 채운다(부서마다 자기 역할의 첫 질문)", async () => {
     const office = sharingOffice();
     const noKey = new SolarClient({ apiKey: null, baseURL: "https://example.invalid", model: "m", timeout: 5 });
     office.recordShareTurn({ role: "user", text: "날씨 화면을 만들었습니다." });
@@ -283,8 +283,12 @@ describe("질문 근거: 가이드 기반 시나리오를 실제 사례로 포�
     office.recordShareTurn({ role: "planner", reply: first.value, source: first.source });
     office.recordShareTurn({ role: "user", text: "도시 이름만 알면 누구나 볼 수 있습니다." });
     const second = await plannerReply(noKey, office);
-    expect(second.value).toMatchObject({ question_basis: "ux_guide", basis_ref: "W3C 오류·성공 알림 가이드" });
-    expect(second.value.question).toContain("실패");
+    expect(second.value).toMatchObject({ question: ROLES.designer.manualQuestions[0], question_basis: "role_need", basis_ref: "GOV.UK 서비스팀 역할 안내" });
+    office.recordShareTurn({ role: "planner", reply: second.value, source: second.source });
+    office.recordShareTurn({ role: "user", text: "검색하고 결과를 봅니다." });
+    const third = await plannerReply(noKey, office);
+    expect(third.value).toMatchObject({ question_basis: "ux_guide", basis_ref: "W3C 오류·성공 알림 가이드" });
+    expect(third.value.question).toContain("막히면");
   });
 
   it("역할 지침에 질문 목적·소재와 '실제 경험담처럼 말하지 않는다'가 들어 있고, 스키마가 근거 필드를 요구한다", async () => {
@@ -297,14 +301,37 @@ describe("질문 근거: 가이드 기반 시나리오를 실제 사례로 포�
 });
 
 describe("회의실 발표 참석자(개정 기획서 4.2: 기획팀·디자인팀·운영팀)", () => {
-  it("세 부서 담당자가 1명씩 오고, 질문은 기획자 한 명만 한다", async () => {
+  it("세 부서 담당자가 1명씩 오고, 기획자 → 디자이너 → 운영 담당자 차례로 묻는다", async () => {
     const { MEETING } = await import("./prompts");
-    expect(MEETING.askers).toEqual(["planner"]);
-    expect(MEETING.listeners).toEqual(["designer", "operations"]);
+    expect(MEETING.askers).toEqual(["planner", "designer", "operations"]);
     const office = sharingOffice();
-    const { client, sent } = fakeSolar(reply());
-    await plannerReply(client, office);
-    expect(contextOf(sent).meeting.attendees).toEqual(["서비스 기획팀", "디자인팀", "운영팀"]);
-    expect(sent[0].system).toContain("디자이너·운영 담당자는 듣기만");
+    const first = fakeSolar(reply({ question: "누가 무엇을 할 수 있게 됐나요?" }));
+    const a = await plannerReply(first.client, office);
+    expect(contextOf(first.sent).meeting).toMatchObject({ attendees: ["서비스 기획팀", "디자인팀", "운영팀"], asking_role: "서비스 기획팀" });
+    expect(first.sent[0].system).toContain("지금은 서비스 기획팀 차례");
+    office.recordShareTurn({ role: "planner", reply: a.value, source: a.source });
+    office.recordShareTurn({ role: "user", text: "도시 이름만 알면 누구나 볼 수 있습니다." });
+
+    const second = fakeSolar(reply({ question: "화면은 어떤 순서로 거치나요?" }));
+    await plannerReply(second.client, office);
+    const ctx = contextOf(second.sent);
+    expect(ctx.meeting.asking_role).toBe("디자인팀");
+    expect(ctx.meeting.questions_by_others).toEqual([{ department: "서비스 기획팀", question: "누가 무엇을 할 수 있게 됐나요?" }]);
+    expect(ctx.conversation_history[1].role).toBe("AI 기획자");
+    expect(second.sent[0].system).toContain("지금은 디자인팀 차례");
+  });
+
+  it("모든 부서가 물은 뒤의 마무리 차례에는 질문을 지운다", async () => {
+    const office = sharingOffice();
+    for (const q of ["누가 쓰나요?", "화면 순서는요?", "막히면 무엇을 보나요?"]) {
+      office.recordShareTurn({ role: "planner", reply: reply({ question: q }), source: "solar" });
+      office.recordShareTurn({ role: "user", text: "답" });
+    }
+    expect(office.shareSpeaker).toEqual({ role: "planner", canAsk: false });
+    const { client, sent } = fakeSolar(reply({ question: "하나 더 물어도 될까요?" }));
+    const out = await plannerReply(client, office);
+    expect(out.value.question).toBe("");
+    expect(out.value.can_finish).toBe(true);
+    expect(sent[0].system).toContain("모든 부서가 질문을 마쳤다");
   });
 });
