@@ -52,7 +52,9 @@ export type Pose =
   /** 상자를 든다. */
   | "standBox"
   /** 상자를 내민다. */
-  | "offerBox";
+  | "offerBox"
+  /** 출입문 옆 단말기에 사원증을 찍는다(사람 앞 0.22m·오른쪽 0.15m·높이 0.7m에 두 번 톡). 팔이 짧아 더 멀면 닿지 않는다. */
+  | "tapBadge";
 
 export const SEATED_POSES: readonly Pose[] = ["sitType", "sitMug", "sitListen", "sitEat", "sitReview", "sitExplain"];
 
@@ -454,6 +456,21 @@ export function bodyFor(pose: Pose, t: number, ctx: PoseContext): Body {
       b.right = arm(0.15, 0, 0.08);
       break;
     }
+    case "tapBadge": {
+      // 0.35초에 카드를 들어 단말기에 대고, 0.5초와 0.8초에 두 번 톡 댄 뒤 1.2초부터 내린다.
+      const s = ctx.sincePoseStart;
+      const up = smoothstep(0, 0.35, s) * (1 - smoothstep(1.2, 1.5, s));
+      const tap = Math.max(0, Math.sin(Math.PI * Math.min(1, Math.max(0, (s - 0.4) / 0.2)))) + Math.max(0, Math.sin(Math.PI * Math.min(1, Math.max(0, (s - 0.7) / 0.2))));
+      const reader: Vec3 = [0.15, 0.7, -0.22 + 0.02 * Math.min(1, tap)];
+      const rest: Vec3 = [0.16, 0.36, -0.04];
+      const target: Vec3 = [lerp(rest[0], reader[0], up), lerp(rest[1], reader[1], up), lerp(rest[2], reader[2], up)];
+      const right = reach(target, 1, 0);
+      b.right = right.arm;
+      b.reachR = clampReach(right.length);
+      b.headPitch -= 0.12 * up;
+      b.headYaw -= 0.18 * up;
+      break;
+    }
     case "holdPaper":
       b.right = arm(1.0, 0.35, 0.05);
       b.left = arm(0.75, -0.3, -0.05);
@@ -567,6 +584,7 @@ export function faceFor(pose: Pose, t: number, ctx: Pick<PoseContext, "rate" | "
     case "nod":
     case "offerPaper":
     case "offerBox":
+    case "tapBadge":
       face.smile = 0.5;
       break;
     case "stretch":

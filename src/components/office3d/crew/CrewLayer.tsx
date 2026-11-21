@@ -3,13 +3,13 @@
 import { useFrame } from "@react-three/fiber";
 import { memo, type MutableRefObject, useRef, useState } from "react";
 import type { Group } from "three";
-import { Person, type PersonId } from "../person";
+import { CREW, Person, type PersonId } from "../person";
 import type { SeatId } from "./layout";
 import { deskHands, type Snapshot } from "./schedule";
 
 export type CrewFrame = Record<SeatId, { snapshot: Snapshot }>;
 
-const IDS: SeatId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "me"];
+const IDS: SeatId[] = ["director", "manager", "kwajang", "daeri", "senior", "peerA", "peerB", "planner", "me"];
 
 const signature = (s: Snapshot) => `${s.visible}|${s.pose}|${s.holding.cup ?? ""}|${s.holding.bag ?? ""}|${s.holding.box ?? ""}`;
 
@@ -44,7 +44,7 @@ const Member = memo(function Member({ id, frame, onPick }: { id: SeatId; frame: 
   return (
     <group ref={group} name={`person.${id}`} onClick={onPick ? (e) => { e.stopPropagation(); onPick(id); } : undefined}>
       {shown && shown.visible && (
-        <Person who={id as PersonId} pose={shown.pose} holding={shown.holding} desk={seated ? deskHands(id) : undefined} />
+        <Person who={(id in CREW ? id : "senior") as PersonId} pose={shown.pose} holding={shown.holding} desk={seated ? deskHands(id) : undefined} />
       )}
     </group>
   );

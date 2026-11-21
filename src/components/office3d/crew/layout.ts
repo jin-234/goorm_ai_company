@@ -42,13 +42,16 @@ export const ROOM = {
 } as const;
 
 export const DOOR_X = (ROOM.doorX0 + ROOM.doorX1) / 2;
+/** 기획팀 책상 가운데 x. */
+export const PLANNER_X = 5.2;
 
 /** 통로. 사람은 늘 통로를 따라 걷는다. */
 export const AISLE = { front: 2.85, back: -0.85 } as const;
 /** 두 통로를 잇는 세로길(섬 왼쪽, 팀장 자리 오른쪽). */
 export const COLUMNS = [-2.15, 5.3] as const;
 
-export type SeatId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me";
+/** 자리 주인. planner는 서비스 기획팀(타 부서)의 AI 기획자. */
+export type SeatId = "director" | "manager" | "kwajang" | "daeri" | "senior" | "peerA" | "peerB" | "me" | "planner";
 
 export interface Seat {
   /** 의자(앉은 사람) 위치. */
@@ -96,6 +99,13 @@ export const SEATS: Record<SeatId, Seat> = {
     chair: [1.2, -3.9], facing: [0, 1], deskOffset: 0.72, deskWidth: 2.05, deskDepth: 0.95,
     stand: [2.65, -3.9], aisle: "back", monitorShift: 0,
   },
+  // 서비스 기획팀: 앞 오른쪽 구석. 기획자는 방 쪽(−Z)을 보고 앉고, 나는 앞 통로 쪽에서 책상 너머로 설명한다.
+  planner: {
+    chair: [PLANNER_X, 4.3], facing: [0, -1], deskOffset: 0.6, deskWidth: 1.4, deskDepth: 0.75,
+    // 모니터는 기획자 왼편(창 반대쪽)으로 비켜 둔다. 가운데 두면 설명하는 나와 기획자 사이를 가린다.
+    // 일어서면 책상 왼쪽(방 쪽)으로 나온다. 오른쪽 모서리는 큰 화분 자리.
+    stand: [PLANNER_X - 0.95, 4.3], aisle: "front", monitorShift: -0.45,
+  },
 };
 
 /** 앉은 사람의 오른쪽(단위 벡터). 앞이 (fx, fz)면 오른쪽은 (−fz, fx). */
@@ -126,7 +136,7 @@ export function deskSpots(seat: Seat) {
 }
 
 /** 사람이 가는 곳(자리 말고). */
-export type Spot = "coffee" | "water" | "restroom" | "window" | "outside" | "meeting" | "door" | "fridge" | "microwave" | "snack";
+export type Spot = "coffee" | "water" | "restroom" | "window" | "outside" | "meeting" | "door" | "fridge" | "microwave" | "snack" | "share";
 
 export interface SpotInfo {
   aisle: keyof typeof AISLE;
@@ -149,13 +159,22 @@ export const SPOTS: Record<Spot, SpotInfo> = {
   restroom: { aisle: "back", x: ROOM.restroomX, points: [[ROOM.restroomX, ROOM.restroomZ1 + 0.7], [ROOM.restroomX, ROOM.restroomZ1 - 0.8]], facing: [0, -1] },
   window: { aisle: "back", x: 6.35, points: [[6.35, -0.25]], facing: [1, 0] },
   door: { aisle: "front", x: DOOR_X, points: [[DOOR_X, ROOM.halfDepth - 1.1]], facing: [0, 1] },
-  // 드나드는 사람은 문 오른쪽 반을 쓴다(출근 전 나는 매트 왼쪽에 서 있다).
-  outside: { aisle: "front", x: DOOR_X, points: [[DOOR_X, ROOM.halfDepth - 1.1], [DOOR_X + 0.35, ROOM.halfDepth - 0.4], [DOOR_X + 0.35, ROOM.halfDepth + 1.6]], facing: [0, 1] },
+  // 드나드는 동료는 문 왼쪽 반을 쓴다(출근 전 나는 문 오른쪽 사원증 단말기 앞에 서 있다).
+  outside: { aisle: "front", x: DOOR_X, points: [[DOOR_X, ROOM.halfDepth - 1.1], [DOOR_X - 0.3, ROOM.halfDepth - 0.4], [DOOR_X - 0.3, ROOM.halfDepth + 1.6]], facing: [0, 1] },
+  // 기획팀 책상 앞(통로 쪽). 기획자를 보고 서서 오늘 한 일을 설명한다.
+  share: { aisle: "front", x: PLANNER_X + 0.15, points: [[PLANNER_X + 0.15, 3.0]], facing: [0, 1] },
   meeting: { aisle: "back", x: (ROOM.meetingDoorX0 + ROOM.meetingDoorX1) / 2, points: [[(ROOM.meetingDoorX0 + ROOM.meetingDoorX1) / 2, ROOM.meetingZ1 - 0.5]], facing: [-1, 0] },
 };
 
-/** 문 밖 매트 위(출근 전 내가 서 있는 곳). */
-export const OUTSIDE_MAT: Vec2 = [DOOR_X - 0.38, ROOM.halfDepth + 1.0];
+/** 문 오른쪽 바깥벽의 사원증 단말기(카드 리더) 가운데 [x, y, z]. 바깥면(+Z)을 본다. 두께 0.035. */
+export const BADGE_READER: [number, number, number] = [ROOM.doorX1 + 0.25, 0.7, ROOM.halfDepth + ROOM.thickness / 2 + 0.018];
+/** 단말기 카드 면(앞면)의 z. */
+export const BADGE_READER_FACE_Z = BADGE_READER[2] + 0.0175;
+/**
+ * 출근 전 내가 서서 기다리는 곳: 단말기를 보고(−Z) 선다.
+ * tapBadge 손 기준점(나 원점에서 앞 0.22m·오른쪽 0.15m·높이 0.70m, f4 시험값)이 단말기 카드 면에 오도록 세운다.
+ */
+export const OUTSIDE_MAT: Vec2 = [BADGE_READER[0] - 0.15, BADGE_READER_FACE_Z + 0.22];
 
 /** 회의실 탁자와 의자. */
 export const MEETING = {
@@ -239,6 +258,7 @@ export const headingOf = (f: Vec2) => Math.atan2(-f[0], -f[1]);
 export const BLOCKERS: { name: string; box: [number, number, number, number] }[] = [
   { name: "섬 책상", box: [ix[2] - ROOM.islandDeskWidth / 2, ROOM.islandZ - ROOM.islandDeskDepth, ix[0] + ROOM.islandDeskWidth / 2, ROOM.islandZ + ROOM.islandDeskDepth] },
   { name: "팀장 책상", box: [4.2 - 0.72 - 0.43, ROOM.islandZ - 0.85, 4.2 - 0.72 + 0.43, ROOM.islandZ + 0.85] },
+  { name: "기획팀 책상", box: [PLANNER_X - 0.7, 4.3 - 0.6 - 0.375, PLANNER_X + 0.7, 4.3 - 0.6 + 0.375] },
   { name: "부장 책상", box: [1.2 - 1.03, -3.9 + 0.72 - 0.48, 1.2 + 1.03, -3.9 + 0.72 + 0.48] },
   { name: "회의실 앞 유리벽(왼쪽)", box: [ROOM.meetingX0, ROOM.meetingZ1 - 0.05, ROOM.meetingDoorX0, ROOM.meetingZ1 + 0.05] },
   { name: "회의실 오른 유리벽", box: [ROOM.meetingX1 - 0.05, ROOM.meetingZ0, ROOM.meetingX1 + 0.05, ROOM.meetingZ1] },
@@ -250,4 +270,37 @@ export const BLOCKERS: { name: string; box: [number, number, number, number] }[]
   { name: "화장실 앞벽(오른쪽)", box: [ROOM.restroomX + 0.5, ROOM.restroomZ1 - 0.06, ROOM.halfWidth, ROOM.restroomZ1 + 0.06] },
   { name: "앞벽(문 왼쪽)", box: [-ROOM.halfWidth, ROOM.halfDepth - 0.12, ROOM.doorX0, ROOM.halfDepth + 0.12] },
   { name: "앞벽(문 오른쪽)", box: [ROOM.doorX1, ROOM.halfDepth - 0.12, ROOM.halfWidth, ROOM.halfDepth + 0.12] },
+];
+
+// ─── 바닥에 놓인 화분·나무(사람이 지나가지 않는 곳) ──────────────────────
+
+/**
+ * 화분 잎이 퍼지는 가로 반지름. room/parts.tsx의 Plant 모양과 같은 식:
+ * 잎 덩어리 중심이 lean만큼 바깥에 있고, 잎(반지름 r, 세로 1.6배)이 최대 0.4rad 기울어 r·(1 + 1.6·sin0.4) ≈ 1.62r 만큼 더 나간다.
+ */
+export function plantRadius(height: number, scale = 1) {
+  const lean = 0.22;
+  const r = 0.16 * height;
+  return (lean + r * 1.62) * scale;
+}
+
+/** 둥근 나무(room/Room.tsx RoundTree)의 잎 덩어리 가로 반지름. */
+export const ROUND_TREE_RADIUS = 0.2 + 0.27;
+
+export interface Decor { name: string; kind: "plant" | "tree"; at: Vec2; height: number; scale: number; radius: number }
+
+const plant = (name: string, at: Vec2, height: number, scale = 1): Decor => ({ name, kind: "plant", at, height, scale, radius: plantRadius(height, scale) });
+
+/** 바닥 화분·나무. Room이 이 목록대로 놓고, 시험이 벽·가구·자리·걷는 길과 겹치지 않는지 본다. */
+export const DECOR: Decor[] = [
+  plant("앞 오른쪽 모서리 큰 화분", [6.4, 4.38], 1.25, 0.85),
+  plant("뒷벽 화분(화장실 옆)", [4.3, -4.35], 1.0),
+  plant("탕비실 앞 모서리 화분", [-4.25, 4.4], 0.8),
+  { name: "탕비실 출입구 옆 둥근 나무", kind: "tree", at: [-2.6, 4.3], height: 1.3, scale: 1, radius: ROUND_TREE_RADIUS },
+];
+
+/** 바깥벽 안쪽 면(사람·가구가 넘으면 안 되는 선). [x0, z0, x1, z1] */
+export const INTERIOR: [number, number, number, number] = [
+  -ROOM.halfWidth + ROOM.thickness / 2, -ROOM.halfDepth + ROOM.thickness / 2,
+  ROOM.halfWidth - ROOM.thickness / 2, ROOM.halfDepth - ROOM.thickness / 2,
 ];

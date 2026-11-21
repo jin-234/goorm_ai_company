@@ -1,256 +1,286 @@
 "use client";
 /**
- * 하루 마감 → 마감 완료.
- * 마감 요약은 기록(과제·제출물·공유 설명)에서 사실만 옮긴 초안으로 시작하고 사용자가 고쳐 확정한다.
- * 읽지 않은 링크나 실행하지 않은 결과를 '확인함'으로 쓰지 않는다.
- * 제출하지 못한 과제는 범위 조정·다음 활동일 이월·오늘 종료 중 하나를 고르고, 사유는 선택이다.
+ * 하루 마감(개정 기획서 3.1, 4.3 E)과 마감 뒤 기록.
+ * - 근거를 구분한 요약 초안을 받아 사용자가 고쳐 확정한다. AI 원본 초안(서버 day.review.draft)과
+ *   사용자가 고친 칸을 구분해 보여 주고, 고친 내용은 확정할 때 보낸다.
+ * - 제출하지 않은 과제마다 범위 조정·다음 활동일 이월·오늘 종료 중 하나를 고른다(사유는 선택).
+ * - AI 미연결이면 빈 수동 양식을 주고 AI가 쓴 것처럼 표시하지 않는다.
  */
-import { useEffect, useRef, useState } from "react";
-import { TASK_OUTCOME_LABEL, TASK_OUTCOMES, type Review as ReviewData, type TaskOutcome } from "@/lib/office/models";
-import { hm } from "@/lib/office/time";
-import type { OfficeView } from "../api";
+import { useEffect, useState } from "react";
+import { api, type CloseChoice, isManual, isSample, type OfficeView, type Review } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, Notice, PanelHeader, StatusBadge, type PlaceId } from "../ui";
-import { TaskList } from "./TaskList";
+import { Card, CHOICE_NAME, ManualMark, Notice, PanelHeader, type PlaceId, SampleMark, StatusBadge } from "../ui";
 
-const TEXT_FIELDS: [keyof ReviewData, string, string][] = [
-  ["reported_work", "오늘 한 일", "확정한 과제와 실제로 한 일"],
-  ["explained_learning", "설명한 내용·배운 점", "공유에서 설명한 내용, 배운 점"],
-  ["artifact_observations", "결과물", "제출한 결과물과 그 안에서 확인한 것"],
-  ["shared_scope_and_limits", "확인 범위와 한계", "읽지 않은 링크, 실행해 보지 않은 부분 등"],
-  ["job_connection", "희망 직무와의 연결", "오늘 한 일이 희망 직무에 어떻게 이어지는지"],
-  ["next_action", "다음 행동", "다음 활동일에 이어서 할 일"],
+const EMPTY: Review = {
+  reported_work: "",
+  explained_learning: "",
+  artifact_observations: "",
+  shared_scope_and_limits: "",
+  open_questions: [],
+  job_connection: "",
+  next_action: "",
+  evidence_refs: [],
+};
+
+type TextField = Exclude<keyof Review, "open_questions" | "evidence_refs">;
+
+const FIELDS: { key: TextField | "open_questions"; label: string; hint: string }[] = [
+  { key: "reported_work", label: "오늘 한 일", hint: "내가 했다고 설명한 활동" },
+  { key: "explained_learning", label: "설명한 개념·배운 내용", hint: "공유 대화에서 설명한 것" },
+  { key: "artifact_observations", label: "결과물에서 확인한 것", hint: "실제로 읽은 결과물(글·코드)에서 본 것만. 링크는 읽지 않았습니다." },
+  { key: "shared_scope_and_limits", label: "기획팀에 전한 가능 범위와 제약", hint: "지금 되는 것과 아직 안 되는 것" },
+  { key: "open_questions", label: "아직 남은 질문", hint: "한 줄에 하나씩" },
+  { key: "job_connection", label: "희망 직무와의 연결", hint: "이번 활동이 직무에서 어떤 연습이었는지. 등급·점수는 적지 않습니다." },
+  { key: "next_action", label: "다음 행동 하나", hint: "다음 활동일에 가장 먼저 할 일" },
 ];
 
-const LIST_FIELDS: [keyof ReviewData, string][] = [["open_questions", "남은 질문 (한 줄에 하나)"]];
+const valueOf = (r: Review, key: TextField | "open_questions") => (key === "open_questions" ? r.open_questions.join("\n") : r[key]);
+const storeKey = (view: OfficeView) => `vision.review.${view.clock.date}`;
 
-type Choice = { outcome: TaskOutcome | ""; reason: string };
+export function DayClose({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: PlaceId) => void }) {
+  const { review } = view.day;
+  // 서버가 정한 '처리를 골라야 할 과제'(제출하지 않은 과제)를 그대로 쓴다.
+  const open = view.day.tasks.filter((t) => view.day.unsubmittedTaskIds.includes(t.id));
+  const [edit, setEdit] = useState<Review>(review.draft ?? EMPTY);
+  const [choices, setChoices] = useState<Record<string, CloseChoice>>(review.choices ?? {});
+  const [reasons, setReasons] = useState<Record<string, string>>({});
+  const [drafting, setDrafting] = useState(false);
 
-/** 기록에서 사실만 옮긴 수동 초안. AI가 쓴 것이 아니다. */
-function manualDraft(view: OfficeView): ReviewData {
-  const { tasks, submissions, share } = view.day;
-  const titleOf = (id: string) => tasks.find((t) => t.id === id)?.title ?? "과제";
-  const links = submissions.filter((s) => s.readScope === "notRead");
-  const said = share.turns.filter((t) => t.role === "user").map((t) => t.text ?? "");
-  return {
-    reported_work: tasks.map((t) => `· ${t.title} (${t.statusLabel})`).join("\n"),
-    explained_learning: said.join("\n"),
-    artifact_observations: submissions
-      .map((s) => `· ${titleOf(s.taskId)}: ${{ text: "글", code: "코드", link: "링크" }[s.kind]} 제출 ${hm(s.at)}`)
-      .join("\n"),
-    shared_scope_and_limits: [
-      links.length > 0 ? `링크 ${links.length}건은 주소만 남겼고 본문은 읽지 않았습니다.` : "",
-      submissions.length === 0 ? "오늘 제출한 결과물이 없습니다." : "",
-      share.endedBy === "skipped" ? "기획팀 공유는 건너뛰었습니다." : "",
-    ]
-      .filter(Boolean)
-      .join("\n"),
-    open_questions: [...share.openQuestions],
-    job_connection: view.profile.targetRole ? `희망 직무: ${view.profile.targetRole}` : "",
-    next_action: "",
-    evidence_refs: submissions.map((s) => s.id),
-  };
-}
-
-export function Checkout({ office, view }: { office: OfficeHandle; view: OfficeView }) {
-  const review = view.day.review;
-  const pending = view.day.tasks.filter((t) => view.day.unsubmittedTaskIds.includes(t.id));
-  const [draft, setDraft] = useState<ReviewData>(() => review.draft ?? manualDraft(view));
-  const [choices, setChoices] = useState<Record<string, Choice>>(() =>
-    Object.fromEntries(pending.map((t) => [t.id, { outcome: (review.choices[t.id] as TaskOutcome) ?? "", reason: "" }])),
-  );
-  const saved = useRef(JSON.stringify(review.draft));
-
-  // 서버 초안이 바뀌면(AI 초안 도착 등) 그 값으로.
+  // 고치던 내용은 새로고침해도 남게 브라우저에 보관한다.
   useEffect(() => {
-    const next = JSON.stringify(review.draft);
-    if (review.draft && next !== saved.current) {
-      saved.current = next;
-      setDraft(review.draft);
+    try {
+      const raw = localStorage.getItem(storeKey(view));
+      if (raw) {
+        const saved = JSON.parse(raw) as { edit: Review; choices: Record<string, CloseChoice>; reasons: Record<string, string> };
+        setEdit(saved.edit);
+        setChoices(saved.choices);
+        setReasons(saved.reasons);
+      }
+    } catch {
+      // 없으면 서버 초안으로 시작한다.
     }
-  }, [review.draft]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    try {
+      localStorage.setItem(storeKey(view), JSON.stringify({ edit, choices, reasons }));
+    } catch {
+      // 저장하지 못해도 이번 화면에서는 계속 쓸 수 있다.
+    }
+  }, [edit, choices, reasons]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveDraft = (value: ReviewData = draft) => {
-    const next = JSON.stringify(value);
-    if (next === saved.current) return;
-    saved.current = next;
-    void office.save("saveReviewDraft", { review: value });
+  const makeDraft = async () => {
+    const touched = FIELDS.some((f) => valueOf(edit, f.key).trim());
+    if (touched && !window.confirm("지금 고친 내용을 새 초안으로 바꿀까요?")) return;
+    setDrafting(true);
+    // 서버가 초안을 day.review.draft에 저장하고 상태를 돌려준다.
+    const res = await office.run(async () => {
+      const r = await api.reviewDraft();
+      return { ...r, office: r.office ?? view };
+    });
+    setDrafting(false);
+    if (res) setEdit(res.review);
   };
 
-  const setText = (key: keyof ReviewData, value: string) => setDraft((d) => ({ ...d, [key]: value }));
-  const saveList = (key: keyof ReviewData, value: string) => {
-    const next = { ...draft, [key]: value.split("\n").map((l) => l.trim()).filter(Boolean) };
-    setDraft(next);
-    saveDraft(next);
-  };
-  const setChoice = (id: string, fields: Partial<Choice>) =>
-    setChoices((c) => ({ ...c, [id]: { ...(c[id] ?? { outcome: "", reason: "" }), ...fields } }));
+  const setField = (key: TextField | "open_questions", value: string) =>
+    setEdit((r) =>
+      key === "open_questions"
+        ? { ...r, open_questions: value.split("\n").map((s) => s.trim()).filter(Boolean) }
+        : { ...r, [key]: value },
+    );
 
-  const unchosen = pending.filter((t) => !choices[t.id]?.outcome);
+  const missingChoice = open.filter((t) => !choices[t.id]);
+  const ready = view.can.confirmReview && edit.reported_work.trim() && edit.next_action.trim() && missingChoice.length === 0;
 
   const confirm = async () => {
-    const outcomes = Object.fromEntries(Object.entries(choices).filter(([, c]) => c.outcome).map(([id, c]) => [id, c.outcome]));
-    const reasons = Object.fromEntries(Object.entries(choices).map(([id, c]) => [id, c.reason]));
-    const res = await office.act<{ close: { submitted: number; adjusted: number; carried: number; ended: number } }>("confirmReview", {
-      review: draft,
-      choices: outcomes,
-      reasons,
-    });
-    if (res?.close) {
-      const c = res.close;
-      const parts = [c.submitted && `제출 ${c.submitted}건`, c.adjusted && `범위 조정 ${c.adjusted}건`, c.carried && `이월 ${c.carried}건`, c.ended && `오늘 종료 ${c.ended}건`].filter(Boolean);
-      office.notify(`하루 마감을 확정했습니다.\n${parts.join(" · ") || "확정한 과제가 없었습니다."}`);
+    const cleanReasons = Object.fromEntries(Object.entries(reasons).filter(([, v]) => v.trim()));
+    if ((await office.act("confirmReview", { review: edit, choices, reasons: cleanReasons })) == null) return;
+    try {
+      localStorage.removeItem(storeKey(view));
+    } catch {
+      // 다음 날 키가 달라 문제없다.
     }
+    office.notify("하루 마감을 확정했습니다.\n오늘도 수고 많았습니다.");
   };
 
-  const sourceLabel =
-    review.draftSource === "solar" ? (review.editedByUser ? "AI 초안 · 내가 고침" : "AI 초안") : "기록에서 옮긴 초안";
+  const draft = review.draft;
+  const manualDraft = isManual(review.draftSource);
+  // '내가 고침'은 AI 원본 초안(aiDraft)과 비교한다. AI 원본이 없으면 표시하지 않는다.
+  const original = review.aiDraft;
+  const edited = (key: TextField | "open_questions") => original != null && valueOf(edit, key).trim() !== valueOf(original, key).trim();
 
   return (
     <div className="panel">
-      <PanelHeader place="내 책상" title="하루 마감" detail={"기록을 바탕으로 오늘을 정리합니다.\n고친 뒤 확정하면 오늘 활동이 마감됩니다."} />
+      <PanelHeader
+        place="내 책상"
+        title="하루 마감"
+        detail={"오늘 한 일과 다음 행동을 확인하고 확정합니다.\n못 끝낸 일은 어떻게 할지 고르기만 하면 됩니다."}
+      />
 
-      <Card title="오늘 과제">
-        {view.day.tasks.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            오늘은 확정한 과제가 없습니다.
+      {open.length > 0 ? (
+        <Card title={`제출하지 않은 과제 ${open.length}건`}>
+          <p className="small muted" style={{ margin: 0 }}>
+            괜찮습니다. 과제마다 하나를 골라 주세요. 사유는 적지 않아도 됩니다.
           </p>
-        ) : (
-          <TaskList office={office} view={view} />
-        )}
-      </Card>
-
-      {pending.length > 0 ? (
-        <Card title={`제출하지 못한 과제 ${pending.length}건`}>
-          <p className="muted small" style={{ margin: 0 }}>
-            처리를 하나씩 골라 주세요. 사유는 적지 않아도 됩니다.
-          </p>
-          {pending.map((t) => (
+          {open.map((t) => (
             <div key={t.id} className="card" style={{ background: "var(--paper)", gap: 8, padding: 12 }}>
               <div className="row">
-                <StatusBadge status={t.status} label={t.statusLabel} />
-                <span style={{ fontWeight: 600 }}>{t.title}</span>
+                <StatusBadge status={t.status} />
+                <strong>{t.title}</strong>
               </div>
               <div className="row" role="radiogroup" aria-label={`${t.title} 처리`}>
-                {TASK_OUTCOMES.map((o) => (
+                {(Object.keys(CHOICE_NAME) as CloseChoice[]).map((c) => (
                   <button
-                    key={o}
+                    key={c}
                     role="radio"
-                    aria-checked={choices[t.id]?.outcome === o}
-                    className={`btn small ${choices[t.id]?.outcome === o ? "" : "secondary"}`}
-                    onClick={() => setChoice(t.id, { outcome: o })}
+                    aria-checked={choices[t.id] === c}
+                    className={`btn small ${choices[t.id] === c ? "" : "secondary"}`}
+                    title={CHOICE_NAME[c].detail}
+                    onClick={() => setChoices((cs) => ({ ...cs, [t.id]: c }))}
                   >
-                    {TASK_OUTCOME_LABEL[o]}
+                    {CHOICE_NAME[c].label}
                   </button>
                 ))}
               </div>
+              {choices[t.id] ? <div className="small muted">{CHOICE_NAME[choices[t.id]].detail}</div> : null}
               <input
                 className="field"
-                aria-label={`${t.title} 사유`}
+                aria-label={`${t.title} 사유(선택)`}
                 placeholder="사유 (선택)"
-                value={choices[t.id]?.reason ?? ""}
-                onChange={(e) => setChoice(t.id, { reason: e.target.value })}
+                value={reasons[t.id] ?? ""}
+                onChange={(e) => setReasons((rs) => ({ ...rs, [t.id]: e.target.value }))}
               />
             </div>
           ))}
         </Card>
       ) : null}
 
-      <Card title="마감 요약" aside={<span className="badge tag">{sourceLabel}</span>}>
-        {TEXT_FIELDS.map(([key, label, hint]) => (
-          <label key={key} className="stack">
-            {label}
+      <Card
+        title="마감 요약"
+        aside={
+          draft ? (
+            manualDraft ? (
+              <ManualMark />
+            ) : (
+              <span className="row" style={{ gap: 6 }}>
+                <span className="badge tag">AI 초안 · 고칠 수 있음</span>
+                {isSample(review.draftSource) ? <SampleMark /> : null}
+              </span>
+            )
+          ) : undefined
+        }
+      >
+        <div className="row">
+          <button className="btn secondary" onClick={makeDraft} disabled={office.busy || drafting}>
+            {drafting ? "초안을 만드는 중" : draft ? "요약 초안 다시 받기" : "요약 초안 받기"}
+          </button>
+          <span className="small muted">초안 없이 직접 적어도 됩니다.</span>
+        </div>
+        {draft && manualDraft ? (
+          <Notice kind="info" title="AI 요약에 연결하지 못했습니다">
+            빈 양식입니다. 오늘 한 일과 다음 행동만 적어도 마감할 수 있습니다.
+          </Notice>
+        ) : null}
+        {FIELDS.map((f) => (
+          <label key={f.key} className="stack">
+            <span>
+              {f.label}
+              {f.key === "reported_work" || f.key === "next_action" ? " *" : ""}
+              {edited(f.key) ? <span className="badge tag" style={{ marginLeft: 6 }}>내가 고침</span> : null}
+            </span>
+            <span className="small muted" style={{ fontWeight: 400 }}>
+              {f.hint}
+            </span>
             <textarea
               className="field"
-              rows={3}
-              placeholder={hint}
-              value={draft[key] as string}
-              onChange={(e) => setText(key, e.target.value)}
-              onBlur={() => saveDraft()}
+              rows={f.key === "next_action" ? 2 : 3}
+              value={valueOf(edit, f.key)}
+              onChange={(e) => setField(f.key, e.target.value)}
             />
           </label>
         ))}
-        {LIST_FIELDS.map(([key, label]) => (
-          <label key={key} className="stack">
-            {label}
-            <textarea
-              className="field"
-              rows={2}
-              defaultValue={(draft[key] as string[]).join("\n")}
-              onBlur={(e) => saveList(key, e.target.value)}
-            />
-          </label>
-        ))}
+        {edit.evidence_refs.length > 0 ? (
+          <div className="small muted">근거: {edit.evidence_refs.join(", ")}</div>
+        ) : null}
+        <p className="small muted pre" style={{ margin: 0 }}>
+          {"요약은 내가 설명한 것과 실제로 읽은 결과물을 구분합니다.\n실행해 보지 않은 것은 '확인했다'고 적지 않습니다."}
+        </p>
       </Card>
 
-      {unchosen.length > 0 ? <div className="small muted">처리를 고르지 않은 과제: {unchosen.map((t) => t.title).join(", ")}</div> : null}
-      <button className="btn" onClick={confirm} disabled={office.busy || !view.can.confirmReview || unchosen.length > 0}>
-        하루 마감 확정
+      {missingChoice.length > 0 ? (
+        <Notice kind="warning" title="처리 방법을 고르지 않은 과제가 있습니다">
+          {missingChoice.map((t) => `· ${t.title}`).join("\n")}
+        </Notice>
+      ) : null}
+
+      <button className="btn" onClick={confirm} disabled={office.busy || !ready}>
+        이대로 하루 마감 확정
+      </button>
+      {!edit.reported_work.trim() || !edit.next_action.trim() ? (
+        <div className="small muted">'오늘 한 일'과 '다음 행동 하나'는 적어야 확정할 수 있습니다.</div>
+      ) : null}
+      <button className="btn plain small" onClick={() => onGo("share")}>
+        기획팀 대화 다시 보기
       </button>
     </div>
   );
 }
 
-/** 마감 완료. 해낸 일·남긴 기록·다음 활동일 과제를 나란히 보여 준다. */
+/** 마감을 확정한 뒤: 해낸 일과 다음 활동일 계획을 나란히(현직자 피드백). */
 export function DayEnd({ office, view, onGo }: { office: OfficeHandle; view: OfficeView; onGo: (p: PlaceId) => void }) {
-  const day = view.day;
-  const confirmed = day.review.confirmed;
+  const confirmed = view.day.review.confirmed;
+  const done = view.day.tasks.filter((t) => t.status === "submitted" || t.status === "reviewed" || t.outcome === "adjust");
   const next = view.pendingCarry;
-  const closed = view.phase.value === "off";
-
   return (
     <div className="panel">
-      <PanelHeader
-        place="내 책상"
-        title={closed ? "오늘 활동을 마감했습니다" : "오늘은 활동하지 않았습니다"}
-        detail={view.clock.dateLong}
-      />
-      {closed ? (
-        <Card title="오늘 과제">
-          <TaskList office={office} view={view} editable={false} />
+      <PanelHeader place="내 책상" title="오늘 활동을 마쳤습니다" detail={view.clock.dateLong} />
+      <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+        <Card title={`해낸 일 ${done.length}건`}>
+          {done.length === 0 ? (
+            <p className="muted" style={{ margin: 0 }}>
+              오늘 제출한 과제는 없습니다. 기록은 그대로 남았습니다.
+            </p>
+          ) : (
+            done.map((t) => (
+              <div key={t.id}>
+                <strong>{t.title}</strong>
+                <div className="small muted">{t.outcome === "adjust" ? "범위를 줄여 마침" : "제출함"}</div>
+              </div>
+            ))
+          )}
         </Card>
-      ) : (
-        <Notice kind="info" title="쉬는 날로 남깁니다">
-          활동하지 않은 날은 불이익 없이 기록하지 않습니다.
-        </Notice>
-      )}
-      {confirmed ? (
-        <Card title="마감 요약">
-          {TEXT_FIELDS.filter(([k]) => (confirmed[k] as string).trim()).map(([k, label]) => (
-            <div key={k}>
-              <div style={{ fontWeight: 700 }}>{label}</div>
-              <div className="pre muted">{confirmed[k] as string}</div>
-            </div>
-          ))}
-          {confirmed.open_questions.length > 0 ? (
+        <Card title="다음 활동일 계획">
+          {confirmed?.next_action ? (
             <div>
-              <div style={{ fontWeight: 700 }}>남은 질문</div>
-              <ul className="muted" style={{ margin: 0, paddingLeft: 18 }}>
-                {confirmed.open_questions.map((q) => (
-                  <li key={q}>{q}</li>
-                ))}
-              </ul>
+              <div className="small muted">다음 행동</div>
+              <strong className="pre">{confirmed.next_action}</strong>
             </div>
           ) : null}
+          {next.length === 0 ? (
+            <p className="small muted" style={{ margin: 0 }}>
+              넘긴 과제는 없습니다.
+            </p>
+          ) : (
+            next.map((t) => (
+              <div key={t.id} className="small">
+                · {t.title} <span className="badge tag">넘어감</span>
+              </div>
+            ))
+          )}
+        </Card>
+      </div>
+      {confirmed ? (
+        <Card title="확정한 요약">
+          {FIELDS.filter((f) => valueOf(confirmed, f.key).trim()).map((f) => (
+            <div key={f.key}>
+              <div style={{ fontWeight: 700 }}>{f.label}</div>
+              <div className="pre muted">{valueOf(confirmed, f.key)}</div>
+            </div>
+          ))}
         </Card>
       ) : null}
-      <Card title={`다음 활동일로 이월 ${next.length}건`}>
-        {next.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>
-            이월한 과제가 없습니다. 다음 아침보고에서 새로 정합니다.
-          </p>
-        ) : (
-          next.map((t) => (
-            <div key={t.id} className="row">
-              <span className="badge tag">이월 {t.carryCount}회</span>
-              <span style={{ fontWeight: 600 }}>{t.title}</span>
-            </div>
-          ))
-        )}
-      </Card>
       {view.can.submitWeekly ? (
         <Notice kind="info" title="오늘은 금요일입니다">
-          이번 주를 돌아보는 주간보고서를 써 주세요.
+          이번 주를 돌아보는 주간보고를 써 볼 수 있습니다.
           <div style={{ marginTop: 8 }}>
             <button className="btn secondary small" onClick={() => onGo("weekly")}>
               주간보고서 쓰기

@@ -177,6 +177,12 @@ export interface Rig {
     backpack: THREE.Group | null;
     straps: THREE.Group | null;
     handBag: THREE.Group | null;
+    /** 가슴에 단 사원증 카드(손에 들면 숨긴다). */
+    badgeChest: THREE.Group | null;
+    /** 단말기에 찍을 때 오른손에 드는 사원증. */
+    badgeHand: THREE.Group;
+    /** 왼손 메모장(기획자). */
+    notepad: THREE.Group | null;
   };
   /** 만든 도형·재료. 사람이 사라질 때 정리한다. */
   dispose(): void;
@@ -266,6 +272,9 @@ export function buildPerson(look: CrewLook): Rig {
       backpack: null,
       straps: null,
       handBag: null,
+      badgeChest: null,
+      badgeHand: buildBadgeInHand(handR),
+      notepad: null,
     },
     dispose() {
       root.traverse((o) => {
@@ -288,9 +297,11 @@ export function buildPerson(look: CrewLook): Rig {
       case "hoodDown": addHoodDown(torso, look); break;
       case "vest": addVest(torso); break;
       case "folder": rig.props.folder = addFolder(handR); break;
+      case "collar": addCollar(torso, look); break;
+      case "notepad": rig.props.notepad = buildNotepad(handL); break;
     }
   }
-  if (look.hasBadge) addBadge(torso, look.badgeY);
+  if (look.hasBadge) rig.props.badgeChest = addBadge(torso, look.badgeY, look.lanyard ?? "#F4C534");
   if (look.bagKind === "backpack") {
     const bag = addBackpack(torso, look.bagColor);
     rig.props.backpack = bag.bag;
@@ -405,6 +416,26 @@ function buildHair(head: THREE.Group, look: CrewLook) {
       place(turn(torus(0.05, 0.014, satin("#E9B94F", 0.4)), 10, 0, 0), 0, -0.07, 0.205, head);
       break;
     }
+    case "curly": {
+      // 짧은 곱슬머리: 껍데기 위에 작은 덩어리를 고르게 흩뿌린다(정수리·옆·뒤). 같은 자리라야 늘 같은 모양이 된다.
+      head.add(hairCap(0.11, -0.12, hair, 0.212));
+      const lumps: [number, number, number][] = [];
+      for (let ring = 0; ring < 4; ring++) {
+        const polar = 0.18 + ring * 0.36;
+        const count = 5 + ring * 3;
+        for (let i = 0; i < count; i++) {
+          const az = (i / count) * Math.PI * 2 + ring * 0.5;
+          const x = Math.sin(polar) * Math.sin(az), y = Math.cos(polar), z = Math.sin(polar) * Math.cos(az);
+          // 얼굴 앞쪽 아래는 비운다(이마·눈 위를 덮지 않게).
+          if (z < -0.55 && y < 0.75) continue;
+          lumps.push([x * 0.215 * 1.08, y * 0.215 + 0.005, z * 0.215]);
+        }
+      }
+      for (const [x, y, z] of lumps) place(sphere(0.042, hair, 16), x, y, z, head);
+      // 이마 위 잔머리
+      bangs([[-0.06, 0.13, 0.05, -10], [0.05, 0.135, 0.05, 12], [0, 0.15, 0.045, 0]]);
+      break;
+    }
     case "cap": {
       head.add(hairCap(0.03, -0.13, hair, 0.21));
       const fabric = matte(new THREE.Color(look.top).multiplyScalar(0.8).getStyle(), 0.85);
@@ -424,8 +455,8 @@ function buildHair(head: THREE.Group, look: CrewLook) {
 // MARK: - 옷과 소품
 
 /** 사원증. 노란 목줄이 목 뒤로 돌아가고, 카드는 옷 위에 띄운다. */
-function addBadge(torso: THREE.Group, cardY: number) {
-  const strap = matte("#F4C534", 0.7);
+function addBadge(torso: THREE.Group, cardY: number, strapColor: string): THREE.Group {
+  const strap = matte(strapColor, 0.7);
   // 목 뒤 고리: 몸통보다 조금 크게, 앞이 살짝 내려가게.
   place(turn(scale(torus(0.106, 0.009, strap), 1, 1.18, 1), 90 - 16, 0, 0), 0, 0.335, 0.005, torso);
   const cardTop = cardY + 0.065;
@@ -442,11 +473,44 @@ function addBadge(torso: THREE.Group, cardY: number) {
   // 카드: 몸 기울기에 맞춰 위가 뒤로 조금 눕는다.
   const map = badgeMap();
   const cardMat = map ? new THREE.MeshStandardMaterial({ map, roughness: 0.5 }) : matte("#FBF8F1", 0.5);
+  const chest = place(group("badgeChest"), 0, 0, 0, torso);
   const card = box(0.1, 0.13, 0.008, 0.01, cardMat);
   const slope = Math.atan2(torsoRadius(cardY - 0.06) - torsoRadius(cardY + 0.06), 0.12);
-  place(card, 0, cardY, front(cardY), torso).rotation.x = -slope;
+  place(card, 0, cardY, front(cardY), chest).rotation.x = -slope;
   // 카드 집게
-  place(box(0.03, 0.016, 0.012, 0.004, metal("#C9C4B8")), 0, cardTop - 0.004, front(cardTop) - 0.002, torso);
+  place(box(0.03, 0.016, 0.012, 0.004, metal("#C9C4B8")), 0, cardTop - 0.004, front(cardTop) - 0.002, chest);
+  return chest;
+}
+
+/** 단말기에 찍을 때 손에 드는 사원증. 카드 면이 앞(단말기)을 본다. */
+function buildBadgeInHand(hand: THREE.Group): THREE.Group {
+  const g = place(group("badgeHand"), 0, -0.02, -0.06, hand);
+  const map = badgeMap();
+  const mat = map ? new THREE.MeshStandardMaterial({ map, roughness: 0.5 }) : matte("#FBF8F1", 0.5);
+  g.add(turn(box(0.1, 0.13, 0.008, 0.01, mat), 0, 180, 0));
+  g.visible = false;
+  return g;
+}
+
+/** 셔츠 깃(넥타이 없이). 단정한 셔츠로 다른 부서임을 보인다. */
+function addCollar(torso: THREE.Group, look: CrewLook) {
+  const shirt = matte(new THREE.Color(look.top).lerp(new THREE.Color("#FFFFFF"), 0.35).getStyle(), 0.85);
+  for (const side of [-1, 1]) {
+    place(turn(box(0.065, 0.032, 0.02, 0.009, shirt), 0, side * 18, side * 28), side * 0.04, 0.333, -torsoRadius(0.333) - 0.004, torso);
+  }
+  // 앞 단추 줄
+  for (const y of [0.13, 0.2, 0.27]) place(sphere(0.008, satin("#FBF8F1", 0.3), 10), 0.0, y, -torsoRadius(y) - 0.003, torso);
+}
+
+/** 왼손 메모장과 펜. */
+function buildNotepad(hand: THREE.Group): THREE.Group {
+  const pad = place(group("notepad"), 0, -0.02, -0.06, hand);
+  pad.add(box(0.11, 0.15, 0.014, 0.006, matte("#E07A3F", 0.7)));
+  place(box(0.1, 0.14, 0.006, 0.003, matte("#FFFDF5", 0.8)), 0, -0.003, -0.009, pad);
+  for (const y of [0.03, 0.0, -0.03]) place(box(0.07, 0.004, 0.002, 0.001, matte("#B9B2A2")), -0.005, y, -0.013, pad);
+  place(turn(capsule(0.005, 0.13, satin("#2B3A67", 0.4), 8), 0, 0, -30), 0.07, 0.0, -0.01, pad);
+  pad.visible = false;
+  return pad;
 }
 
 /** 등에 메는 가방과 어깨 멜빵. */
