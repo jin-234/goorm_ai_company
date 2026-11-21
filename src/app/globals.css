@@ -786,6 +786,11 @@ label.stack {
 /* 이 배치에는 왼쪽 카드가 없으니(맥 앱처럼) 위 막대의 '지금 할 일' 버튼을 보인다. */
 .o3 .topbar-now {
   display: inline-flex !important;
+  /* flex로 바꾸면 글자가 위로 붙으니 가로·세로 가운데로 */
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 /* 무대 안 토스트는 무대 기준으로 놓는다. */
