@@ -257,21 +257,29 @@ export function shareStageOf(view: OfficeView): string | null {
   return share.stage ?? null;
 }
 
-/** 맥 앱 기본 창(1440×900, 16:10)을 기준으로 화면 전체를 고정한다. 창 크기와 상관없이 같은 구도로 보이고, 창에 맞춰 통째로 확대·축소한다. */
+/**
+ * 맥 앱 기본 창(1440×900, 16:10)을 기준 크기로 삼아 화면 전체를 확대·축소한다.
+ * 배율은 기준 크기가 창 안에 들어오게 정하고(글자·패널 크기 유지), 무대 크기는 창 비율에 맞춰 남는 쪽으로 늘린다.
+ * 그래서 창 비율이 16:10이 아니어도 가장자리 여백 없이 창을 꽉 채우고, 잘리는 곳도 없다.
+ * (3D 사무실은 캔버스 비율에 맞춰 전체 구도를 다시 잡는다 — office3d/camera.ts)
+ */
 const STAGE_W = 1440;
 const STAGE_H = 900;
 
 function FixedStage({ children }: { children: ReactNode }) {
-  const [scale, setScale] = useState(1);
+  const [box, setBox] = useState({ scale: 1, w: STAGE_W, h: STAGE_H });
   useEffect(() => {
-    const fit = () => setScale(Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H));
+    const fit = () => {
+      const scale = Math.min(window.innerWidth / STAGE_W, window.innerHeight / STAGE_H);
+      setBox({ scale, w: window.innerWidth / scale, h: window.innerHeight / scale });
+    };
     fit();
     window.addEventListener("resize", fit);
     return () => window.removeEventListener("resize", fit);
   }, []);
   return (
     <div className="o3-frame">
-      <div className="o3-scaler" style={{ width: STAGE_W, height: STAGE_H, transform: `translate(-50%, -50%) scale(${scale})` }}>
+      <div className="o3-scaler" style={{ width: box.w, height: box.h, transform: `translate(-50%, -50%) scale(${box.scale})` }}>
         {children}
       </div>
     </div>
