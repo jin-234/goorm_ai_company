@@ -109,7 +109,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
     <PanelHeader
       place="회의실 · 타 부서 공유"
       title="오늘 한 일 발표"
-      detail={"기획팀이 회의실에 와 있습니다. 오늘 한 일을 발표해 주세요.\nAI 기획자는 사용자 안내를 쓰려고, 누가 무엇을 할 수 있게 됐는지 묻습니다."}
+      detail={"기획팀·디자인팀 담당자가 회의실에 와 있습니다. 오늘 한 일을 발표해 주세요.\nAI 기획자는 사용자 안내를 쓰려고, 누가 무엇을 할 수 있게 됐는지 묻습니다."}
     />
   );
 
@@ -173,7 +173,7 @@ export function Share({ office, view, onGo }: { office: OfficeHandle; view: Offi
 
       <Card title="AI 기획자는 이런 일을 합니다 (가상 역할)">
         <p className="small pre" style={{ margin: 0 }}>
-          {"결정·책임지는 것: 사용자 안내 초안, 화면 흐름, 출시 범위.\n그래서 이것에 필요한 것만 묻습니다. 기술 퀴즈나 채점은 하지 않습니다."}
+          {"결정·책임지는 것: 사용자 안내 초안, 화면 흐름, 출시 범위.\n그래서 이것에 필요한 것만 묻습니다. 기술 퀴즈나 채점은 하지 않습니다.\n질문은 AI 기획자가 하고, AI 디자이너는 함께 듣기만 합니다."}
         </p>
       </Card>
 
