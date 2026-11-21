@@ -507,21 +507,25 @@ const LABELS: { key: string; text: string; at: [number, number, number]; place: 
 ];
 
 function Labels({ onClick, hidden, host, meetingMode, reviewing }: { onClick: (p: ClickPlace) => void; hidden: boolean; host: React.RefObject<HTMLDivElement | null>; meetingMode: MeetingMode; reviewing: boolean }) {
-  // 회의실: 아침보고(meeting) ↔ 부서 회의(share). 팀장 자리: 사전 보고 중이면 공유 흐름(share)을 연다. key는 고정.
+  // 회의실: 아침보고 때만 이름표를 띄운다. 부서 회의 중에는 손님 머리 위 팀 이름과 겹치고 굳이 필요 없어 감춘다(사용자 요청).
+  // 팀장 자리: 사전 보고 중이면 공유 흐름(share)을 연다. key는 고정하고, 감출 때도 떼지 않는다(Html을 지웠다 만들면 React 경고).
   const labels = LABELS.map((l) => {
-    if (l.key === "meeting-room" && meetingMode === "share") return { ...l, text: "회의실 · 부서 회의", place: "share" as ClickPlace };
+    if (l.key === "meeting-room" && meetingMode === "share") return { ...l, text: "회의실 · 부서 회의", place: "share" as ClickPlace, off: true };
     if (l.key === "manager" && reviewing) return { ...l, text: "팀장 자리 · 사전 보고", place: "share" as ClickPlace };
     return l;
   });
   return (
     <>
-      {labels.map((l) => (
-        <Html key={l.key} portal={host as React.MutableRefObject<HTMLElement>} position={l.at} center zIndexRange={[10, 0]} style={{ visibility: hidden ? "hidden" : "visible" }}>
-          <button type="button" style={labelStyle} onClick={() => onClick(l.place)} tabIndex={hidden ? -1 : 0} aria-hidden={hidden}>
-            {l.text}
-          </button>
-        </Html>
-      ))}
+      {labels.map((l) => {
+        const off = hidden || ("off" in l && l.off === true);
+        return (
+          <Html key={l.key} portal={host as React.MutableRefObject<HTMLElement>} position={l.at} center zIndexRange={[10, 0]} style={{ visibility: off ? "hidden" : "visible" }}>
+            <button type="button" style={labelStyle} onClick={() => onClick(l.place)} tabIndex={off ? -1 : 0} aria-hidden={off}>
+              {l.text}
+            </button>
+          </Html>
+        );
+      })}
     </>
   );
 }
