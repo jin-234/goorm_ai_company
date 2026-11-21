@@ -49,7 +49,17 @@ describe("행동 API로 하루 보내기", () => {
       (await withOffice("a", (o) => applyAction(o, body), { store, realNow: (t += 1000) })).office;
 
     await expect(act({ type: "onboard", name: "박취준", activityStart: "25:00" })).rejects.toBeInstanceOf(BadRequest);
-    let office = await act({ type: "onboard", name: "박취준", targetRole: "프런트엔드", experience: "독학", activityStart: "10:00", activityEnd: "19:00" });
+    await expect(act({ type: "onboard", name: "박취준", enforcement: "loose" })).rejects.toBeInstanceOf(BadRequest);
+    let office = await act({
+      type: "onboard",
+      name: "박취준",
+      targetRole: "프런트엔드",
+      experience: "독학",
+      activityStart: "10:00",
+      activityEnd: "19:00",
+      enforcement: "light",
+    });
+    expect(office.profile.enforcement).toBe("light");
     expect(hm(office.now)).toBe("09:55");
     office = await act({ type: "checkIn" });
     expect(office.day.phase).toBe("morningPT");
@@ -94,7 +104,7 @@ describe("행동 API로 하루 보내기", () => {
   test("알 수 없는 행동과 잘못된 값은 BadRequest", async () => {
     const store = new MemoryStore();
     await expect(withOffice("a", (o) => applyAction(o, { type: "fly" }), { store })).rejects.toBeInstanceOf(BadRequest);
-    await expect(withOffice("a", (o) => applyAction(o, { type: "observePresence", state: "absent" }), { store })).rejects.toBeInstanceOf(
+    await expect(withOffice("a", (o) => applyAction(o, { type: "observePresence", state: "sleeping" }), { store })).rejects.toBeInstanceOf(
       BadRequest,
     );
     await expect(withOffice("a", (o) => applyAction(o, { type: "submitWork", taskId: "x", kind: "file", content: "a" }), { store })).rejects.toBeInstanceOf(
@@ -114,12 +124,14 @@ describe("행동 API로 하루 보내기", () => {
     const store = new MemoryStore();
     const { office } = await withOffice("a", (o) => o.completeOnboarding("김서울"), { store, realNow: realStart });
     const view = officeView(office);
-    expect(view.phase).toMatchObject({ value: "beforeCheckIn", label: "출근 전", headline: "출근 전 · 활동 시작 09:00" });
+    // 기본 관리 강도는 보통이다.
+    expect(view.enforcement).toMatchObject({ chosen: "standard", level: "standard", lowered: false });
+    expect(view.phase).toMatchObject({ value: "beforeCheckIn", label: "출근 전", headline: "출근 전 · 09:00까지 출근" });
     expect(view.seat.kind).toBe("beforeCheckIn");
     expect(view.can).toMatchObject({ checkIn: true, confirmTasks: false, startNextWorkday: true });
     expect(view.mail.unreadCount).toBe(2);
     expect(view.weekly.lastSubmitted).toBeNull();
     expect(JSON.parse(JSON.stringify(view)).profile.name).toBe("김서울");
-    expect(JSON.stringify(view)).not.toMatch(/monthStats|lateFee|presence|overtime/);
+    expect(view.attendance.month).toMatchObject({ late: 0, absent: 0, points: 0, estimatedFee: 0 });
   });
 });

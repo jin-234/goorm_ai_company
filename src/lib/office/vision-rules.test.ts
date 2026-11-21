@@ -42,16 +42,17 @@ describe("입사와 출근", () => {
     expect(office.onboarded).toBe(false);
   });
 
-  test("정해진 09시가 아니어도 지각 판정 없이 출근하고 시작 시각만 남긴다", () => {
+  test("가볍게: 정해진 09시가 아니어도 지각 판정 없이 출근하고 시작 시각만 남긴다", () => {
     const office = makeOffice();
     office.advance(at(monday, 13 * 60 + 7));
-    expect(office.checkIn().checkInAt).toBe(office.now);
+    expect(office.checkIn()).toEqual({ checkInAt: office.now, late: false });
     expect(office.day.phase).toBe("morningPT");
     expect(office.day.events.map((e) => e.kind)).toEqual(["checkIn"]);
-    expect(JSON.stringify(office.toJSON())).not.toMatch(/late|absent|camera|overtime/i);
+    expect(office.day.isLate).toBe(false);
+    expect(office.mails.some((m) => m.kind === "attendance")).toBe(false);
   });
 
-  test("시각이 흘러도 단계는 사용자 행동으로만 넘어가고, 마감 시각이 지나면 안내만 한다", () => {
+  test("가볍게: 시각이 흘러도 단계는 사용자 행동으로만 넘어가고, 마감 시각이 지나면 안내만 한다", () => {
     const office = workingOffice();
     office.advance(at(monday, 23 * 60));
     expect(office.day.phase).toBe("working");
