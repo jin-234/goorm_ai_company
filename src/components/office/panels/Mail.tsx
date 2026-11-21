@@ -4,7 +4,7 @@ import { useState } from "react";
 import { dayKeyOf, hm, koreanShort } from "@/lib/office/time";
 import type { OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
-import { Card, Notice, PanelHeader, type PlaceId } from "../ui";
+import { Card, PanelHeader, type PlaceId } from "../ui";
 
 type Mail = OfficeView["mail"]["inbox"][number];
 
@@ -110,7 +110,6 @@ export function MailBox({ office, view, onGo }: { office: OfficeHandle; view: Of
 }
 
 function MailDetail({ mail, onBack }: { mail: Mail; onBack: () => void }) {
-  const isFeedback = mail.kind === "weeklyFeedback";
   return (
     <div className="panel">
       <div>
@@ -133,15 +132,6 @@ function MailDetail({ mail, onBack }: { mail: Mail; onBack: () => void }) {
             {koreanShort(dayKeyOf(mail.sentAt))} {hm(mail.sentAt)}
           </span>
         </div>
-        {isFeedback ? (
-          mail.replySource === "solar" ? (
-            <Notice kind="ok" title="Upstage Solar가 쓴 답장" />
-          ) : (
-            <Notice kind="info" title="Solar 미연결 · 정해진 문구의 기본 답장">
-              {"서버에 UPSTAGE_API_KEY를 넣으면\n보고서를 읽고 쓴 답장을 받습니다."}
-            </Notice>
-          )
-        ) : null}
         <div className="pre" style={{ fontSize: 16, lineHeight: 1.75, userSelect: "text" }}>
           {mail.body}
         </div>

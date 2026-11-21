@@ -53,7 +53,7 @@ export function Settings({ office }: { office: OfficeHandle }) {
         )}
         {solar && !solar.hasKey ? (
           <Notice kind="warning" title="Solar 키가 없습니다">
-            {"서버 환경변수 UPSTAGE_API_KEY를 넣어 주세요.\n키가 없어도 업무 초안과 주간 답장은 정해진 규칙으로 만듭니다."}
+            {"서버 환경변수 UPSTAGE_API_KEY를 넣어 주세요.\n키가 없으면 아침보고 제안·회의실 발표 대화·마감 요약이 예시 응답으로 이어집니다."}
           </Notice>
         ) : null}
         <button className="btn secondary" onClick={check} disabled={pinging}>
