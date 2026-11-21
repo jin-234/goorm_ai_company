@@ -1,241 +1,287 @@
+/**
+ * VISION COMPANY 데이터 모델(개정 기획서 4.5).
+ * 근태·통제 대신 실행·설명·기록을 남긴다. 카메라·지각·강제 추가근무는 없다.
+ */
 import { WorkRules } from "./rules";
 import type { DayKey, Instant } from "./time";
 
-// MARK: 사원
+/** 저장 상태의 형식 번호. 형식이 바뀌면 옛 상태는 버리고 새로 시작한다. */
+export const STATE_VERSION = 2;
+
+// MARK: 사원(Profile)
 
 export interface EmployeeProfile {
   name: string;
-  /** 근무 시작 시각(자정 기준 분). 기본 09:00 */
-  workStart: number;
-  /** 근무 종료 시각(자정 기준 분). 기본 18:00 */
-  workEnd: number;
+  /** 희망 직무. 예: 프런트엔드 개발 */
+  targetRole: string;
+  /** 현재 경험. 예: React 독학 3개월, 팀 프로젝트 1회 */
+  experience: string;
+  /** 사용자가 정한 활동 시작 시각(자정 기준 분). 강제하지 않고 안내에만 쓴다. */
+  activityStart: number;
+  /** 사용자가 정한 활동 마감 시각(자정 기준 분). 지나면 '마감할 때'라고 안내만 한다. */
+  activityEnd: number;
 }
 
 export function defaultProfile(name = "김서울"): EmployeeProfile {
-  return { name, workStart: WorkRules.defaultWorkStart, workEnd: WorkRules.defaultWorkEnd };
+  return {
+    name,
+    targetRole: "",
+    experience: "",
+    activityStart: WorkRules.defaultActivityStart,
+    activityEnd: WorkRules.defaultActivityEnd,
+  };
 }
-
-/** 저녁시간이 끝나고 추가근무가 시작되는 시각. */
-export const overtimeStartOf = (p: EmployeeProfile) => p.workEnd + WorkRules.dinnerMinutes;
-/** 추가근무가 끝나는 시각. */
-export const overtimeEndOf = (p: EmployeeProfile) => overtimeStartOf(p) + WorkRules.overtimeMinutes;
 
 // MARK: 하루의 단계
 
-export type Phase =
-  | "beforeCheckIn"
-  | "morningPT"
-  | "working"
-  | "checkoutReview"
-  | "dinner"
-  | "overtime"
-  | "overtimeReview"
-  | "off";
+/** 단계는 사용자 행동으로만 넘어간다. 시각에 따른 강제 이동은 없다. */
+export type Phase = "beforeCheckIn" | "morningPT" | "working" | "sharing" | "checkoutReview" | "off";
+
+export const PHASES: Phase[] = ["beforeCheckIn", "morningPT", "working", "sharing", "checkoutReview", "off"];
 
 export const PHASE_LABEL: Record<Phase, string> = {
   beforeCheckIn: "출근 전",
-  morningPT: "아침 PT",
-  working: "근무 중",
-  checkoutReview: "퇴근 점검",
-  dinner: "저녁시간",
-  overtime: "추가근무",
-  overtimeReview: "추가근무 종료",
-  off: "퇴근",
+  morningPT: "아침보고",
+  working: "수행 중",
+  sharing: "기획팀 공유",
+  checkoutReview: "하루 마감",
+  off: "마감 완료",
 };
 
-// MARK: 업무
+// MARK: 과제(Task)
 
-/** 업무 중요도. 1 이월 가능 / 2 당일 완료 / 3 필수 마감 */
-export type TaskLevel = 1 | 2 | 3;
+/** draft는 아침보고 초안(화면이 들고 있음), 서버에는 confirmed부터 저장한다. */
+export type TaskStatus = "confirmed" | "in_progress" | "submitted" | "incomplete" | "reviewed";
 
-export const isTaskLevel = (value: unknown): value is TaskLevel => value === 1 || value === 2 || value === 3;
+/** 마감 때 제출하지 못한 과제의 처리. */
+export type TaskOutcome = "adjust" | "carryOver" | "endToday";
 
-export const TaskLevelInfo = {
-  short: (level: TaskLevel) => `${level}단계`,
-  meaning: (level: TaskLevel) => ({ 1: "이월 가능", 2: "당일 완료", 3: "필수 마감" })[level],
-  label: (level: TaskLevel) => `${level}단계 · ${TaskLevelInfo.meaning(level)}`,
-  ruleAtWorkEnd: (level: TaskLevel) =>
-    ({
-      1: "미완료 이유와 다음 근무일 계획을 메일로 보고하고 이월합니다.",
-      2: "저녁시간 뒤 추가근무에서 끝냅니다.",
-      3: "추가근무에서 가장 먼저 진행합니다.",
-    })[level],
+export const TASK_OUTCOMES: TaskOutcome[] = ["adjust", "carryOver", "endToday"];
+
+export const TASK_OUTCOME_LABEL: Record<TaskOutcome, string> = {
+  adjust: "범위 조정",
+  carryOver: "다음 활동일로 이월",
+  endToday: "오늘 종료",
 };
 
-export type TaskStatus = "open" | "done" | "carried";
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  confirmed: "확정",
+  in_progress: "진행 중",
+  submitted: "제출함",
+  incomplete: "미완료",
+  reviewed: "마감 확인",
+};
 
-/** 아침 PT에서 확정한 업무. */
 export interface WorkTask {
   id: string;
   title: string;
-  level: TaskLevel;
-  /** 마감 시각(자정 기준 분). */
-  due: number;
-  doneCriteria: string;
+  /** 완료 기준. 무엇이 되면 끝인지. */
+  completionCriteria: string;
+  /** 공유 형태. 예: 화면 캡처와 3줄 설명 */
+  shareForm: string;
   status: TaskStatus;
-  doneAt: Instant | null;
-  /** 결과물. 메모, 링크, 파일 이름 등. */
-  deliverable: string;
-  /** 이월된 업무라면 처음 확정한 날. */
+  confirmedAt: Instant;
+  /** 이월된 과제라면 처음 확정한 날. */
   carriedFrom: DayKey | null;
+  /** 이월 원본 ID. 여러 번 이월돼도 맨 처음 과제의 ID를 유지한다. */
+  carriedFromTaskId: string | null;
   carryCount: number;
+  /** 마감 때 고른 처리. 제출한 과제는 null. */
+  outcome: TaskOutcome | null;
+  /** 미완료 사유(선택). */
+  outcomeReason: string;
 }
 
-export function newTask(fields: Pick<WorkTask, "title" | "level" | "due" | "doneCriteria"> & Partial<WorkTask>): WorkTask {
+export interface TaskInput {
+  title: string;
+  completionCriteria: string;
+  shareForm: string;
+}
+
+export function newTask(fields: TaskInput & Partial<WorkTask> & { confirmedAt: Instant }): WorkTask {
   return {
     id: crypto.randomUUID(),
-    status: "open",
-    doneAt: null,
-    deliverable: "",
+    status: "confirmed",
     carriedFrom: null,
+    carriedFromTaskId: null,
     carryCount: 0,
+    outcome: null,
+    outcomeReason: "",
     ...fields,
   };
 }
 
-/** 아침 PT 초안의 업무 한 줄. 전사문에 없는 값은 null이고 화면에 '확인 필요'로 보인다. */
-export interface TaskDraft {
+// MARK: 제출물(Submission)
+
+export type SubmissionKind = "text" | "link" | "code";
+export const SUBMISSION_KINDS: SubmissionKind[] = ["text", "link", "code"];
+
+/**
+ * 실제로 읽은 범위. 링크는 주소만 적은 것이라 본문을 읽지 않았다(notRead).
+ * 글·코드는 붙여 넣은 내용 자체를 읽을 수 있다(read).
+ */
+export type ReadScope = "read" | "notRead";
+
+export interface Submission {
   id: string;
-  title: string | null;
-  level: TaskLevel | null;
-  due: number | null;
-  doneCriteria: string | null;
-  carriedFrom: DayKey | null;
-  carryCount: number;
+  taskId: string;
+  kind: SubmissionKind;
+  content: string;
+  at: Instant;
+  readScope: ReadScope;
 }
 
-export function newDraft(fields: Partial<TaskDraft> = {}): TaskDraft {
+export const readScopeOf = (kind: SubmissionKind): ReadScope => (kind === "link" ? "notRead" : "read");
+
+// MARK: 기획팀 공유(ReportTurn)
+
+export type ShareState = "awaiting_explanation" | "clarifying" | "ready_to_summarize" | "user_confirmed";
+
+/** AI 기획자 응답(개정 기획서 4.3 E). */
+export interface PlannerReply {
+  acknowledgement: string;
+  /** 질문이 필요 없거나 끝낼 때는 빈 문자열. */
+  question: string;
+  question_reason: string;
+  known_facts: string[];
+  open_questions: string[];
+  evidence_refs: string[];
+  can_finish: boolean;
+}
+
+/** solar = AI가 답함, manual = AI 미연결이라 정해진 안내 문구(AI가 말한 것처럼 표시하지 않는다). */
+export type ColleagueSource = "solar" | "manual";
+
+export interface ShareTurn {
+  id: string;
+  role: "user" | "planner";
+  at: Instant;
+  /** 사용자가 쓴 글. */
+  text?: string;
+  /** 기획자 응답. */
+  reply?: PlannerReply;
+  source?: ColleagueSource;
+}
+
+/** AI 기획자 질문 상한(기본은 1~2개). 프롬프트와 규칙이 같이 쓴다. */
+export const MAX_SHARE_QUESTIONS = WorkRules.maxShareQuestions;
+
+export interface ShareSession {
+  state: ShareState | null;
+  questionCount: number;
+  maxQuestions: number;
+  turns: ShareTurn[];
+  /** 기획자가 지금까지 알게 된 사실(마지막 응답의 known_facts). 반복 질문을 줄이는 데 쓴다. */
+  knownFacts: string[];
+  /** 아직 남은 질문(마지막 응답의 open_questions). */
+  openQuestions: string[];
+  /** 공유를 끝낸 방식. */
+  endedBy: "done" | "userStopped" | "skipped" | null;
+}
+
+export function newShareSession(): ShareSession {
+  return { state: null, questionCount: 0, maxQuestions: MAX_SHARE_QUESTIONS, turns: [], knownFacts: [], openQuestions: [], endedBy: null };
+}
+
+// MARK: 하루 마감(DailyReview)
+
+/** 마감 요약(개정 기획서 4.3 E). */
+export interface Review {
+  reported_work: string;
+  explained_learning: string;
+  artifact_observations: string;
+  shared_scope_and_limits: string;
+  open_questions: string[];
+  job_connection: string;
+  next_action: string;
+  evidence_refs: string[];
+}
+
+export const REVIEW_TEXT_FIELDS = [
+  "reported_work",
+  "explained_learning",
+  "artifact_observations",
+  "shared_scope_and_limits",
+  "job_connection",
+  "next_action",
+] as const;
+export const REVIEW_LIST_FIELDS = ["open_questions", "evidence_refs"] as const;
+
+export function emptyReview(): Review {
   return {
-    id: crypto.randomUUID(),
-    title: null,
-    level: null,
-    due: null,
-    doneCriteria: null,
-    carriedFrom: null,
-    carryCount: 0,
-    ...fields,
+    reported_work: "",
+    explained_learning: "",
+    artifact_observations: "",
+    shared_scope_and_limits: "",
+    open_questions: [],
+    job_connection: "",
+    next_action: "",
+    evidence_refs: [],
   };
 }
 
-export const isCarriedDraft = (d: TaskDraft) => d.carriedFrom != null;
-
-/** 아직 채우지 않은 칸의 이름. */
-export function missingFields(d: TaskDraft): string[] {
-  const missing: string[] = [];
-  if (!(d.title ?? "").trim()) missing.push("업무명");
-  if (d.level == null) missing.push("중요도");
-  if (d.due == null) missing.push("마감");
-  if (!(d.doneCriteria ?? "").trim()) missing.push("완료 기준");
-  return missing;
+export interface DayReview {
+  /** 지금 화면에 보이는 초안(사용자 수정 포함). */
+  draft: Review | null;
+  /** 초안을 처음 만든 곳. solar = AI 초안, manual = AI 미연결 수동 양식. */
+  draftSource: ColleagueSource | null;
+  /** AI가 만든 원래 초안. 사용자 수정과 구분해 보존한다. */
+  aiDraft: Review | null;
+  /** 사용자가 초안을 고쳤는지. */
+  editedByUser: boolean;
+  confirmed: Review | null;
+  confirmedAt: Instant | null;
+  choices: Record<string, TaskOutcome>;
 }
 
-/** 업무 초안을 누가 만들었는지. */
-export type DraftSource = "solar" | "localRules" | "manual";
-
-export const DRAFT_SOURCE_LABEL: Record<DraftSource, string> = {
-  solar: "Solar가 정리한 초안",
-  localRules: "서버 안 규칙으로 정리한 초안 (Solar 미연결)",
-  manual: "직접 입력",
-};
-
-// MARK: 근태
-
-export type AllowanceKind = "lunch" | "away" | "dinner";
-export const ALLOWANCE_LABEL: Record<AllowanceKind, string> = { lunch: "점심", away: "자리 비움", dinner: "저녁시간" };
-
-/** 허용된 자리 비움. 이 시간 안에는 착석 확인을 쉰다. */
-export interface Allowance {
-  id: string;
-  kind: AllowanceKind;
-  reason: string;
-  start: Instant;
-  /** 등록된 종료 시각. 시연 시간을 건너뛰어도 이 시각에 만료한다. */
-  end: Instant;
-  /** 실제로 끝난 시각. 먼저 복귀했으면 end보다 이르다. */
-  endedAt: Instant | null;
+export function newDayReview(): DayReview {
+  return { draft: null, draftSource: null, aiDraft: null, editedByUser: false, confirmed: null, confirmedAt: null, choices: {} };
 }
 
-/** 카메라가 본 자리 상태. */
-export type PresenceState = "present" | "absent" | "cameraOff" | "unknown";
-export const PRESENCE_STATES: PresenceState[] = ["present", "absent", "cameraOff", "unknown"];
+// MARK: 활동 기록(ActivityEvent)
 
-/** 허용 시간 밖에서 자리가 비었거나(unauthorized) 카메라가 꺼져 있던(cameraOff) 구간. */
-export interface AwaySpan {
-  id: string;
-  kind: "unauthorized" | "cameraOff";
-  start: Instant;
-  end: Instant | null;
-}
-
-export type AttendanceEventKind =
+export type ActivityEventKind =
   | "checkIn"
-  | "late"
-  | "absentCandidate"
+  | "goalSaved"
   | "tasksConfirmed"
-  | "lunchStart"
-  | "lunchEnd"
-  | "awayStart"
-  | "awayEnd"
-  | "unauthorizedAwayStart"
-  | "unauthorizedAwayEnd"
-  | "cameraOff"
-  | "cameraOn"
-  | "checkoutReview"
+  | "taskStatus"
+  | "submission"
+  | "shareStart"
+  | "shareTurn"
+  | "shareEnd"
+  | "reviewDraft"
+  | "reviewConfirmed"
   | "carryOver"
-  | "dinnerStart"
-  | "overtimeStart"
-  | "overtimeEnd"
-  | "supplementMissed"
-  | "off"
+  | "endToday"
+  | "adjust"
   | "timeSkip"
   | "weeklyReport"
   | "note";
 
-/** 근태 기록 한 줄. */
-export interface AttendanceEvent {
+export interface ActivityEvent {
   id: string;
   at: Instant;
-  kind: AttendanceEventKind;
+  kind: ActivityEventKind;
   text: string;
+  /** 대상 과제·제출물 ID. */
+  targetId?: string;
 }
 
-const WARNING_EVENTS: AttendanceEventKind[] = ["late", "absentCandidate", "unauthorizedAwayStart", "cameraOff", "supplementMissed"];
-export const isWarningEvent = (e: AttendanceEvent) => WARNING_EVENTS.includes(e.kind);
-
-/** 하루의 출근 판정. */
-export type Attendance = "onTime" | "late" | "absentCandidate";
-export const ATTENDANCE_LABEL: Record<Attendance, string> = { onTime: "정상 출근", late: "지각", absentCandidate: "결근 후보" };
-
-export type OvertimeOutcome = "completed" | "ranToEnd" | "abandoned";
-export const OVERTIME_LABEL: Record<OvertimeOutcome, string> = {
-  completed: "추가근무 완료",
-  ranToEnd: "추가근무 종료 시각까지 근무",
-  abandoned: "보충근무 미이행",
-};
-
-// MARK: 오늘
+// MARK: 오늘(DailySession)
 
 export interface WorkDay {
   date: DayKey;
   phase: Phase;
   checkInAt: Instant | null;
-  isLate: boolean;
-  absentCandidate: boolean;
-  /** 아침 PT 전사문. 연결에 실패해도 지우지 않는다. */
-  transcript: string;
-  drafts: TaskDraft[];
-  draftSource: DraftSource | null;
+  /** 아침보고에 쓴 오늘 목표 원문. */
+  goal: string;
   tasks: WorkTask[];
   confirmedAt: Instant | null;
-  allowances: Allowance[];
-  lunchUsed: boolean;
-  awaySpans: AwaySpan[];
-  events: AttendanceEvent[];
-  checkoutAt: Instant | null;
-  /** 퇴근 점검에서 추가근무에 배정된 업무. */
-  overtimeTaskIds: string[];
-  overtime: OvertimeOutcome | null;
-  noMorningPT: boolean;
+  submissions: Submission[];
+  share: ShareSession;
+  review: DayReview;
+  events: ActivityEvent[];
+  closedAt: Instant | null;
   weeklySubmitted: boolean;
 }
 
@@ -244,81 +290,51 @@ export function newWorkDay(date: DayKey): WorkDay {
     date,
     phase: "beforeCheckIn",
     checkInAt: null,
-    isLate: false,
-    absentCandidate: false,
-    transcript: "",
-    drafts: [],
-    draftSource: null,
+    goal: "",
     tasks: [],
     confirmedAt: null,
-    allowances: [],
-    lunchUsed: false,
-    awaySpans: [],
+    submissions: [],
+    share: newShareSession(),
+    review: newDayReview(),
     events: [],
-    checkoutAt: null,
-    overtimeTaskIds: [],
-    overtime: null,
-    noMorningPT: false,
+    closedAt: null,
     weeklySubmitted: false,
   };
 }
 
-export function attendanceOf(day: WorkDay): Attendance | null {
-  if (day.checkInAt != null) return day.isLate ? "late" : "onTime";
-  return day.absentCandidate ? "absentCandidate" : null;
-}
-
-/** 마감한 근무일의 요약. */
+/** 지난 활동일 기록. 출근하지 않은 날(휴식일)은 남기지 않는다. */
 export interface DayRecord {
   date: DayKey;
-  attendance: Attendance;
-  checkInAt: Instant | null;
-  checkoutAt: Instant | null;
+  checkInAt: Instant;
+  closedAt: Instant | null;
+  goal: string;
   tasks: WorkTask[];
-  unauthorizedAwayMinutes: number;
-  cameraOffMinutes: number;
-  overtime: OvertimeOutcome | null;
-  noMorningPT: boolean;
-  events: AttendanceEvent[];
+  submissions: Submission[];
+  shareTurns: ShareTurn[];
+  review: Review | null;
+  /** 활동 인정 기준 초안: 제출물 또는 공유 설명이 있고 마감을 확정한 날. */
+  counted: boolean;
 }
 
 // MARK: 사내 메일
 
 export type MailParty = "me" | "manager" | "hr";
 
-export type MailKind =
-  | "welcome"
-  | "notice"
-  | "tasksConfirmed"
-  | "lunchRequest"
-  | "lunchApproval"
-  | "carryReport"
-  | "carryAccepted"
-  | "overtimeAssigned"
-  | "overtimeResult"
-  | "supplementMissed"
-  | "offConfirmed"
-  | "attendance"
-  | "weeklyReport"
-  | "weeklyFeedback";
+export type MailKind = "welcome" | "notice" | "tasksConfirmed" | "dayClosed" | "weeklyReport" | "weeklyFeedback";
 
-/** 메일 목록에 붙는 분류 이름. */
 export function mailTag(kind: MailKind): string {
   switch (kind) {
     case "welcome":
-      return "인사";
+      return "안내";
     case "notice":
       return "공지";
     case "tasksConfirmed":
-    case "carryReport":
-    case "carryAccepted":
+    case "dayClosed":
       return "업무";
     case "weeklyReport":
       return "주간보고";
     case "weeklyFeedback":
       return "주간 피드백";
-    default:
-      return "근태";
   }
 }
 
@@ -334,7 +350,6 @@ export interface Mail {
   subject: string;
   body: string;
   isRead: boolean;
-  /** 주간보고 답장처럼 따뜻한 문체로 쓴 메일인지. 평소 업무 메일은 건조하게 쓴다. */
   isWarm: boolean;
   replySource: ReplySource | null;
 }
@@ -347,11 +362,14 @@ export const isIncoming = (m: Mail) => m.to === "me";
 
 // MARK: 등장인물
 
-/** 사무실 사람들. 나를 뺀 모두가 AI다. */
+/** 사무실 사람들. 나를 뺀 모두가 AI이고, 가상 역할이다. */
 export const Cast = {
   managerName: "한정민",
+  plannerName: "윤기획",
+  plannerTeam: "서비스 기획팀",
   peerNames: ["이하준", "박서윤"],
-  teamName: "가상회사 1팀",
+  teamName: "개발팀",
+  companyName: "VISION COMPANY",
 } as const;
 
 export function partyName(party: MailParty, myName: string): string {
@@ -359,7 +377,7 @@ export function partyName(party: MailParty, myName: string): string {
     case "me":
       return `${myName} 사원`;
     case "manager":
-      return `${Cast.managerName} 팀장`;
+      return `${Cast.managerName} 팀장 (AI)`;
     case "hr":
       return "인사팀";
   }
@@ -371,30 +389,16 @@ export interface WeeklyReport {
   id: string;
   weekOf: DayKey;
   submittedAt: Instant | null;
-  /** 이번 주 완료한 업무와 결과물 */
   completed: string;
-  /** 미완료 업무와 이유 */
   incomplete: string;
-  /** 다음 주 목표 */
   nextGoals: string;
-  /** 상사 답장 메일. 아직 받지 못했으면 null. */
   replyMailId: string | null;
 }
 
 export function newWeeklyReport(weekOf: DayKey, fields: Partial<WeeklyReport> = {}): WeeklyReport {
-  return {
-    id: crypto.randomUUID(),
-    weekOf,
-    submittedAt: null,
-    completed: "",
-    incomplete: "",
-    nextGoals: "",
-    replyMailId: null,
-    ...fields,
-  };
+  return { id: crypto.randomUUID(), weekOf, submittedAt: null, completed: "", incomplete: "", nextGoals: "", replyMailId: null, ...fields };
 }
 
-/** 아직 쓰지 않은 칸의 이름. */
 export function missingSections(r: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): string[] {
   const missing: string[] = [];
   if (!r.completed.trim()) missing.push("이번 주 완료한 업무와 결과물");
@@ -403,7 +407,6 @@ export function missingSections(r: Pick<WeeklyReport, "completed" | "incomplete"
   return missing;
 }
 
-/** 메일과 Solar에 보내는 본문. */
 export function weeklyBodyText(r: Pick<WeeklyReport, "completed" | "incomplete" | "nextGoals">): string {
   return [
     "1. 이번 주 완료한 업무와 결과물",
@@ -417,13 +420,35 @@ export function weeklyBodyText(r: Pick<WeeklyReport, "completed" | "incomplete" 
   ].join("\n");
 }
 
-// MARK: 1단계 이월 보고
+// MARK: 옛 아침 PT 초안(전사문 → 업무 목록)
+// pt-parser와 Solar checklist가 아직 이 모양을 쓴다. 새 흐름의 과제는 위 TaskInput이다.
 
-export interface CarryReport {
-  /** 미완료 이유 */
-  reason: string;
-  /** 다음 근무일 완료 계획 */
-  plan: string;
+/** @deprecated 옛 업무 중요도. 새 흐름에서는 쓰지 않는다. */
+export type TaskLevel = 1 | 2 | 3;
+export const isTaskLevel = (value: unknown): value is TaskLevel => value === 1 || value === 2 || value === 3;
+
+/** @deprecated 옛 아침 PT 초안 한 줄. */
+export interface TaskDraft {
+  id: string;
+  title: string | null;
+  level: TaskLevel | null;
+  due: number | null;
+  doneCriteria: string | null;
+  carriedFrom: DayKey | null;
+  carryCount: number;
 }
 
-export const isCarryReportComplete = (r: CarryReport | undefined) => !!r && !!r.reason.trim() && !!r.plan.trim();
+/** @deprecated */
+export function newDraft(fields: Partial<TaskDraft> = {}): TaskDraft {
+  return { id: crypto.randomUUID(), title: null, level: null, due: null, doneCriteria: null, carriedFrom: null, carryCount: 0, ...fields };
+}
+
+/** @deprecated */
+export function missingFields(d: TaskDraft): string[] {
+  const missing: string[] = [];
+  if (!(d.title ?? "").trim()) missing.push("업무명");
+  if (d.level == null) missing.push("중요도");
+  if (d.due == null) missing.push("마감");
+  if (!(d.doneCriteria ?? "").trim()) missing.push("완료 기준");
+  return missing;
+}

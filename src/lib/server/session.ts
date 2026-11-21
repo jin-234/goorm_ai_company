@@ -32,7 +32,9 @@ export async function withOffice<T>(
 ): Promise<{ office: Office; result: T }> {
   const store = options.store ?? getStore();
   const realNow = options.realNow ?? Date.now();
-  const stored = await store.load(id);
+  const loaded = await store.load(id);
+  // 옛 근태 형식(지각·카메라)으로 저장된 상태는 이어 쓰지 않고 새로 시작한다.
+  const stored = loaded && Office.isCurrent(loaded.state) ? loaded : null;
   const office = stored ? Office.fromJSON(stored.state) : newOffice(realNow);
   if (stored) syncClock(office, stored.clockAnchor, realNow);
   const result = await work(office);
