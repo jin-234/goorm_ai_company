@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BLOCKERS, route, SEATS, SPOTS, type Spot, type Vec2 } from "./layout";
-import { COWORKERS, coworkerAt, crewAt, dayStart, meAt, planSummary } from "./schedule";
+import { BADGE_READER, BADGE_READER_FACE_Z, OUTSIDE_MAT } from "./layout";
+import { COWORKERS, coworkerAt, crewAt, dayStart, ENTRANCE, entranceAt, entrancePath, meAt, planSummary } from "./schedule";
 
 // 2026-11-16(월)~20(금) 한국 시각 자정.
 const DAYS = [16, 17, 18, 19, 20].map((d) => Date.UTC(2026, 10, d) - 9 * 3600_000);
@@ -154,13 +155,45 @@ describe("동료의 하루", () => {
     }
   });
 
-  it("아침 PT 중엔 청중 넷이 회의실 의자에 앉아 듣는다", () => {
+  it("아침보고는 AI 팀장과 둘이: 팀장만 회의실에 앉아 듣고 다른 동료는 자리에 있다", () => {
     const crew = crewAt(at(DAYS[0], 9, 2), { kind: "seated" }, "morningPT");
-    for (const id of ["director", "manager", "kwajang", "daeri"] as const) {
-      expect(crew[id].snapshot.pose).toBe("sitListen");
-      expect(crew[id].snapshot.position[0]).toBeLessThan(-3);
-    }
+    expect(crew.manager.snapshot.pose).toBe("sitListen");
+    expect(crew.manager.snapshot.position[0]).toBeLessThan(-3);
+    for (const id of ["director", "kwajang", "daeri"] as const) expect(crew[id].snapshot.position[0]).toBeGreaterThan(-3);
     expect(crew.me.snapshot.pose).toBe("present");
+  });
+
+  it("야근·저녁 외출은 없다: 활동 마감 15분 뒤엔 모두 나갔다", () => {
+    for (const day0 of DAYS) {
+      for (const id of COWORKERS) {
+        const { leave } = planSummary(id, day0);
+        expect(leave).toBeLessThan(at(day0, 18, 13));
+        expect(coworkerAt(id, at(day0, 18, 15)).snapshot.visible, id).toBe(false);
+      }
+    }
+  });
+
+  it("사용자가 정한 활동 시간을 따른다(13:00~22:00이면 11시엔 아무도 없고 12:59엔 모두 앉아 있다)", () => {
+    const window = { start: 13 * 60, end: 22 * 60 };
+    for (const id of COWORKERS) {
+      expect(coworkerAt(id, at(DAYS[1], 11), { window }).snapshot.visible, id).toBe(false);
+      expect(["sitType", "sitMug"]).toContain(coworkerAt(id, at(DAYS[1], 12, 59), { window }).snapshot.pose);
+      expect(coworkerAt(id, at(DAYS[1], 22, 15), { window }).snapshot.visible, `${id} 22:15`).toBe(false);
+      expect(planSummary(id, DAYS[1], window).lunch).toBeNull();
+    }
+  });
+
+  it("기획팀 공유 중엔 AI 기획자가 자리에 앉아 듣고, 나는 책상 앞에서 기획자를 보고 설명한다", () => {
+    for (const t of [at(DAYS[0], 14, 37), at(DAYS[0], 19, 30)]) {
+      const crew = crewAt(t, { kind: "seated" }, "sharing");
+      expect(crew.planner.snapshot.pose).toBe("sitListen");
+      const me = crew.me.snapshot;
+      expect(me.pose).toBe("present");
+      const p = crew.planner.snapshot.position;
+      expect(Math.abs(me.position[0] - p[0])).toBeLessThan(0.3);
+      expect(p[2] - me.position[2]).toBeGreaterThan(0.8); // 책상 너머
+      expect(p[2] - me.position[2]).toBeLessThan(1.6);
+    }
   });
 });
 
@@ -186,5 +219,43 @@ describe("나", () => {
     const me = meAt(t, { kind: "lunch" }, "working");
     expect(me.snapshot.visible).toBe(false);
     expect(me.desk.bagAtDesk).toBe(true);
+  });
+});
+
+describe("출근 입장 연출", () => {
+  it("단말기 앞에 서면 tapBadge 손 기준점(앞 0.22·오른쪽 0.15·높이 0.70)이 단말기 카드 면에 온다", () => {
+    // 나는 −Z를 보고 서므로 앞은 −Z, 오른쪽은 +X.
+    const hand = [OUTSIDE_MAT[0] + 0.15, 0.7, OUTSIDE_MAT[1] - 0.22];
+    expect(Math.abs(hand[0] - BADGE_READER[0])).toBeLessThan(0.01);
+    expect(Math.abs(hand[1] - BADGE_READER[1])).toBeLessThan(0.01);
+    expect(Math.abs(hand[2] - BADGE_READER_FACE_Z)).toBeLessThan(0.01);
+  });
+  it("찍기 → 문 열림 → 걸어 들어가 자리에 앉기 순서", () => {
+    const tap = entranceAt(0.6);
+    expect(String(tap.snapshot.pose)).toBe("tapBadge");
+    expect(tap.doorOpen).toBe(false);
+    expect(tap.readerFlash).toBe(1);
+    expect(entranceAt(ENTRANCE.tap + 0.1).doorOpen).toBe(true);
+    const walking = entranceAt(ENTRANCE.tap + ENTRANCE.open + 2);
+    expect(walking.snapshot.pose).toBe("walk");
+    expect(walking.snapshot.holding.bag).toBe("worn");
+    const done = entranceAt(30);
+    expect(done.done).toBe(true);
+    expect(done.snapshot.pose).toBe("sitType");
+  });
+  it("입장 길은 벽·가구를 지나지 않고 10초 안에 끝난다", () => {
+    const path = entrancePath();
+    for (let i = 1; i < path.length; i++) {
+      const [a, b] = [path[i - 1], path[i]];
+      const n = Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.05);
+      for (let k = 0; k <= n; k++) {
+        const p: Vec2 = [a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n];
+        if (i === path.length - 1 && Math.hypot(p[0] - b[0], p[1] - b[1]) < 0.6) continue;
+        expect(insideBlocker(p, 0.08)?.name, `(${p[0].toFixed(2)}, ${p[1].toFixed(2)})`).toBeUndefined();
+      }
+    }
+    let t = 0;
+    while (!entranceAt(t).done) t += 0.1;
+    expect(t).toBeLessThan(10);
   });
 });

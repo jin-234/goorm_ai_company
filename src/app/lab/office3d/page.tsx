@@ -1,22 +1,22 @@
 "use client";
 /**
  * 3D 사무실 확인 페이지(개발용). 서버 없이 가짜 officeView로 그린다.
- * 주소 예: /lab/office3d?t=08:40&speed=0&seat=beforeCheckIn&focus=door
+ * 주소 예: /lab/office3d?t=08:40&speed=0&phase=beforeCheckIn
  *  - t: 시각(HH:MM 또는 HH:MM:SS), day: 날짜(YYYY-MM-DD, 기본 2026-11-16 월요일)
- *  - seat: 내 착석 상태(view.seat.kind), reason: 자리 비움 사유, phase: 단계(view.phase.value)
- *  - speed: 시계 빠르기(0 멈춤, 1 실제, 60이면 1초에 1분), focus: overview|door|desk|manager|director|meeting|pantry|restroom
+ *  - phase: 단계(view.phase.value). 화면용 새 모양(view.clock.now·view.profile·view.day)으로 넘긴다.
+ *  - speed: 시계 빠르기(0 멈춤, 1 실제, 60이면 1초에 1분), focus: overview|door|desk|manager|director|meeting|share|pantry|restroom
+ *  - start, end: 사용자가 정한 활동 시작·마감(HH:MM, 기본 09:00·18:00)
+ *  - phase=beforeCheckIn이면 문 앞 클로즈업. '출근' 버튼을 누르면 입장 연출이 나온다.
  */
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
-import type { Focus } from "@/components/office3d/Office3D";
-import type { OfficeView } from "@/lib/server/view";
+import type { Focus, Office3DView } from "@/components/office3d/Office3D";
 
 const Office3D = dynamic(() => import("@/components/office3d/Office3D").then((m) => m.Office3D), { ssr: false });
 
-const SEATS = ["beforeCheckIn", "seated", "away", "lunch", "dinner", "unauthorizedAway", "cameraOff", "off"] as const;
-const PHASES = ["beforeCheckIn", "morningPT", "working", "overtime", "dayEnded"] as const;
-const FOCUSES: Focus[] = ["overview", "door", "desk", "manager", "director", "meeting", "pantry", "restroom"];
+const PHASES = ["beforeCheckIn", "morningPT", "working", "sharing", "checkoutReview", "off"] as const;
+const FOCUSES: Focus[] = ["overview", "door", "desk", "manager", "director", "meeting", "share", "pantry", "restroom"];
 
 function toInstant(day: string, time: string) {
   const [y, mo, d] = day.split("-").map(Number);
@@ -28,16 +28,25 @@ function Lab() {
   const q = useSearchParams();
   const [day] = useState(q.get("day") ?? "2026-11-16");
   const [time, setTime] = useState(q.get("t") ?? "09:30");
-  const [seat, setSeat] = useState(q.get("seat") ?? "seated");
-  const [reason, setReason] = useState(q.get("reason") ?? "커피 한 잔");
   const [phase, setPhase] = useState(q.get("phase") ?? "working");
   const [speed, setSpeed] = useState(Number(q.get("speed") ?? 1));
   const [focus, setFocus] = useState<Focus>((q.get("focus") as Focus) ?? "overview");
   const [placed, setPlaced] = useState("없음");
+  const [entered, setEntered] = useState("아직");
+  const [left, setLeft] = useState("아직");
+  const [start] = useState(q.get("start") ?? "09:00");
+  const [end] = useState(q.get("end") ?? "18:00");
+  const toMin = (hm: string) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
 
   const view = useMemo(
-    () => ({ state: { now: toInstant(day, time) }, seat: { kind: seat, reason }, phase: { value: phase } }) as unknown as OfficeView,
-    [day, time, seat, reason, phase],
+    () => ({
+      clock: { now: toInstant(day, time) },
+      profile: { name: "김서울", activityStart: toMin(start), activityEnd: toMin(end) },
+      day: { checkInAt: phase === "beforeCheckIn" ? null : toInstant(day, time) },
+      phase: { value: phase },
+    }) satisfies Office3DView,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [day, time, phase, start, end],
   );
 
   return (
@@ -48,14 +57,20 @@ function Lab() {
         <label>빠르기 <select value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>
           {[0, 1, 10, 60, 300].map((s) => <option key={s} value={s}>{s === 0 ? "멈춤" : `×${s}`}</option>)}
         </select></label>
-        <label>내 상태 <select value={seat} onChange={(e) => setSeat(e.target.value)}>{SEATS.map((s) => <option key={s}>{s}</option>)}</select></label>
-        {seat === "away" && <label>사유 <input value={reason} onChange={(e) => setReason(e.target.value)} style={{ width: 140 }} /></label>}
         <label>단계 <select value={phase} onChange={(e) => setPhase(e.target.value)}>{PHASES.map((s) => <option key={s}>{s}</option>)}</select></label>
         <label>구도 <select value={focus} onChange={(e) => setFocus(e.target.value as Focus)}>{FOCUSES.map((s) => <option key={s}>{s}</option>)}</select></label>
+        {phase === "beforeCheckIn" && (
+          <button type="button" data-testid="checkin" onClick={() => { setPhase("morningPT"); setEntered("연출 중"); }}>출근(사원증 찍기)</button>
+        )}
+        {phase === "checkoutReview" && (
+          <button type="button" data-testid="leave" onClick={() => { setPhase("off"); setLeft("연출 중"); }}>하루 마감 확정</button>
+        )}
+        <span data-testid="left">퇴근 연출: {left}</span>
         <span data-testid="placed">누른 곳: {placed}</span>
+        <span data-testid="entered">입장 연출: {entered}</span>
       </div>
       <div style={{ minHeight: 0 }}>
-        <Office3D view={view} speed={speed} focus={focus} onPlace={(p) => setPlaced(p)} />
+        <Office3D view={view} speed={speed} focus={focus} onPlace={(p) => setPlaced(p)} onEntranceEnd={() => setEntered("끝남")} onLeaveEnd={() => setLeft("끝남")} />
       </div>
     </main>
   );

@@ -3,8 +3,8 @@
 import { type ThreeEvent, useFrame } from "@react-three/fiber";
 import { type ReactNode, type RefObject, useMemo, useRef } from "react";
 import { BackSide, Color, type Group, RepeatWrapping } from "three";
-import { CREW } from "../person";
-import { DOOR_X, headingOf, MEETING, ROOM, SEATS, type SeatId } from "../crew/layout";
+import { CREW, type PersonId } from "../person";
+import { BADGE_READER, DOOR_X, headingOf, MEETING, ROOM, SEATS, type SeatId } from "../crew/layout";
 import type { DeskProps } from "../crew/schedule";
 import type { Light } from "./daylight";
 import {
@@ -12,7 +12,7 @@ import {
   roundRect, signTexture, useTextTexture,
 } from "./parts";
 
-export type ClickPlace = "door" | "desk" | "manager" | "meeting" | "pantry" | "restroom" | "director";
+export type ClickPlace = "door" | "desk" | "manager" | "meeting" | "share" | "pantry" | "restroom" | "director";
 
 interface RoomProps {
   light: Light;
@@ -21,6 +21,8 @@ interface RoomProps {
   desks: Record<SeatId, DeskProps>;
   /** 출입문·화장실 문이 열린 정도 0~1. */
   doors: { entrance: number; restroom: number };
+  /** 사원증 단말기 불빛(0 평소 ~ 1 찍는 순간). */
+  reader?: number;
   onClick: (place: ClickPlace) => void;
 }
 
@@ -45,7 +47,7 @@ function clickable(place: ClickPlace, onClick: (p: ClickPlace) => void) {
   };
 }
 
-export function Room({ light, minute, desks, doors, onClick }: RoomProps) {
+export function Room({ light, minute, desks, doors, reader = 0, onClick }: RoomProps) {
   return (
     <group>
       <Shell light={light} />
@@ -57,7 +59,7 @@ export function Room({ light, minute, desks, doors, onClick }: RoomProps) {
       <MeetingRoom night={light.night} onClick={onClick} />
       <Pantry onClick={onClick} />
       <Restroom open={doors.restroom} onClick={onClick} />
-      <Entrance open={doors.entrance} hall={light.hall} onClick={onClick} />
+      <Entrance open={doors.entrance} hall={light.hall} reader={reader} onClick={onClick} />
       <Decor minute={minute} />
     </group>
   );
@@ -182,12 +184,15 @@ function Floors() {
 // ─── 자리 ───────────────────────────────────────────────────
 
 /** 자리 하나: 의자, 책상, 모니터, 키보드·마우스, 자기 머그, 의자 옆 가방. 자리 좌표계에서 앉은 사람은 원점에서 −Z를 본다. */
+/** 자리 주인의 모습(머그·가방 색). 기획자 캐릭터가 아직 없으면 선배 모습으로 대신한다. */
+export const lookOf = (id: SeatId) => CREW[id as PersonId] ?? CREW.senior;
+
 function Station({ id, props, night, lamp, onClick }: { id: SeatId; props: DeskProps; night: number; lamp: number; onClick: (p: ClickPlace) => void }) {
   const seat = SEATS[id];
-  const look = CREW[id];
+  const look = lookOf(id);
   const front = seat.deskOffset - seat.deskDepth / 2;
   const isBoss = id === "manager" || id === "director";
-  const place: ClickPlace | null = id === "me" ? "desk" : id === "manager" ? "manager" : id === "director" ? "director" : null;
+  const place: ClickPlace | null = id === "me" ? "desk" : id === "manager" ? "manager" : id === "director" ? "director" : id === "planner" ? "share" : null;
   const handlers = place ? clickable(place, onClick) : {};
   return (
     <group position={[seat.chair[0], 0, seat.chair[1]]} rotation={[0, headingOf(seat.facing), 0]} {...handlers}>
@@ -211,6 +216,7 @@ function Station({ id, props, night, lamp, onClick }: { id: SeatId; props: DeskP
       {props.mugOnDesk && <group position={[0.52, 0.76, -(front + 0.2)]} rotation={[0, -0.6, 0]}><Mug color={look.mugColor} /></group>}
       {props.bagAtDesk && <group position={[-0.5, 0, -0.05]} rotation={[0, 0.25, 0]}><DeskBag kind={look.bagKind} color={look.bagColor} /></group>}
       {id === "me" && <MyDeskPlate depth={seat.deskDepth} offset={seat.deskOffset} />}
+      {id === "planner" && <TeamSign depth={seat.deskDepth} offset={seat.deskOffset} width={seat.deskWidth} />}
       {place && (
         // 누르기 쉬운 범위: 책상과 의자, 의자 뒤 조금까지 덮는 보이지 않는 상자.
         <mesh position={[0, 0.6, -(seat.deskOffset + seat.deskDepth / 2 - 0.45) / 2]}>
@@ -230,6 +236,32 @@ function MyDeskPlate({ depth, offset }: { depth: number; offset: number }) {
       <Box size={[0.03, 0.3, depth - 0.04]} at={[0, 0.15, 0]} color={PALETTE.greenLight} round={0.01} />
       <group position={[0.018, 0.2, depth / 2 - 0.2]} rotation={[0, Math.PI / 2, 0]}>
         <Panel w={0.26} h={0.1} texture={tex} emissive={0.1} />
+      </group>
+    </group>
+  );
+}
+
+/** 기획팀 책상 앞(통로 쪽) 가장자리에 세운 부서 팻말. 다른 부서 자리임을 보여 준다. */
+function TeamSign({ depth, offset, width }: { depth: number; offset: number; width: number }) {
+  const tex = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = "#E58B3A";
+    roundRect(ctx, 0, 0, w, h, 16);
+    ctx.fill();
+    ctx.fillStyle = "#FFFFFF";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 34px ${FONT}`;
+    ctx.fillText("서비스 기획팀", w / 2, h * 0.38);
+    ctx.font = `500 22px ${FONT}`;
+    ctx.fillText("다른 부서 · AI 기획자", w / 2, h * 0.75);
+  }, 320, 110, []);
+  // 자리 좌표계: 앉은 사람 앞이 −Z. 책상 먼 가장자리(통로 쪽)는 z = −(offset + depth/2).
+  return (
+    <group position={[-width / 2 + 0.32, 0.76, -(offset + depth / 2) + 0.03]} rotation={[0, Math.PI, 0]}>
+      <Box size={[0.5, 0.02, 0.1]} at={[0, 0.01, 0]} color={PALETTE.charcoal} />
+      <group position={[0, 0.11, 0]} rotation={[-0.12, 0, 0]}>
+        <Box size={[0.48, 0.17, 0.02]} at={[0, 0, -0.012]} color="#C86F27" round={0.01} />
+        <Panel w={0.46} h={0.158} texture={tex} emissive={0.12} />
       </group>
     </group>
   );
@@ -377,9 +409,7 @@ function Restroom({ open, onClick }: { open: number; onClick: (p: ClickPlace) =>
   const { restroomX0: X0, restroomZ1: Z1, restroomX: DX } = ROOM;
   const h = 2.4;
   const door = useDoorMotion<Group>(open, (node, v) => { node.rotation.y = v * 1.5; });
-  const sign = useTextTexture((ctx, w, hh) => {
-    signTexture("화장실", "#FFFFFF", PALETTE.green)(ctx, w, hh);
-  }, 256, 96, []);
+  const sign = useTextTexture(drawRestroomPictogram, 240, 160, []);
   return (
     <group {...clickable("restroom", onClick)}>
       <Box size={[0.12, h, Z1 + HD]} at={[X0, h / 2, (-HD + Z1) / 2]} color={PALETTE.cream} />
@@ -400,16 +430,49 @@ function Restroom({ open, onClick }: { open: number; onClick: (p: ClickPlace) =>
         <Box size={[0.92, 2.06, 0.05]} at={[0.46, 1.04, 0]} color={PALETTE.green} round={0.015} />
         <Cylinder r={0.018} h={0.12} at={[0.82, 1.0, 0.04]} color={PALETTE.brass} metal={0.7} rough={0.3} rotation={[0, 0, Math.PI / 2]} />
       </group>
-      <group position={[X0 + 0.38, 1.5, Z1 + 0.07]}>
-        <Panel w={0.4} h={0.15} texture={sign} emissive={0.08} />
+      {/* 문 옆 벽의 남녀 그림 표지판 */}
+      <group position={[X0 + 0.42, 1.55, Z1 + 0.065]}>
+        <Box size={[0.4, 0.28, 0.015]} at={[0, 0, -0.006]} color={PALETTE.steel} round={0.01} shadow={false} />
+        <Panel w={0.38} h={0.255} texture={sign} emissive={0.12} />
       </group>
     </group>
   );
 }
 
+/** 화장실 남녀 픽토그램: 왼쪽 파란 남자(바지), 오른쪽 빨간 여자(치마), 가운데 세로줄. */
+function drawRestroomPictogram(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  ctx.fillStyle = "#FFFFFF";
+  roundRect(ctx, 0, 0, w, h, 14);
+  ctx.fill();
+  const person = (cx: number, color: string, skirt: boolean) => {
+    ctx.fillStyle = color;
+    const top = h * 0.14;
+    ctx.beginPath(); ctx.arc(cx, top + 13, 13, 0, Math.PI * 2); ctx.fill(); // 머리
+    // 팔
+    ctx.fillRect(cx - 27, top + 32, 9, 46);
+    ctx.fillRect(cx + 18, top + 32, 9, 46);
+    if (skirt) {
+      // 어깨 → 치마(사다리꼴)
+      ctx.beginPath();
+      ctx.moveTo(cx - 15, top + 30); ctx.lineTo(cx + 15, top + 30);
+      ctx.lineTo(cx + 25, top + 86); ctx.lineTo(cx - 25, top + 86); ctx.closePath(); ctx.fill();
+      ctx.fillRect(cx - 11, top + 86, 8, 30);
+      ctx.fillRect(cx + 3, top + 86, 8, 30);
+    } else {
+      roundRect(ctx, cx - 16, top + 30, 32, 52, 6); ctx.fill(); // 몸
+      ctx.fillRect(cx - 16, top + 78, 13, 38); // 다리
+      ctx.fillRect(cx + 3, top + 78, 13, 38);
+    }
+  };
+  person(w * 0.27, "#2F6FB8", false);
+  person(w * 0.73, "#D64B4B", true);
+  ctx.fillStyle = "#9AA3A0";
+  ctx.fillRect(w / 2 - 2, h * 0.12, 4, h * 0.76);
+}
+
 // ─── 출입문 ─────────────────────────────────────────────────
 
-function Entrance({ open, hall, onClick }: { open: number; hall: number; onClick: (p: ClickPlace) => void }) {
+function Entrance({ open, hall, reader, onClick }: { open: number; hall: number; reader: number; onClick: (p: ClickPlace) => void }) {
   const { doorX0: X0, doorX1: X1, doorHeight: DH } = ROOM;
   const w = X1 - X0;
   const leaf = w / 2 - 0.03;
@@ -429,6 +492,7 @@ function Entrance({ open, hall, onClick }: { open: number; hall: number; onClick
           </DoorLeaf>
         ))}
       </group>
+      <BadgeReader flash={reader} />
       {/* 문 밖 단과 매트 */}
       <Box size={[3.2, 0.12, 2.6]} at={[DOOR_X, -0.06, HD + 1.45]} color="#CDBB9A" rough={0.95} />
       <Box size={[1.1, 0.012, 0.7]} at={[DOOR_X, 0.006, HD + 0.75]} color={PALETTE.green} rough={1} />
@@ -442,6 +506,36 @@ function Entrance({ open, hall, onClick }: { open: number; hall: number; onClick
         </mesh>
       </group>
       {hall > 0.02 && <pointLight position={[X1 + 1.1, 1.7, HD - 0.75]} intensity={hall * 3.2} distance={4} decay={2} color="#FFD9A0" />}
+    </group>
+  );
+}
+
+/** 문 오른쪽 바깥벽의 사원증 단말기. 평소엔 초록 불, 카드를 대면 잠깐 밝아진다. */
+function BadgeReader({ flash }: { flash: number }) {
+  const label = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = "#1E2326";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "#6FD39B";
+    ctx.lineWidth = 6;
+    for (const r of [18, 30, 42]) { ctx.beginPath(); ctx.arc(w / 2, h * 0.42, r, -Math.PI * 0.8, -Math.PI * 0.2); ctx.stroke(); }
+    ctx.fillStyle = "#CFE9DA";
+    ctx.font = `700 26px ${FONT}`;
+    ctx.textAlign = "center";
+    ctx.fillText("사원증", w / 2, h * 0.84);
+  }, 128, 160, []);
+  const [x, y, z] = BADGE_READER;
+  return (
+    <group position={[x, y, z]}>
+      <Box size={[0.15, 0.2, 0.035]} at={[0, 0, 0]} color={PALETTE.charcoal} round={0.015} rough={0.4} />
+      <mesh position={[0, 0.012, 0.0185]}>
+        <planeGeometry args={[0.11, 0.135]} />
+        {label ? <meshStandardMaterial map={label} emissiveMap={label} emissive="#ffffff" emissiveIntensity={0.25 + flash * 0.6} /> : <meshStandardMaterial color="#1E2326" />}
+      </mesh>
+      <mesh position={[0, -0.078, 0.019]}>
+        <circleGeometry args={[0.011, 16]} />
+        <meshStandardMaterial color="#3DDC84" emissive="#3DDC84" emissiveIntensity={0.8 + flash * 4} />
+      </mesh>
+      {flash > 0 && <pointLight position={[0, 0, 0.12]} intensity={0.35} distance={0.8} decay={2} color="#7CF0B0" />}
     </group>
   );
 }
@@ -470,13 +564,7 @@ function Decor({ minute }: { minute: number }) {
   const minuteAngle = -((minute % 60) / 60) * Math.PI * 2;
   return (
     <group>
-      {/* 벽시계 */}
-      <group position={[1.42, 2.3, -HD + T / 2 + 0.02]}>
-        <Cylinder r={0.28} h={0.05} at={[0, 0, 0]} color={PALETTE.green} rotation={[Math.PI / 2, 0, 0]} segments={36} />
-        <Cylinder r={0.24} h={0.052} at={[0, 0, 0.002]} color={PALETTE.paper} rotation={[Math.PI / 2, 0, 0]} segments={36} />
-        <group position={[0, 0, 0.03]} rotation={[0, 0, hourAngle]}><Box size={[0.025, 0.13, 0.01]} at={[0, 0.06, 0]} color={PALETTE.charcoal} shadow={false} /></group>
-        <group position={[0, 0, 0.035]} rotation={[0, 0, minuteAngle]}><Box size={[0.015, 0.2, 0.01]} at={[0, 0.09, 0]} color={PALETTE.charcoal} shadow={false} /></group>
-      </group>
+      <WallClock minute={minute} hourAngle={hourAngle} minuteAngle={minuteAngle} />
       {/* 게시판 */}
       <group position={[3.35, 1.78, -HD + T / 2 + 0.02]}>
         <Box size={[1.9, 1.15, 0.04]} at={[0, 0, 0]} color={PALETTE.oakDeep} />
@@ -498,10 +586,68 @@ function Decor({ minute }: { minute: number }) {
         })}
       </group>
       {/* 화분 */}
-      <group position={[6.25, 0, 4.2]}><Plant height={1.25} /></group>
+      <group position={[6.5, 0, 4.75]}><Plant height={1.25} /></group>
       <group position={[4.3, 0, -4.55]}><Plant height={1.0} /></group>
       <group position={[-2.45, 0, 4.5]}><Plant height={1.2} /></group>
       {[-2.7, 0.35, 2.3].map((z) => <group key={z} position={[HW - 0.12, ROOM.windowY0, z]}><Plant small /></group>)}
+    </group>
+  );
+}
+
+/**
+ * 벽시계: 숫자 1~12가 적힌 시계판과 바늘, 아래에 '10:24'처럼 읽히는 시·분 칸.
+ * minute은 화면의 가상 시각(view.state.now에서 흘린 값)이라 위 막대의 view.clock.hm과 같은 분을 가리킨다.
+ */
+function WallClock({ minute, hourAngle, minuteAngle }: { minute: number; hourAngle: number; minuteAngle: number }) {
+  const face = useTextTexture((ctx, w, h) => {
+    const c = w / 2;
+    ctx.fillStyle = PALETTE.paper;
+    ctx.beginPath(); ctx.arc(c, c, c, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = PALETTE.charcoal;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 ${Math.round(w * 0.13)}px ${FONT}`;
+    for (let n = 1; n <= 12; n++) {
+      const a = (n / 12) * Math.PI * 2;
+      ctx.fillText(String(n), c + Math.sin(a) * c * 0.76, c - Math.cos(a) * c * 0.76 + 2);
+    }
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) continue;
+      const a = (i / 60) * Math.PI * 2;
+      ctx.beginPath(); ctx.arc(c + Math.sin(a) * c * 0.93, c - Math.cos(a) * c * 0.93, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  }, 256, 256, []);
+  const whole = Math.floor(minute) % 1440;
+  const hm = `${String(Math.floor(whole / 60)).padStart(2, "0")}:${String(whole % 60).padStart(2, "0")}`;
+  const digits = useTextTexture((ctx, w, h) => {
+    ctx.fillStyle = PALETTE.greenDark;
+    roundRect(ctx, 0, 0, w, h, 14);
+    ctx.fill();
+    ctx.fillStyle = "#F4ECDB";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 ${Math.round(h * 0.62)}px ui-monospace, "SF Mono", Menlo, monospace`;
+    ctx.fillText(hm, w / 2, h / 2 + 3);
+  }, 256, 96, [hm]);
+  const z = -HD + T / 2 + 0.02;
+  return (
+    <group position={[1.42, 2.32, z]}>
+      <Cylinder r={0.34} h={0.05} at={[0, 0, 0]} color={PALETTE.green} rotation={[Math.PI / 2, 0, 0]} segments={40} />
+      <mesh position={[0, 0, 0.027]}>
+        <circleGeometry args={[0.3, 40]} />
+        {face ? <meshStandardMaterial map={face} roughness={0.7} /> : <meshStandardMaterial color={PALETTE.paper} />}
+      </mesh>
+      <group position={[0, 0, 0.034]} rotation={[0, 0, hourAngle]}><Box size={[0.03, 0.15, 0.01]} at={[0, 0.065, 0]} color={PALETTE.charcoal} shadow={false} /></group>
+      <group position={[0, 0, 0.04]} rotation={[0, 0, minuteAngle]}><Box size={[0.018, 0.23, 0.01]} at={[0, 0.1, 0]} color={PALETTE.charcoal} shadow={false} /></group>
+      <Cylinder r={0.02} h={0.02} at={[0, 0, 0.045]} color={PALETTE.brass} rotation={[Math.PI / 2, 0, 0]} />
+      {/* 시·분 칸 */}
+      <group position={[0, -0.5, 0]}>
+        <Box size={[0.5, 0.2, 0.04]} at={[0, 0, 0]} color={PALETTE.green} round={0.02} />
+        <mesh position={[0, 0, 0.021]}>
+          <planeGeometry args={[0.46, 0.17]} />
+          {digits ? <meshStandardMaterial map={digits} emissiveMap={digits} emissive="#ffffff" emissiveIntensity={0.35} roughness={0.6} /> : <meshStandardMaterial color={PALETTE.greenDark} />}
+        </mesh>
+      </group>
     </group>
   );
 }
