@@ -7,12 +7,14 @@
  * 목표는 말로 해도 된다(브라우저 내장 음성 인식, 선택). 녹음이 안 돼도 글로 끝까지 할 수 있다.
  */
 import { useEffect, useState } from "react";
+import { TASK_LEVEL_LABEL, TASK_LEVELS, type TaskLevel } from "@/lib/office/models";
 import { type AiSource, api, isSample, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, ManualMark, Notice, PanelHeader, SampleMark, StatusBadge } from "../ui";
 import { VoiceInput } from "../voice/VoiceInput";
 
-type Row = { key: string; title: string; completionCriteria: string; shareForm: string };
+/** level: 중요도(보통·엄격에서 직접 고름). */
+type Row = { key: string; title: string; completionCriteria: string; shareForm: string; level?: TaskLevel | null };
 
 const SHARE_FORMS = ["화면 캡처와 한 줄 설명", "코드 일부와 설명", "배운 내용 요약", "링크와 사용 방법"];
 const GOAL_EXAMPLE = "API 요청을 배우고 도시별 날씨 조회 화면을 만들고 싶습니다. 오늘은 3시간 정도 쓸 수 있습니다.";
@@ -156,17 +158,19 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
   };
 
   const update = (key: string, patch: Partial<Row>) => setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const needLevel = view.enforcement.rules.taskLevels;
   const missing = rows.flatMap((r, i) => {
-    const m = [!r.title.trim() && "과제", !r.completionCriteria.trim() && "완료 기준", !r.shareForm.trim() && "공유 형태"].filter(Boolean);
+    const m = [!r.title.trim() && "과제", !r.completionCriteria.trim() && "완료 기준", !r.shareForm.trim() && "공유 형태", needLevel && r.level == null && "중요도"].filter(Boolean);
     return m.length ? [`· ${r.title.trim() || `${i + 1}번째 과제`}: ${m.join(", ")}`] : [];
   });
   const canConfirm = view.can.confirmTasks && (rows.length > 0 || view.pendingCarry.length > 0) && missing.length === 0;
 
   const confirm = async () => {
-    const tasks = rows.map(({ title, completionCriteria, shareForm }) => ({
+    const tasks = rows.map(({ title, completionCriteria, shareForm, level }) => ({
       title: title.trim(),
       completionCriteria: completionCriteria.trim(),
       shareForm: shareForm.trim(),
+      level: needLevel ? (level ?? null) : null,
     }));
     if ((await office.act("confirmTasks", { goal: goal.trim(), tasks })) == null) return;
     try {
@@ -189,6 +193,7 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
           {view.pendingCarry.map((t) => (
             <div key={t.id}>
               <strong>{t.title}</strong> <span className="badge tag">넘어온 {t.carryCount}회</span>
+              {view.enforcement.rules.taskLevels ? <span className="badge tag">{t.level}단계</span> : null}
               <div className="small muted">완료 기준: {t.completionCriteria}</div>
             </div>
           ))}
@@ -276,6 +281,25 @@ function MorningEditor({ office, view, header }: { office: OfficeHandle; view: O
                 {r.shareForm.trim() ? "회의실에서 발표할 형태" : "확인 필요 · 회의실에서 발표할 형태"}
                 <input className="field" value={r.shareForm} onChange={(e) => update(r.key, { shareForm: e.target.value })} />
               </label>
+              {needLevel ? (
+                <div className="stack">
+                  <span>{r.level == null ? "확인 필요 · 중요도" : "중요도"}</span>
+                  <div className="row" role="radiogroup" aria-label={`과제 ${i + 1} 중요도`}>
+                    {TASK_LEVELS.map((lv) => (
+                      <button
+                        key={lv}
+                        type="button"
+                        role="radio"
+                        aria-checked={r.level === lv}
+                        className={`btn small ${r.level === lv ? "" : "secondary"}`}
+                        onClick={() => update(r.key, { level: lv })}
+                      >
+                        {TASK_LEVEL_LABEL[lv]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="row">
                 {SHARE_FORMS.map((f) => (
                   <button key={f} className="btn plain small" onClick={() => update(r.key, { shareForm: f })}>

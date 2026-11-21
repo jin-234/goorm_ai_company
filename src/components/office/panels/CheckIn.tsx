@@ -6,13 +6,17 @@
  * - 설정에서 카메라를 끄면 미리보기 없이 바로 출근한다. 카메라를 안 써도 불이익은 없다(개정 기획서 5장).
  * - 버튼을 누르면 카메라를 먼저 끄고 출근을 보낸다. 문이 열리는 연출은 3D가 맡는다.
  * 영상은 이 기기 안에서만 쓰고 저장·전송하지 않는다.
+ * 관리 강도 보통·엄격: 시작 시각보다 늦으면 지각, 마감 시각까지 오지 않으면 결근 후보.
+ * 놓친 날 복귀: 쉬는 날을 미리 알릴 수 있고, 쉰 날 다음에 돌아온 날은 지각으로 세지 않는다.
  */
 import { useState } from "react";
+import { hm } from "@/lib/office/time";
 import { hhmm, type OfficeView } from "../api";
 import { type SeatCameraState, useSeatCamera } from "../camera/useSeatCamera";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
 import { loadCameraPref } from "./cameraPref";
+import { LowerTodayButton, MonthLine } from "./Enforcement";
 
 const NO_FACE_FALLBACK_SECONDS = 10;
 
@@ -31,17 +35,28 @@ const STATUS: Record<SeatCameraState, { title: string; detail: string; kind: "in
 
 export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: OfficeView; onDone: () => void }) {
   const { day, profile } = view;
-  const waiting = day.checkInAt == null && view.can.checkIn;
+  const a = view.attendance;
+  const rules = view.enforcement.rules;
+  const waiting = day.checkInAt == null && view.can.checkIn && !a.dayOff;
   // 설정은 처음 그릴 때 한 번 읽는다(설정 화면에서 바꾸면 다음에 출입문을 열 때 적용).
   const [useCamera] = useState(loadCameraPref);
   const cam = useSeatCamera(waiting && useCamera);
 
   const checkIn = async (method: "camera" | "noCamera") => {
     cam.stop();
-    if ((await office.act("checkIn", { method })) == null) return;
-    office.notify("출근했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.");
+    const res = await office.act<{ late: boolean }>("checkIn", { method });
+    if (res == null) return;
+    office.notify(
+      res.late
+        ? `출근했습니다. 지각으로 기록했습니다.\n${a.lateFee.recoveryStreak}일 연속 제시간에 오면 1점씩 덜어 드립니다.`
+        : "출근했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.",
+    );
     onDone();
   };
+  const setDayOff = async (off: boolean) => {
+    if ((await office.act("setDayOff", { off })) != null) office.notify(off ? "오늘은 쉬는 날로 알렸습니다.\n결근 후보로 세지 않습니다." : "쉬는 날 알림을 거뒀습니다.");
+  };
+  const nextDay = () => office.act("startNextWorkday");
 
   const header = (
     <PanelHeader
@@ -55,9 +70,44 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
     return (
       <div className="panel">
         {header}
-        <Notice kind="ok" title={`${view.clock.dateShort} 활동을 시작했습니다`}>
+        <Notice kind={a.isLate ? "warning" : "ok"} title={`${view.clock.dateShort} ${hm(day.checkInAt)}에 활동을 시작했습니다${a.isLate ? " · 지각" : ""}`}>
           회의실에서 아침보고를 진행해 주세요.
         </Notice>
+        <MonthLine view={view} />
+      </div>
+    );
+  }
+
+  if (a.absentCandidate) {
+    return (
+      <div className="panel">
+        {header}
+        <Notice kind="warning" title="오늘은 결근 후보로 남았습니다">
+          {`${hhmm(profile.activityEnd)}까지 출근 기록이 없었습니다.\n다음 활동일에 돌아오면 그날은 늦어도 지각으로 세지 않습니다.`}
+        </Notice>
+        <MonthLine view={view} />
+        <button className="btn" onClick={nextDay} disabled={office.busy || !view.can.startNextWorkday}>
+          다음 활동일로
+        </button>
+      </div>
+    );
+  }
+
+  if (a.dayOff) {
+    return (
+      <div className="panel">
+        {header}
+        <Notice kind="info" title="오늘은 쉬는 날로 알렸습니다">
+          결근 후보로 세지 않습니다. 마음이 바뀌면 알림을 거두고 출근해도 됩니다.
+        </Notice>
+        <div className="row">
+          <button className="btn" onClick={nextDay} disabled={office.busy || !view.can.startNextWorkday}>
+            다음 활동일로
+          </button>
+          <button className="btn secondary" onClick={() => setDayOff(false)} disabled={office.busy || !view.can.setDayOff}>
+            쉬는 날 취소하고 출근하기
+          </button>
+        </div>
       </div>
     );
   }
@@ -69,6 +119,12 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
   return (
     <div className="panel">
       {header}
+
+      {a.returning ? (
+        <Notice kind="ok" title="다시 와서 반갑습니다">
+          {`쉬어 간 날이 있어도 괜찮습니다. 오늘부터 다시 이어 가면 됩니다.${rules.attendance ? "\n돌아온 오늘은 늦게 출근해도 지각으로 세지 않습니다." : ""}`}
+        </Notice>
+      ) : null}
 
       {useCamera ? (
         <Card>
@@ -150,8 +206,13 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
           </div>
         </div>
         <p className="small muted" style={{ margin: 0 }}>
-          늦게 시작해도 괜찮습니다. 시작 시각은 기록에만 남습니다.
+          {!rules.attendance
+            ? "늦게 시작해도 괜찮습니다. 시작 시각은 기록에만 남습니다."
+            : a.returning
+              ? "오늘은 돌아온 날이라 늦어도 지각으로 세지 않습니다."
+              : `관리 강도 ${rules.label}: ${hhmm(profile.activityStart)}보다 늦으면 지각, ${hhmm(profile.activityEnd)}까지 출근하지 않으면 결근 후보로 기록합니다.`}
         </p>
+        <MonthLine view={view} />
       </Card>
 
       {view.pendingCarry.length > 0 ? (
@@ -181,6 +242,19 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
         <button className="btn plain" onClick={() => checkIn("noCamera")} disabled={office.busy || !view.can.checkIn}>
           카메라 없이 출근
         </button>
+      ) : null}
+      {rules.attendance ? (
+        <Card title="오늘 쉬어야 하나요?">
+          <p className="small muted pre" style={{ margin: 0 }}>
+            {"쉬는 날로 알리면 결근 후보로 세지 않습니다.\n오늘만 강도를 낮춰 가볍게 지낼 수도 있습니다."}
+          </p>
+          <div className="row">
+            <button className="btn secondary" onClick={() => setDayOff(true)} disabled={office.busy || !view.can.setDayOff}>
+              오늘은 쉬는 날
+            </button>
+            <LowerTodayButton office={office} view={view} />
+          </div>
+        </Card>
       ) : null}
     </div>
   );
