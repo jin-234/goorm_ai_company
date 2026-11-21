@@ -35,63 +35,91 @@ describe("서버 세션과 가상 시계", () => {
     const store = new MemoryStore();
     await withOffice("a", () => null, { store, realNow: realStart });
     await expect(
-      withOffice("a", (o) => applyAction(o, { type: "confirmTasks" }), { store, realNow: realStart + 1000 }),
+      withOffice("a", (o) => applyAction(o, { type: "confirmTasks", tasks: [] }), { store, realNow: realStart + 1000 }),
     ).rejects.toMatchObject({ code: "notAllowedNow" });
     expect((await store.load("a"))?.clockAnchor).toBe(realStart);
   });
 });
 
 describe("행동 API로 하루 보내기", () => {
-  test("입사 → 출근 → 초안 → 확정 → 다음 정각 → 퇴근 점검 → 이월 보고 퇴근", async () => {
+  test("입사 → 출근 → 아침보고 확정 → 제출 → 공유 → 마감 → 다음 날 이월, 새로고침마다 복원", async () => {
     const store = new MemoryStore();
     let t = realStart;
     const act = async (body: Record<string, unknown>) =>
       (await withOffice("a", (o) => applyAction(o, body), { store, realNow: (t += 1000) })).office;
 
-    await act({ type: "onboard", name: "박취준" });
-    let office = await act({ type: "checkIn" });
+    await expect(act({ type: "onboard", name: "박취준", activityStart: "25:00" })).rejects.toBeInstanceOf(BadRequest);
+    let office = await act({ type: "onboard", name: "박취준", targetRole: "프런트엔드", experience: "독학", activityStart: "10:00", activityEnd: "19:00" });
+    expect(hm(office.now)).toBe("09:55");
+    office = await act({ type: "checkIn" });
     expect(office.day.phase).toBe("morningPT");
 
-    office = await act({ type: "addDraft" });
-    const id = office.day.drafts[0].id;
-    await expect(act({ type: "updateDraft", id, due: "25:00" })).rejects.toBeInstanceOf(BadRequest);
-    await act({ type: "updateDraft", id, title: "자기소개서 초안", level: 1, due: "17:00", doneCriteria: "한 문단 저장" });
-    office = await act({ type: "confirmTasks" });
-    expect(office.day.tasks[0]).toMatchObject({ title: "자기소개서 초안", level: 1, due: 17 * 60 });
+    await act({ type: "saveGoal", goal: "날씨 화면 만들기" });
+    await expect(act({ type: "confirmTasks", tasks: "x" })).rejects.toBeInstanceOf(BadRequest);
+    office = await act({
+      type: "confirmTasks",
+      goal: "날씨 화면 만들기",
+      tasks: [
+        { title: "날씨 조회 화면", completionCriteria: "도시 입력 시 날씨 표시", shareForm: "캡처" },
+        { title: "에러 안내", completionCriteria: "실패 문구 표시", shareForm: "" },
+      ],
+    });
+    const [a, b] = office.day.tasks;
+    await act({ type: "submitWork", taskId: a.id, kind: "link", content: "https://example.com/weather" });
+    office = await act({ type: "setTaskStatus", taskId: a.id, status: "submitted" });
+    expect(office.day.submissions[0].readScope).toBe("notRead");
 
-    while (office.canSkipHour) office = await act({ type: "skipHour" });
+    await act({ type: "startSharing" });
+    await expect(act({ type: "recordShareTurn", role: "planner", reply: {} })).rejects.toBeInstanceOf(BadRequest);
+    office = await act({ type: "recordShareTurn", role: "user", text: "도시를 입력하면 날씨를 보여줍니다." });
+    expect(office.day.share.turns).toHaveLength(1);
+    office = await act({ type: "endSharing", reason: "done" });
     expect(office.day.phase).toBe("checkoutReview");
 
-    const view = officeView(office);
-    expect(view.checkout.carryReportTargetIds).toHaveLength(1);
-    office = await act({
-      type: "submitCheckout",
-      carryReports: { [view.checkout.carryReportTargetIds[0]]: { reason: "자료 조사가 길어짐", plan: "오전에 마무리" } },
-    });
+    await act({ type: "saveReviewDraft", review: { reported_work: "날씨 화면", next_action: "에러 안내 만들기", open_questions: ["실패 문구"] } });
+    await expect(act({ type: "confirmReview", review: {}, choices: { [b.id]: "later" } })).rejects.toBeInstanceOf(BadRequest);
+    await expect(act({ type: "confirmReview", review: {}, choices: {} })).rejects.toMatchObject({ code: "choiceMissing" });
+    office = await act({ type: "confirmReview", review: { next_action: "에러 안내 만들기" }, choices: { [b.id]: "carryOver" }, reasons: { [b.id]: "" } });
     expect(office.day.phase).toBe("off");
-    expect(office.pendingCarry).toHaveLength(1);
+
+    const view = officeView(office);
+    expect(view.pendingCarry[0]).toMatchObject({ title: "에러 안내", carriedFromTaskId: b.id });
+    expect(view.day.review.confirmed?.next_action).toBe("에러 안내 만들기");
 
     office = await act({ type: "startNextWorkday" });
-    expect(office.day.drafts[0].title).toBe("자기소개서 초안");
     expect(officeView(office).mail.inbox[0].subject).toContain("11월 17일(화)");
+    expect(officeView(office).history[0]).toMatchObject({ counted: true });
   });
 
   test("알 수 없는 행동과 잘못된 값은 BadRequest", async () => {
     const store = new MemoryStore();
     await expect(withOffice("a", (o) => applyAction(o, { type: "fly" }), { store })).rejects.toBeInstanceOf(BadRequest);
-    await expect(withOffice("a", (o) => applyAction(o, { type: "observePresence", state: "sleeping" }), { store })).rejects.toBeInstanceOf(
+    await expect(withOffice("a", (o) => applyAction(o, { type: "observePresence", state: "absent" }), { store })).rejects.toBeInstanceOf(
+      BadRequest,
+    );
+    await expect(withOffice("a", (o) => applyAction(o, { type: "submitWork", taskId: "x", kind: "file", content: "a" }), { store })).rejects.toBeInstanceOf(
       BadRequest,
     );
   });
 
-  test("화면용 상태에는 자리 상태 문구와 가능 여부가 들어 있다", async () => {
+  test("옛 근태 형식으로 저장된 상태는 버리고 새로 시작한다", async () => {
+    const store = new MemoryStore();
+    await store.save("a", { state: { profile: { name: "옛", workStart: 540 }, day: { phase: "dinner" } } as never, clockAnchor: realStart });
+    const { office } = await withOffice("a", () => null, { store, realNow: realStart + 1000 });
+    expect(office.onboarded).toBe(false);
+    expect(office.day.phase).toBe("beforeCheckIn");
+  });
+
+  test("화면용 상태(78과 맞춘 모양)", async () => {
     const store = new MemoryStore();
     const { office } = await withOffice("a", (o) => o.completeOnboarding("김서울"), { store, realNow: realStart });
     const view = officeView(office);
-    expect(view.phase.headline).toBe("출근 전 · 09:00까지 출근");
-    expect(view.seat.title).toBe("출근 전");
-    expect(view.can.checkIn).toBe(true);
+    expect(view.phase).toMatchObject({ value: "beforeCheckIn", label: "출근 전", headline: "출근 전 · 활동 시작 09:00" });
+    expect(view.seat.kind).toBe("beforeCheckIn");
+    expect(view.can).toMatchObject({ checkIn: true, confirmTasks: false, startNextWorkday: true });
     expect(view.mail.unreadCount).toBe(2);
-    expect(JSON.parse(JSON.stringify(view)).state.profile.name).toBe("김서울");
+    expect(view.weekly.lastSubmitted).toBeNull();
+    expect(JSON.parse(JSON.stringify(view)).profile.name).toBe("김서울");
+    expect(JSON.stringify(view)).not.toMatch(/monthStats|lateFee|presence|overtime/);
   });
 });
