@@ -35,6 +35,7 @@ export function officeView(office: Office) {
     day: {
       date: dayString(day.date),
       checkInAt: day.checkInAt,
+      checkInMethod: day.checkInMethod ?? null,
       goal: day.goal,
       tasks: day.tasks.map(taskView),
       submissions: day.submissions,

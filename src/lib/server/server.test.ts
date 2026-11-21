@@ -91,6 +91,16 @@ describe("행동 API로 하루 보내기", () => {
     expect(officeView(office).history[0]).toMatchObject({ counted: true });
   });
 
+  test("출근 방식(camera·noCamera)은 기록만 하고, 다른 값은 BadRequest", async () => {
+    const store = new MemoryStore();
+    await withOffice("a", (o) => applyAction(o, { type: "onboard", name: "김서울" }), { store });
+    await expect(withOffice("a", (o) => applyAction(o, { type: "checkIn", method: "face" }), { store })).rejects.toBeInstanceOf(BadRequest);
+    const { office } = await withOffice("a", (o) => applyAction(o, { type: "checkIn", method: "noCamera" }), { store });
+    expect(officeView(office).day.checkInMethod).toBe("noCamera");
+    expect(office.day.events[0].text).toContain("카메라 없이");
+    expect(office.day.phase).toBe("morningPT");
+  });
+
   test("알 수 없는 행동과 잘못된 값은 BadRequest", async () => {
     const store = new MemoryStore();
     await expect(withOffice("a", (o) => applyAction(o, { type: "fly" }), { store })).rejects.toBeInstanceOf(BadRequest);

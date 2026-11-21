@@ -3,6 +3,8 @@
  * 입력 모양 검증은 여기서 하고(BadRequest), 규칙 위반은 OfficeError로 던진다.
  */
 import {
+  CHECK_IN_METHODS,
+  type CheckInMethod,
   type PlannerReply,
   REVIEW_LIST_FIELDS,
   REVIEW_TEXT_FIELDS,
@@ -161,8 +163,13 @@ export function applyAction(office: Office, body: Json): unknown {
     case "onboard":
       office.completeOnboarding(onboardInput(body));
       return null;
-    case "checkIn":
-      return office.checkIn();
+    case "checkIn": {
+      const method = body.method ?? null;
+      if (method !== null && !CHECK_IN_METHODS.includes(method as CheckInMethod)) {
+        throw new BadRequest("method는 camera 또는 noCamera입니다.");
+      }
+      return office.checkIn(method as CheckInMethod | null);
+    }
     case "saveGoal":
       office.saveGoal(str(body, "goal"));
       return null;

@@ -273,10 +273,19 @@ export interface ActivityEvent {
 
 // MARK: 오늘(DailySession)
 
+/**
+ * 출근 방식. 출입문에서 카메라로 자리에 앉은 얼굴을 확인했는지(camera), 카메라 없이 출근했는지(noCamera).
+ * 기록만 하고 규칙·점수에 쓰지 않는다. 카메라 미사용은 불이익이 없다(개정 기획서 5장).
+ */
+export type CheckInMethod = "camera" | "noCamera";
+export const CHECK_IN_METHODS: CheckInMethod[] = ["camera", "noCamera"];
+
 export interface WorkDay {
   date: DayKey;
   phase: Phase;
   checkInAt: Instant | null;
+  /** 출근 방식. 옛 저장 상태나 방식을 보내지 않은 출근은 null. */
+  checkInMethod?: CheckInMethod | null;
   /** 아침보고에 쓴 오늘 목표 원문. */
   goal: string;
   tasks: WorkTask[];
@@ -294,6 +303,7 @@ export function newWorkDay(date: DayKey): WorkDay {
     date,
     phase: "beforeCheckIn",
     checkInAt: null,
+    checkInMethod: null,
     goal: "",
     tasks: [],
     confirmedAt: null,

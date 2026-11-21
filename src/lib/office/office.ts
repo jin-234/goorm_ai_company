@@ -11,6 +11,7 @@
 import { MailTemplates } from "./mail-templates";
 import {
   type ActivityEventKind,
+  type CheckInMethod,
   type ColleagueSource,
   type DayRecord,
   defaultProfile,
@@ -197,13 +198,14 @@ export class Office implements OfficeState {
   }
 
   /** 버튼으로 활동을 시작한다. 시작 시각만 기록하고 지각을 판정하지 않는다. */
-  checkIn(): { checkInAt: Instant } {
+  checkIn(method: CheckInMethod | null = null): { checkInAt: Instant; method: CheckInMethod | null } {
     if (this.day.phase !== "beforeCheckIn") throw OfficeError.notAllowedNow("오늘은 이미 활동을 시작했습니다.");
     if (!this.onboarded) throw OfficeError.notAllowedNow("입사 정보를 먼저 확인해 주세요.");
     this.day.checkInAt = this.now;
+    this.day.checkInMethod = method;
     this.day.phase = "morningPT";
-    this.log("checkIn", `활동 시작 ${hm(this.now)}`);
-    return { checkInAt: this.now };
+    this.log("checkIn", `활동 시작 ${hm(this.now)}${method === "camera" ? " · 카메라 확인" : method === "noCamera" ? " · 카메라 없이" : ""}`);
+    return { checkInAt: this.now, method };
   }
 
   // MARK: 아침보고
