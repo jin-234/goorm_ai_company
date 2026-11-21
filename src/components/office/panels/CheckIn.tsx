@@ -1,5 +1,5 @@
 "use client";
-/** 출입문 · 출근(개정판): 버튼으로 활동을 시작한다. 카메라·지각 판정은 하지 않는다. */
+/** 출입문 · 출근(개정판): 사원증을 찍어 활동을 시작한다. 카메라·지각 판정은 하지 않는다. 문 열림 연출은 3D가 맡는다. */
 import { hhmm, type OfficeView } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
@@ -8,13 +8,13 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
   const { day, profile } = view;
   const start = async () => {
     if ((await office.act("checkIn")) == null) return;
-    office.notify("오늘 활동을 시작했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.");
+    office.notify("출근했습니다.\n회의실에서 AI 팀장과 오늘 범위를 정해 주세요.");
     onDone();
   };
 
   return (
     <div className="panel">
-      <PanelHeader place="출입문" title="출근" detail="버튼을 누르면 오늘 활동이 시작됩니다." />
+      <PanelHeader place="출입문" title="출근" detail="문 옆 단말기에 사원증을 찍으면 자동문이 열리고 하루가 시작됩니다." />
       {day.checkInAt != null ? (
         <Notice kind="ok" title={`${view.clock.dateShort} 활동을 시작했습니다`}>
           회의실에서 아침보고를 진행해 주세요.
@@ -44,7 +44,7 @@ export function CheckIn({ office, view, onDone }: { office: OfficeHandle; view: 
             </Notice>
           ) : null}
           <button className="btn" onClick={start} disabled={office.busy || !view.can.checkIn}>
-            활동 시작
+            사원증 찍고 출근하기
           </button>
         </>
       )}

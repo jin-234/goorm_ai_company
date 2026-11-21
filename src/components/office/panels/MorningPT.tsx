@@ -51,7 +51,7 @@ export function MorningPT({ office, view }: { office: OfficeHandle; view: Office
       <div className="panel">
         {header}
         <Notice kind="info" title="활동을 시작한 뒤 아침보고를 합니다">
-          출입문에서 '활동 시작'을 먼저 눌러 주세요.
+          출입문에서 사원증을 찍고 출근해 주세요.
         </Notice>
       </div>
     );

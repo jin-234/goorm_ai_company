@@ -25,7 +25,7 @@ export function Desk({ office, view, onGo }: { office: OfficeHandle; view: Offic
 
       {phase === "beforeCheckIn" ? (
         <Notice kind="info" title="활동을 시작하면 여기서 과제를 합니다">
-          출입문에서 '활동 시작'을 눌러 주세요.
+          출입문에서 사원증을 찍고 출근해 주세요.
         </Notice>
       ) : phase === "morningPT" ? (
         <Notice kind="info" title="아직 오늘 범위를 정하지 않았습니다">
