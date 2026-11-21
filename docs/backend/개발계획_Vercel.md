@@ -11,7 +11,7 @@
 | 화면 | 브라우저(Next.js). 일반 화면으로 흐름을 먼저 완성하고 3D는 나중에 붙임 |
 | 규칙 엔진 | TypeScript 순수 로직 (`src/lib/office`) |
 | 서버 | Next.js API 라우트 = Vercel 함수 (`src/app/api`) |
-| 저장 | **Neon Postgres** `offices` 테이블, 참여자당 JSONB 한 줄 |
+| 저장 | **Supabase Postgres** `offices` 테이블, 참여자당 JSONB 한 줄 (Transaction pooler 연결) |
 | AI | Upstage Solar. 키는 Vercel 환경변수 `UPSTAGE_API_KEY` (브라우저로 보내지 않음) |
 | Solar 없을 때 | 서버 안 규칙(PTParser)으로 초안, 정해진 문구로 주간 답장 |
 | 음성 전사 | 미정. **글 입력이 기본 경로**, 클라우드 STT는 붙일 자리만 둠(5장) |
@@ -55,7 +55,8 @@ src/
 
 ```bash
 npm install
-npm test          # 시험 93개 (규칙 엔진·PTParser·Solar·서버)
+npm test          # 시험 94개 (규칙 엔진·PTParser·Solar·서버)
+# Postgres 저장소 시험은 TEST_DATABASE_URL(예: Supabase 개발용 DB)이 있을 때만 돈다
 npm run build     # Vercel과 같은 빌드
 npm run dev       # http://localhost:3000, DATABASE_URL 없으면 메모리 저장
 ```
@@ -64,7 +65,7 @@ npm run dev       # http://localhost:3000, DATABASE_URL 없으면 메모리 저�
 
 | 순서 | 일 | 메모 |
 | --- | --- | --- |
-| 1 | **Vercel 프로젝트 연결과 Neon 연결** | Vercel 대시보드 → Storage → Neon 추가하면 `DATABASE_URL`이 자동으로 들어간다. `UPSTAGE_API_KEY`도 환경변수에 추가. 테이블은 첫 요청 때 자동으로 만든다(`db/schema.sql`과 같음). |
+| 1 | **Supabase 연결** | Vercel 대시보드 → Storage → Supabase 추가하면 `POSTGRES_URL`이 자동으로 들어간다. Supabase를 직접 만들었다면 Connect → Transaction pooler 주소(포트 6543)를 `DATABASE_URL`로 넣는다. `UPSTAGE_API_KEY`도 환경변수에 추가. 테이블은 첫 요청 때 자동으로 만든다(`db/schema.sql`과 같음). |
 | 2 | 화면(프론트) | `docs/backend/API.md`대로 붙인다. 출근 → 아침 PT → 체크리스트 → 퇴근 점검 흐름을 일반 화면으로 먼저 완성하고 3D는 나중에. |
 | 3 | 음성 전사 | 기본은 **글 입력**. 클라우드 STT를 붙이면 결과 글을 `setTranscript` 또는 `/api/office/draft`의 `transcript`로 넣는다. 실패하거나 권한이 없으면 글 입력 화면으로. |
 | 4 | 착석 판정 | 브라우저(예: MediaPipe)에서 판정해 상태가 바뀔 때만 `observePresence`로 보낸다. 영상은 서버로 보내지 않는다. 카메라 없이 시연할 때는 버튼으로 같은 값을 보낸다. |
