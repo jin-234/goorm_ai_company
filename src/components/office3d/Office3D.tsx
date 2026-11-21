@@ -141,7 +141,7 @@ function Scene({ view, speed, focus, onClick }: { view: OfficeView; speed: numbe
       <CameraRig focus={focus} />
       <Room light={light} minute={minute} desks={desks} doors={doors} onClick={onClick} />
       <CrewLayer frame={frame} onPick={(id) => (id === "me" ? onClick("desk") : id === "manager" ? onClick("manager") : undefined)} />
-      <Labels />
+      <Labels onClick={onClick} />
     </>
   );
 }
@@ -212,22 +212,25 @@ function CameraRig({ focus }: { focus: Focus }) {
   return null;
 }
 
-const LABELS: { text: string; at: [number, number, number] }[] = [
-  { text: "회의실", at: [-4.6, 2.55, -1.2] },
-  { text: "탕비실", at: [-5.3, 1.35, 0.2] },
-  { text: "화장실", at: [6.0, 2.75, -3.4] },
-  { text: "출입문", at: [DOOR_X, 2.65, ROOM.halfDepth] },
-  { text: "내 자리", at: [-0.9, 1.95, 2.25] },
-  { text: "팀장", at: [4.5, 1.65, 1.0] },
-  { text: "부장", at: [1.2, 1.65, -4.2] },
+// 이름표도 누를 수 있다. 이름표는 물체 위 공중에 떠 있어 클릭을 통과시키면 아래에 누를 물체가 없다.
+const LABELS: { text: string; at: [number, number, number]; place: ClickPlace }[] = [
+  { text: "회의실", at: [-4.6, 2.55, -1.2], place: "meeting" },
+  { text: "탕비실", at: [-5.3, 1.35, 0.2], place: "pantry" },
+  { text: "화장실", at: [6.0, 2.75, -3.4], place: "restroom" },
+  { text: "출입문", at: [DOOR_X, 2.65, ROOM.halfDepth], place: "door" },
+  { text: "내 자리", at: [-0.9, 1.95, 2.25], place: "desk" },
+  { text: "팀장", at: [4.5, 1.65, 1.0], place: "manager" },
+  { text: "부장", at: [1.2, 1.65, -4.2], place: "director" },
 ];
 
-function Labels() {
+function Labels({ onClick }: { onClick: (p: ClickPlace) => void }) {
   return (
     <>
       {LABELS.map((l) => (
-        <Html key={l.text} position={l.at} center zIndexRange={[10, 0]} style={{ pointerEvents: "none" }}>
-          <span style={labelStyle}>{l.text}</span>
+        <Html key={l.text} position={l.at} center zIndexRange={[10, 0]}>
+          <button type="button" style={labelStyle} onClick={() => onClick(l.place)}>
+            {l.text}
+          </button>
         </Html>
       ))}
     </>
@@ -237,7 +240,7 @@ function Labels() {
 const labelStyle: CSSProperties = {
   display: "inline-block", whiteSpace: "nowrap", padding: "3px 10px", borderRadius: 12,
   background: "rgba(251,250,245,0.92)", color: "#1F5A45", border: "1px solid #C9D3CD",
-  fontSize: 13, fontWeight: 700, fontFamily: "system-ui, sans-serif", boxShadow: "0 1px 2px rgba(0,0,0,0.08)",
+  fontSize: 13, fontWeight: 700, fontFamily: "system-ui, sans-serif", boxShadow: "0 1px 2px rgba(0,0,0,0.08)", cursor: "pointer",
 };
 
 export default Office3D;
