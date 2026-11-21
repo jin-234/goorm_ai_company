@@ -1,9 +1,10 @@
 "use client";
-/** 설정: Solar 연결 상태·연결 확인, 글자 크게(125%), 처음부터 다시. 키는 서버 환경변수로만 넣는다. */
+/** 설정: Solar 연결 상태·연결 확인, 출근 때 카메라 사용, 글자 크게(125%), 처음부터 다시. 키는 서버 환경변수로만 넣는다. */
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import type { OfficeHandle } from "../useOffice";
 import { Card, Notice, PanelHeader } from "../ui";
+import { loadCameraPref, saveCameraPref } from "./cameraPref";
 
 const SCALE_KEY = "aiboss.textScale";
 
@@ -23,10 +24,12 @@ export function Settings({ office }: { office: OfficeHandle }) {
   const [ping, setPing] = useState<{ ok: boolean; text: string } | null>(null);
   const [pinging, setPinging] = useState(false);
   const [big, setBig] = useState(false);
+  const [camera, setCamera] = useState(true);
 
   useEffect(() => {
     api.solarStatus().then(setSolar).catch(() => setSolar(null));
     setBig(applySavedTextScale());
+    setCamera(loadCameraPref());
   }, []);
 
   const check = async () => {
@@ -84,6 +87,23 @@ export function Settings({ office }: { office: OfficeHandle }) {
         {ping ? <Notice kind={ping.ok ? "ok" : "error"} title={ping.text} /> : null}
         <p className="small muted pre" style={{ margin: 0 }}>
           {"Solar는 사용량에 따라 요금이 나오는 클라우드 API입니다.\n키는 서버 환경변수에만 두고 화면에는 앞뒤 4자만 보입니다."}
+        </p>
+      </Card>
+      <Card title="카메라">
+        <label className="row" style={{ cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={camera}
+            onChange={(e) => {
+              setCamera(e.target.checked);
+              saveCameraPref(e.target.checked);
+            }}
+            style={{ width: 22, height: 22, accentColor: "var(--green)" }}
+          />
+          출근 때 카메라 사용
+        </label>
+        <p className="small muted pre" style={{ margin: 0 }}>
+          {"켜면 자리에 앉은 것을 카메라로 확인한 뒤 출근합니다.\n영상은 이 기기 안에서만 쓰고 저장·전송하지 않습니다.\n꺼도 출근과 기록에 불이익은 없습니다."}
         </p>
       </Card>
       <Card title="글자">
