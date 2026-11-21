@@ -504,6 +504,9 @@ label.stack {
   position: sticky;
   top: 84px;
   align-self: start;
+  /* 카드 + 장소 목록이 화면보다 길면 맨 아래에서 함께 밀려 올라가므로 화면 안에 가둔다. */
+  max-height: calc(100vh - 104px);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -515,5 +518,16 @@ label.stack {
   .sidebar,
   .topbar {
     position: static;
+  }
+  .sidebar {
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+/* 넓은 화면에서는 왼쪽 '지금 할 일' 카드가 있으니 위 막대의 같은 버튼은 숨긴다. */
+@media (min-width: 861px) {
+  .topbar-now {
+    display: none !important;
   }
 }
